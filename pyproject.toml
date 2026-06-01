@@ -1,0 +1,20 @@
+[project]
+name = "cve-ti-platform"
+version = "0.1.0"
+description = "CVE Threat Intelligence Platform - Architecture bootstrap (Phase 1)"
+requires-python = ">=3.12"
+
+[project.dependencies]
+fastapi = "^0.99.0"
+uvicorn = "^0.23.0"
+pydantic = "^2.3"
+httpx = "^0.24.0"
+structlog = "^23.1.0"
+pytest = {version = "^7.4", optional = true}
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

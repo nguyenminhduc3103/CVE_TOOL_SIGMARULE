@@ -1,0 +1,18 @@
+{
+  "validation": {
+    "valid": true,
+    "errors": [],
+    "warnings": [],
+    "score": 100,
+    "grade": "A"
+  },
+  "quality": {
+    "signal_quality": "low",
+    "false_positive_rate": "medium",
+    "complexity_class": "low",
+    "deployment_readiness": "test",
+    "maintenance_cost": "low",
+    "quality_score": 74,
+    "reasoning": "signal_quality=low; false_positive_rate=medium; complexity_class=low; deployment_readiness=test; maintenance_cost=low"
+  }
+}
