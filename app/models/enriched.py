@@ -53,6 +53,8 @@ class EnrichmentMetadata(BaseModel):
     provider_durations_ms: dict[str, int] | None = None
     references_truncated: bool | None = None
     cpes_truncated: bool | None = None
+    ai_steps_used: list[str] = Field(default_factory=list)
+    ai_total_cost_usd: float | None = None
 
 
 class EnrichedCVEContext(BaseModel):

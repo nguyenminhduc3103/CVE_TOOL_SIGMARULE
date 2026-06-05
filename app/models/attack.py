@@ -36,6 +36,9 @@ class TechnicalAnalysis(BaseModel):
     analysis_confidence: float | None = None
     classification_reason: list[str] | None = None
     behavior_reason: list[str] | None = None
+    ai_used: bool | None = None
+    ai_fallback_used: bool | None = None
+    ai_model: str | None = None
 
 
 class AttackMapping(BaseModel):
@@ -45,3 +48,5 @@ class AttackMapping(BaseModel):
     confidence: float | None = None
     mapping_reasons: list[str] | None = None
     attack_mapping_confidence: float | None = None
+    ai_used: bool | None = None
+    ai_model: str | None = None

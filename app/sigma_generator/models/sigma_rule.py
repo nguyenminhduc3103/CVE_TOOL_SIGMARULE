@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field
 
 from app.sigma_generator.models.sigma_detection import SigmaDetection
 from app.sigma_generator.models.sigma_metadata import SigmaMetadata
+from app.sigma_validation.noise_models import NoiseEstimate
 
 
 class SigmaRule(BaseModel):
@@ -26,6 +27,9 @@ class SigmaRule(BaseModel):
     x_deployment_readiness: str | None = None
     x_maintenance_cost: str | None = None
     x_secondary_logsources: list[str] = Field(default_factory=list)
+    x_ai_used: bool | None = None
+    x_ai_model: str | None = None
+    x_noise_estimate: NoiseEstimate | None = None
 
     def to_yaml(self) -> str:
         from app.sigma_generator.serializers.yaml_serializer import SigmaYamlSerializer

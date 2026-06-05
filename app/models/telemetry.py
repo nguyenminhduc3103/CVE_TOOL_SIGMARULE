@@ -29,3 +29,6 @@ class TelemetryAssessment(BaseModel):
     validated_fields: list[str] | None = None
     invalid_fields: list[str] | None = None
     taxonomy_warnings: list[str] | None = None
+    ai_used: bool | None = None
+    ai_fallback_used: bool | None = None
+    ai_model: str | None = None
