@@ -5,9 +5,9 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from app.models.attack import AttackFlow, AttackMapping, CWEMetadata, TechnicalAnalysis
+from app.shared.models.attack import AttackFlow, AttackMapping, CWEMetadata, TechnicalAnalysis
 from app.services.ai.base_client import AIServiceError, BaseAIClient
-from app.types.vulnerability_class import VulnerabilityClass
+from app.shared.types.vulnerability_class import VulnerabilityClass
 
 
 logger = logging.getLogger(__name__)
@@ -24,7 +24,8 @@ class AIBehaviorAnalyzer:
     _PROMPTS_DIR = Path(__file__).parent / "prompts"
     _SYSTEM_FILE = "analyze_behavior.system.txt"
     _USER_FILE = "analyze_behavior.user.txt"
-    _MODEL = "llama-3.3-70b-versatile"
+    # Pick one. Comment/uncomment to switch.
+    _MODEL = "llama-3.3-70b-versatile"  # full-fat 70B — best quality, but Groq free tier rate-limits TPD (100k)
 
     def __init__(self, base_client: BaseAIClient) -> None:
         self.client = base_client

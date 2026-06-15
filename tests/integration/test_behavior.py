@@ -13,7 +13,7 @@ import logging
 import sys
 
 from app.core.config import settings
-from app.models.core import CoreCVEData
+from app.shared.models.core import CoreCVEData
 from app.services.ai.base_client import BaseAIClient
 from app.services.ai.behavior import AIBehaviorAnalyzer
 

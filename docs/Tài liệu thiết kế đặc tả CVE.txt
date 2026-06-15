@@ -1,0 +1,123 @@
+TÀI LIỆU ĐẶC TẢ: PIPELINE TỰ ĐỘNG HÓA CVE SANG SIGMA RULE 
+TỔNG QUAN TÀI LIỆU Tài liệu này mô tả chi tiết quy trình 6 bước end-to-end để chuyển đổi một lỗ hổng bảo mật (CVE) thành tập luật phát hiện chuẩn Sigma (Sigma Rules). Hệ thống sử dụng mô hình AI-Assisted Wrapper (AI đóng vai trò xử lý chính, các thuật toán logic tĩnh đóng vai trò dự phòng) nhằm tối đa hóa khả năng suy luận ngữ nghĩa mà vẫn đảm bảo tính ổn định tuyệt đối của hệ thống.
+1. NGUYÊN TẮC THIẾT KẾ CỐT LÕI (CORE PRINCIPLES)
+1.	Phát hiện Hành vi, Không phát hiện Mã khai thác: Hệ thống được thiết kế để tìm ra Dấu vết hành vi bắt buộc (Mandatory Behaviors) sau khi khai thác (như tạo tiến trình con, kết nối mạng bất thường), thay vì chỉ dựa vào chuỗi payload bề mặt (dễ bị obfuscate/né tránh).
+2.	Tính Di động (Portability) tuyệt đối: Rule sinh ra phải tuân thủ 100% Sigma Taxonomy chuẩn. Tuyệt đối không sử dụng các trường (fields) đặc thù của bất kỳ SIEM cụ thể nào (như Splunk, Sentinel).
+3.	Kiến trúc Dự phòng (Resilience by Design): Trí tuệ nhân tạo (LLM) là hộp đen có xác suất lỗi. Mọi module AI trong pipeline đều được bọc bởi một lớp "Safety Net". Nếu AI thất bại (timeout, sai định dạng, vi phạm ràng buộc), hệ thống sẽ tự động chuyển luồng xử lý (fallback) về các công cụ sinh rule tĩnh hiện có.
+2. KIẾN TRÚC LUỒNG XỬ LÝ (PIPELINE ARCHITECTURE)
+Quy trình được chia thành 6 bước nối tiếp nhau. Mỗi bước nhận đầu vào (Input) từ bước trước, xử lý, và đóng gói thành một Cấu trúc Dữ liệu Tiêu chuẩn (Standardized Schema) để chuyển sang bước tiếp theo.
+3. CHI TIẾT CÁC BƯỚC THỰC THI (STAGES SPECIFICATION)
+Bước 1: Tiếp nhận và Sàng lọc (Triage)
+•	Phương thức: Thuật toán tĩnh (Rule-based).
+•	Đầu vào: Mã định danh CVE.
+•	Logic xử lý: * Truy xuất dữ liệu từ các nguồn Threat Intelligence (NVD, CISA KEV, EPSS).
+o	Tính toán Vector CVSS để xác định bề mặt tấn công (Ví dụ: AV:N - Khai thác qua mạng).
+o	Loại bỏ các CVE nằm ngoài phạm vi quan sát của phần mềm (Hardware, Firmware, Cryptographic bugs).
+•	Đầu ra: Quyết định thực thi (GO/NO-GO) và bộ Dữ liệu Lõi (Mô tả, CVSS, Điểm yếu CWE, Danh sách sản phẩm ảnh hưởng).
+Bước 2: Phân tích Kỹ thuật & Ánh xạ ATT&CK
+•	Phương thức: AI Assited (Có dự phòng).
+•	Đầu vào: Bộ Dữ liệu Lõi từ Bước 1.
+•	Logic xử lý (AI Prompting): * AI đóng vai trò như một chuyên gia phân tích lỗ hổng.
+o	Phân rã mô tả CVE thành: Vector xâm nhập, Cơ chế thực thi, và Hệ quả quan sát được.
+o	Phân biệt rõ ràng giữa "Hành vi bắt buộc" (khó né tránh) và "Chỉ dấu tùy biến" (dễ né tránh).
+o	Đối chiếu với dữ liệu MITRE ATT&CK để gán Tactics và Techniques tương ứng.
+•	Ràng buộc: Mã TTP (Technique ID) do AI sinh ra phải được đối chiếu và xác thực với danh sách chuẩn của MITRE. Mã không hợp lệ sẽ bị loại bỏ.
+•	Đầu ra: Cấu trúc Phân tích Kỹ thuật (Technical Analysis Schema).
+Nhóm Dấu vết & Hành vi (Core Triggers)
+Đây là nhóm quan trọng nhất, đóng vai trò làm đầu vào trực tiếp cho Bước 4 (AI Telemetry Selector) để quyết định xem phải lấy log từ đâu.
+•	mandatory_behaviors (Hành vi bắt buộc): Ví dụ ["network_callback", "process_creation"]. Đây là xương sống của rule. Nếu thiếu các hành vi này, khai thác không thể thành công.
+•	observable_side_effects (Hệ quả quan sát được): Các dấu vết để lại trên hệ thống (ví dụ: Unusual network traffic).
+•	attack_flow (Luồng tấn công): Gồm entry_vector (đầu vào lỗ hổng) và execution_mechanism (cơ chế thực thi). Cung cấp ngữ cảnh để sau này đưa vào khối mô tả (description) của Sigma Rule.
+Nhóm Ánh xạ Chiến thuật (Threat Intelligence)
+Nhóm này làm đầu vào trực tiếp cho Bước 3 (Coverage Analyzer) để quét xem kho rule hiện tại đã có cái nào trùng lặp chưa, đồng thời gán tags vào Sigma Rule ở Bước 6.
+•	techniques (Mã MITRE Kỹ thuật): Ví dụ ["T1190"]. Đây là key chính để tìm kiếm trong cơ sở dữ liệu rule tĩnh nội bộ.
+•	tactics (Mã MITRE Chiến thuật): Ví dụ ["TA0001", "TA0005"].
+•	cwe_metadata (Mã Điểm yếu): Chứa cwe_id (VD: CWE-917). Khối Taxonomy Validator (2.3) sẽ nhìn vào trường này để check chéo tên chuẩn.
+Nhóm Đặc tính Lỗ hổng (Threat Modeling)
+Nhóm này giúp Bước 7 (Noise & Complexity Estimator) đánh giá mức độ nghiêm trọng và quyết định xem rule này nên được gán level nào (High, Critical, hay Medium).
+•	pre_auth & remote_exploitable (Tiền xác thực & Khai thác từ xa): Kiểu boolean (true/false). Nếu cả 2 đều là true, lỗ hổng này cực kỳ nguy hiểm.
+•	exploit_complexity: Độ phức tạp để khai thác (Low/High).
+•	exploit_requirements: Điều kiện cần (VD: hệ thống phải bật JNDI lookup).
+4. Nhóm Metadata & Quan sát (Observability)
+Nhóm này phục vụ cho việc tracking, debug và đánh giá chất lượng mô hình AI.
+•	ai_used & ai_model: Định danh xem kết quả này sinh ra từ đâu (VD: llama-3.3-70b-versatile) để sau này so sánh chất lượng giữa các mô hình.
+•	confidence: Độ tự tin của AI vào kết quả (VD: 0.95).
+Bước 3: Đánh giá Độ phủ (Coverage Analysis)
+•	Phương thức: Thuật toán tĩnh (Similarity Engine).
+•	Đầu vào: TTPs, Cấu trúc Phân tích từ Bước 2.
+•	Logic xử lý: Quét toàn bộ kho Sigma Rule hiện hữu để đánh giá mức độ trùng lặp.
+•	Đầu ra: Quyết định chiến lược tạo Rule:
+o	NEW: Tạo rule mới hoàn toàn.
+o	EXTEND: Thêm CVE ID vào rule cũ có sẵn.
+o	SUPERSEDE: Tạo rule mới tối ưu hơn và đánh dấu rule cũ là lỗi thời.
+Bước 4: Lựa chọn Viễn trắc (Telemetry Selection)
+•	Phương thức: AI Assisted (Có dự phòng).
+•	Đầu vào: Cấu trúc Phân tích Hành vi từ Bước 2.
+•	Logic xử lý (AI Prompting): * AI phải chọn đúng "Category" của logsource trong Sigma (Ví dụ: process_creation, webserver, network_connection).
+o	Chỉ định rõ hệ thống cần thu thập những trường (fields) dữ liệu nào. Ưu tiên các dấu vết hậu khai thác (Post-exploitation).
+•	Ràng buộc (Taxonomy Validation): Sau khi AI trả kết quả, một bộ Validator nội bộ sẽ kiểm tra chéo các trường dữ liệu do AI đề xuất với "Từ điển Sigma Taxonomy". Bất kỳ trường nào không hợp lệ đối với Category tương ứng sẽ bị đánh dấu cảnh báo.
+•	Đầu ra: Cấu trúc Đánh giá Viễn trắc (Telemetry Assessment Schema).
+ Nhóm Định vị Nguồn Log (Sigma Logsource Definition)
+Đây là phần xương sống. Nó xác định xem rule này sẽ chạy trên loại dữ liệu nào của SIEM.
+•	sigma_logsources (Mảng các Object): Do một CVE có thể phát hiện trên nhiều trục, mảng này chứa các cấu hình logsource chuẩn xác.
+o	category: Bắt buộc. (VD: process_creation, network_connection, webserver).
+o	product: Bắt buộc. (VD: windows, linux, apache).
+o	service: Tùy chọn, chỉ dùng khi thật sự cần thiết theo chuẩn Sigma (VD: sysmon, security).
+Vai trò: Khối này sẽ được Bước 6 bốc nguyên xi và paste thẳng vào block logsource: của file YAML.
+Nhóm Trường Dữ liệu và Sự kiện (Telemetry Specifics)
+Đây là nhóm chứa các "từ khóa" để AI ở Bước 6 biết phải viết điều kiện selection như thế nào.
+•	required_fields (Mảng chuỗi): Chứa các trường dữ liệu ĐÃ ĐƯỢC CHUẨN HÓA (đi qua Taxonomy Validator). Ví dụ: ["Image", "ParentImage", "DestinationPort", "cs-uri-query"].
+•	required_events (Mảng chuỗi/số): Các Event ID tương ứng trong thực tế (VD: ["4688", "1", "3"]).
+Vai trò: Khi AI ở Bước 6 viết logic, hệ thống tĩnh sẽ ép AI chỉ được phép sử dụng các biến có tên nằm trong mảng required_fields này. Nếu AI tự bịa ra trường SourceIpAddress (trong khi chuẩn là SourceIp), Rule Writer sẽ báo lỗi ngay.
+Nhóm Định hướng Chiến lược (Strategic Context)
+Nhóm này giúp Rule sinh ra có tính tổ chức và dễ hiểu cho con người (Kỹ sư SOC).
+•	detection_axis: Cho biết rule này đang tập trung vào giai đoạn nào (VD: ["pre-exploit", "post-exploit"]).
+•	detection_strategy: Một câu tóm tắt (hoặc mảng) về cách phát hiện (VD: ["Bắt các kết nối mạng bất thường từ tiến trình Java"]).
+Vai trò: Dữ liệu này được nhồi vào System Prompt của Bước 6 để AI tổng hợp thành phần description (Mô tả) của rule YAML.
+Nhóm Đánh giá Khả thi & Chất lượng (Quality & Feasibility Metrics)
+•	telemetry_feasibility_score: Điểm khả thi thực tế (từ 0.0 đến 1.0).
+•	correlation_required: (Boolean true/false). Nếu hành vi quá phức tạp (Ví dụ: phải thấy đăng nhập sai 5 lần rồi mới thấy process tạo ra), trường này sẽ bật true để báo cho Bước 6 biết phải viết rule dạng Sigma Correlation (Tương quan đa sự kiện).
+•	validation_status: Trạng thái (VD: "PASSED_STRICT_TAXONOMY"). Cờ này chứng minh bộ lọc tĩnh (Node 4.2) đã chạy xong và gọt sạch rác.
+Bước 6: Sinh Sigma Rule (Rule Authoring)
+•	Phương thức: AI Assisted (Có dự phòng).
+•	Đầu vào: Tổng hợp dữ liệu từ Bước 2, Bước 3 và Bước 4.
+•	Logic xử lý (AI Prompting): * Dịch logic phát hiện thành file cấu hình YAML theo đúng định dạng SigmaHQ.
+o	Xây dựng các khối selection (điều kiện bắt) và filter (điều kiện lọc nhiễu).
+o	Chèn đầy đủ metadata (Title Case, References, Author, Tags).
+•	Ràng buộc: * id của Rule phải là UUID duy nhất (Hệ thống tĩnh sẽ sinh và ghi đè UUID để đảm bảo tính đồng nhất).
+o	Khối cảnh báo dương tính giả (falsepositives) không được chứa các từ cấm vô nghĩa như "None", "Pentest", "Red Team".
+•	Đầu ra: Định dạng Sigma Rule chuẩn.
+Kích hoạt cờ tương quan tại Bước 4 (Telemetry Selector)
+Hệ thống không được phép lạm dụng Correlation vì các phép toán tương quan tiêu tốn rất nhiều tài nguyên (CPU/RAM) của SIEM. Cờ "correlation_required": true chỉ được bật khi AI phân tích hành vi tấn công và thấy thỏa mãn 1 trong 2 điều kiện cứng:
+•	Đòi hỏi đếm/ngưỡng: Một sự kiện đơn lẻ sinh ra quá nhiều cảnh báo rác, bắt buộc phải thấy hành vi lặp lại $N$ lần trong $X$ phút (VD: Brute-force, rà quét cổng). $\rightarrow$ Hệ thống gán loại tương quan: event_count hoặc value_count.
+•	Chuỗi sự kiện đa nguồn (Multi-Event Sequence): Hành vi mang tính tuần tự nhưng nằm ở các Category Log khác nhau hoặc cách xa nhau về thời gian (VD: Lỗ hổng rớt file webshell.php xuống đĩa [Category file_event] $\rightarrow$ Mã độc gọi kết nối mạng [Category network_connection]). $\rightarrow$ Hệ thống gán loại tương quan: temporal hoặc temporal_ordered.
+(Lưu ý: Nếu hành vi tuần tự nhưng hệ điều hành đã ghi gộp vào cùng 1 dòng log – ví dụ Tiến trình Cha gọi Tiến trình Con trong process_creation – thì bắt buộc ép về Rule đơn correlation_required: false).
+Chế độ sinh Cụm Rule tại Bước 6 (AI Rule Writer)
+Khi nhận được tín hiệu "correlation_required": true từ Bước 4, AI ở Bước 6 sẽ tự động chuyển từ chế độ "Viết 1 Rule" sang chế độ "Viết 1 Cụm Rule" (Rule Set). Nó sẽ sinh ra tối thiểu 2 thành phần tách biệt:
+•	Các Sub-Rule (Luật con): Là các luật Sigma tiêu chuẩn, phi trạng thái (Stateless). Khối lượng công việc của AI là viết các luật này để bắt từng mảng sự kiện rời rạc. Quan trọng nhất, mỗi luật con phải được đặt một name riêng biệt để dễ gọi tên.
+•	Parent Correlation Rule (Luật cha): Đóng vai trò là sợi dây liên kết các luật con lại với nhau dựa trên khung thời gian và các trường dữ liệu chung.
+Cấu trúc chuẩn của Parent Correlation Rule
+Để vượt qua bộ YAML Parser (6.2) mà không bị báo lỗi cú pháp, luật cha phải chứa khối correlation với các trường định tuyến rõ ràng:
+•	type: Khai báo logic tương quan (event_count, temporal_ordered, v.v.).
+•	rules: Liệt kê chính xác các name của các Sub-Rule vừa tạo.
+•	group-by: Trường dữ liệu dùng làm mỏ neo để nhóm các sự kiện lại (VD: Bắt buộc các sự kiện phải đến từ cùng một c-ip hoặc cùng một host).
+•	timespan: Khung thời gian tối đa cho phép chuỗi sự kiện diễn ra (VD: 10m, 1h).
+•	condition: Điều kiện kích hoạt (Chỉ áp dụng cho loại đếm, VD: gte: 5 – tức là lớn hơn hoặc bằng 5 lần).
+Bước 7: Đánh giá Độ nhiễu và Tối ưu hóa (Noise & Complexity Estimator)
+•	Phương thức: Hybrid (Hệ thống tĩnh + AI + External API).
+•	Đầu vào: Raw Sigma Rule YAML từ Bước 6.
+•	Logic xử lý:
+o	7.1 Trích xuất & Kiểm tra IOC: Hệ thống tĩnh tự động quét Rule lấy các IOC (IP/Domain) và truy vấn qua GreyNoise API. Nếu IOC là internet background noise, gán cờ cảnh báo.
+o	7.2 Ước lượng bằng AI: AI phân tích logic của Rule để ước lượng chi phí truy vấn (Complexity) và số lượng cảnh báo mỗi ngày (Alert Rate).
+o	7.3 Level Adjuster (Hệ thống tĩnh): Dựa trên đánh giá của AI, nếu Rule có logic đúng nhưng độ nhiễu cao, hệ thống tĩnh sẽ tự động hạ cấp (downgrade) mức độ ưu tiên (Ví dụ: critical $\rightarrow$ medium).
+•	Ràng buộc (Final Action Engine - 7.4):
+o	PROCEED: Nếu Rule tối ưu (Low/Medium Noise), đóng gói và xuất ra Pipeline CI/CD.
+o	PIVOT / NO-RELEASE (Đổi trục): Nếu Rule rơi vào trạng thái Very High Noise hoặc tốn quá nhiều Complexity Budget của SIEM, hệ thống đánh giá trục viễn trắc hiện tại đã thất bại. Hệ thống hủy Rule này và đẩy luồng xử lý quay ngược về Bước 4 (AI Telemetry Selector), yêu cầu AI loại bỏ Category hiện tại và chọn một trục dấu vết (Detection Axis) khác khả thi hơn để sinh lại Rule.
+4. TIÊU CHUẨN GIAO TIẾP VÀ MÔ HÌNH AI (AI INTEGRATION STANDARDS)
+Để đảm bảo hệ thống không bị phụ thuộc vào một nhà cung cấp AI duy nhất (Vendor Lock-in) và giữ được tính ổn định, lớp giao tiếp AI phải tuân theo các tiêu chuẩn sau:
+1.	Giao thức Chuẩn hóa (Universal Client): Lớp kết nối mạng phải tương thích với giao thức chuẩn (như chuẩn của OpenAI API), cho phép dễ dàng chuyển đổi cấu hình giữa các nhà cung cấp như Groq, OpenAI, Anthropic, hoặc các mô hình mã nguồn mở chạy nội bộ (Local LLM) thông qua việc cấu hình Base URL và API Key.
+2.	Cấu trúc Prompt (Prompt Engineering): * System Prompt: Chứa toàn bộ các luật lệ cứng, bảng mapping nội bộ, và bắt buộc AI phải trả về định dạng JSON nguyên bản (Raw JSON). Không sử dụng Markdown hay định dạng trò chuyện.
+o	User Prompt: Chứa dữ liệu động của từng CVE cụ thể.
+3.	Cơ chế Ép kiểu Dữ liệu (Strict Schema Parsing): Chuỗi JSON do AI trả về không được dùng trực tiếp. Nó phải đi qua một màng lọc dữ liệu định kiểu (Data Type Validator). Bất kỳ sự thiếu hụt trường bắt buộc nào hoặc sai kiểu dữ liệu đều bị từ chối.
+4.	Theo dõi và Ghi nhận (Tracking & Observability): Toàn bộ các Object dữ liệu sinh ra từ hệ thống phải chứa các cờ (flags) để truy vết xem dữ liệu này do AI sinh ra hay do hệ thống tĩnh sinh ra, và tên mô hình AI nào đã được sử dụng.
+
