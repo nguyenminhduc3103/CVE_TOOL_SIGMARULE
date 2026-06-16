@@ -1,0 +1,182 @@
+workspace CVE to Sigma Pipeline Hệ thống tự động hóa end-to-end chuyển đổi CVE sang Sigma Rule {
+
+    model {
+        # ==========================================
+        # 1. HỆ THỐNG BÊN NGOÀI & NGƯỜI DÙNG
+        # ==========================================
+        threatIntel = softwareSystem Threat Intel Sources Cung cấp dữ liệu NVD, CISA KEV, EPSS. External System
+        llmApi = softwareSystem LLM APIs Dịch vụ OpenAI, Groq, Anthropic xử lý ngữ nghĩa. External System
+        greyNoise = softwareSystem GreyNoise API Cung cấp dữ liệu IOC Noise Context để khử nhiễu. External System
+        cicdPipeline = softwareSystem Pipeline CICD Hệ thống tiếp nhận và triển khai Rule hoàn chỉnh. External System
+
+        user = person Security Engineer Người vận hành nhập mã CVE vào hệ thống.
+
+        # ==========================================
+        # 2. HỆ THỐNG LÕI (AUTOMATION PLATFORM)
+        # ==========================================
+        pipelineApp = softwareSystem CVE-to-Sigma Automation Platform Hệ thống lõi xử lý pipeline tự động hóa. {
+            
+            # BƯỚC 1 TRIAGE ENGINE
+            step1Container = container Step 1 Triage Engine Tiếp nhận, sàng lọc và enrich dữ liệu CVE {
+                dataAggregator = component Data Aggregator Thu thập dữ liệu CVE từ Threat Intel PythonStatic
+                capabilityChecker = component Capability Checker Phân loại In-scopeOut-of-scope (Hardware, Firmware...) PythonStatic
+                coreCveData = component CoreCVEData Store Bộ nhớ tạm lưu dữ liệu Triage Lõi In-Memory DB Database
+            }
+
+            # BƯỚC 2 TECHNICAL & ATT&CK ANALYZER
+            step2Container = container Step 2 Technical & ATT&CK Analyzer Phân tích Kỹ thuật & Ánh xạ MITRE TTPs {
+                localChecker = component 2.1 Local Checker Kiểm tra Cache dấu vết cục bộ để tối ưu API PythonStatic
+                aiBehaviorAnalyzer = component 2.2 AI Behavior Analyzer Phân rã hành vi và cơ chế khai thác (Mandatory Behaviors) LLM WrapperAI
+                attackValidator = component 2.3 ATT&CK Validator Safety Net xác thực mã TTP chuẩn MITRE PythonStatic
+                dataExportStep2 = component 2.4 Data Export Đóng gói Strict Schema JSON và cập nhật Cache DB PythonStatic
+                vulnSignatureDb = component Vulnerability Signature DB Cơ sở dữ liệu lưu cache kiến trúc lỗ hổng SQLNoSQL Database
+            }
+
+            # BƯỚC 3 COVERAGE ANALYZER
+            step3Container = container Step 3 Coverage Analyzer Đánh giá độ phủ trùng lặp luật hiện hữu {
+                sigmaSearcher = component 3.1 Sigma Searcher Truy vấn tìm kiếm luật liên quan dựa trên CVETTPs PythonStatic
+                similarityEngine = component 3.2 Similarity Engine Thuật toán tính toán độ trùng lặp và định tuyến chiến lược (NEWEXTENDSUPERSEDE) PythonStatic
+                sigmaRulesDb = component Sigma Rules DB Kho lưu trữ luật SigmaHQ và nội bộ tổ chức GitVectorDB Database
+            }
+
+            # BƯỚC 4 TELEMETRY SELECTOR
+            step4Container = container Step 4 Telemetry Selector Lựa chọn và chuẩn hóa viễn trắc log nguồn {
+                aiTelemetrySelector = component 4.1 AI Telemetry Selector Phân tích trục phát hiện và quyết định cờ Correlation LLM WrapperAI
+                sigmaTaxonomyValidator = component 4.2 Sigma Taxonomy Validator Ép kiểu dữ liệu và sửa lỗi trường theo chuẩn Sigma Taxonomy PythonStatic
+                feasibilityAssessor = component 4.3 Feasibility Assessor Đánh giá tính khả thi của log nguồn và xuất Schema PythonStatic
+            }
+
+            # BƯỚC 6 SIGMA RULE WRITER
+            step6Container = container Step 6 Sigma Rule Writer Sinh tập luật định dạng YAML {
+                aiRuleWriter = component 6.1 AI Rule Writer Sinh cấu trúc logic bắt (SelectionFilter) cho Rule đơn hoặc Cụm Rule LLM WrapperAI
+                yamlParser = component 6.2 YAML Parser & UUID Validator Kiểm tra cú pháp thụt lề YAML và ghi đè UUID tĩnh PythonStatic
+                qualityScorer = component 6.3 Quality Scorer Rà soát chất lượng biến và loại bỏ từ cấm ở False Positives PythonStatic
+            }
+
+            # BƯỚC 7 NOISE & COMPLEXITY ESTIMATOR
+            step7Container = container Step 7 Noise & Complexity Estimator Đánh giá độ nhiễu và kiểm duyệt sinh tử {
+                iocExtractor = component 7.1 IOC Extractor & Filter Bóc tách các chỉ dấu IOC (IPDomainHash) trong rule PythonStatic
+                aiNoiseEstimator = component 7.2 AI Noise Estimator Ước lượng alert rate diện rộng và chi phí query SIEM LLM WrapperAI
+                levelAdjuster = component 7.3 Level Adjuster Hệ thống tự động hạ cấp Level nếu rule có nguy cơ High Noise PythonStatic
+                finalActionEngine = component 7.4 Final Action Engine Đưa ra quyết định PROCEED phát hành hoặc PIVOT đổi trục quay về B4 PythonStaticDecision
+            }
+        }
+
+        # ==========================================
+        # 3. ĐỊNH NGHĨA TOÀN BỘ LIÊN KẾT (RELATIONSHIPS)
+        # ==========================================
+        # Luồng từ bên ngoài vào Bước 1
+        user - dataAggregator Nhập mã CVE bắt đầu Pipeline
+        threatIntel - dataAggregator Cung cấp thông tin lỗ hổng thô
+        dataAggregator - capabilityChecker Chuyển giao dữ liệu thô
+        capabilityChecker - coreCveData Lưu trữ dữ liệu lõi nếu thuộc diện In-scope
+
+        # Luồng xử lý từ Bước 1 sang Bước 2
+        coreCveData - localChecker Đọc CoreCVEData
+        localChecker - aiBehaviorAnalyzer Kích hoạt luồng phân tích mới (Cache Miss)
+        localChecker - dataExportStep2 Bốc thẳng dữ liệu đã phân tích trước đó (Cache Hit)
+        aiBehaviorAnalyzer - llmApi Gửi Prompts  Nhận chuỗi JSON thô
+        aiBehaviorAnalyzer - attackValidator Gửi dữ liệu thô từ AI
+        attackValidator - dataExportStep2 Xuất dữ liệu TTPs đã xác thực
+        dataExportStep2 - vulnSignatureDb Ghi nhận cấu trúc lỗ hổng vào Cache DB
+
+        # Luồng xử lý sang Bước 3 (Quét trùng lặp)
+        dataExportStep2 - sigmaSearcher Cung cấp TechnicalAnalysis JSON
+        sigmaSearcher - sigmaRulesDb Query  So khớp luật hiện hữu trong kho
+        sigmaSearcher - similarityEngine Chuyển giao danh sách kết quả trùng lặp
+        
+        # Luồng xử lý sang Bước 4 (Chọn Logsource)
+        dataExportStep2 - aiTelemetrySelector Truyền thông tin Mandatory Behaviors
+        similarityEngine - aiTelemetrySelector Chuyển giao Chiến lược định tuyến (NEWEXTENDSUPERSEDE)
+        aiTelemetrySelector - llmApi Gửi yêu cầu phân tích chọn nguồn log tương ứng
+        aiTelemetrySelector - sigmaTaxonomyValidator Chuyển giao Raw JSON chứa logsource
+        sigmaTaxonomyValidator - feasibilityAssessor Chuyển giao dữ liệu đã chuẩn hóa trường (Passed Taxonomy)
+
+        # Luồng xử lý sang Bước 6 (Viết Rule YAML)
+        similarityEngine - aiRuleWriter Truyền Routing Decision định hướng metadata
+        feasibilityAssessor - aiRuleWriter Cung cấp Telemetry Assessment JSON
+        aiRuleWriter - llmApi Gửi yêu cầu biên dịch logic phát hiện thành YAML
+        aiRuleWriter - yamlParser Chuyển giao Raw YAML
+        yamlParser - qualityScorer Chuyển giao Valid YAML + UUID tĩnh
+        qualityScorer - iocExtractor Đẩy file Sigma Rule YAML hoàn chỉnh
+
+        # Luồng xử lý sang Bước 7 (Đánh giá & Ra quyết định)
+        iocExtractor - greyNoise Tra cứu kiểm tra nhiễu nền của các IPDomain
+        iocExtractor - aiNoiseEstimator Chuyển giao rule kèm ngữ cảnh IOC
+        aiNoiseEstimator - llmApi Gửi yêu cầu ước lượng Alert Rate  Complexity
+        aiNoiseEstimator - levelAdjuster Trả về NoiseComplexity Score định tính
+        levelAdjuster - finalActionEngine Đẩy sang bộ lọc quyết định sinh tử cuối cùng
+
+        # Vòng lặp phản hồi và Đầu ra cuối cùng
+        finalActionEngine - cicdPipeline Hành động PROCEED Đẩy luật an toàn sang Pipeline triển khai
+        finalActionEngine - aiTelemetrySelector Hành động PIVOTREWRITE Hủy bỏ trục cũ, ép AI đổi trục viễn trắc khác Nét đứt
+    }
+
+    views {
+        # 1. View tổng quát toàn hệ thống (System Context)
+        systemContext pipelineApp SystemContextView {
+            include 
+            autolayout lr
+        }
+
+        # 2. View tổng quan các khối Container
+        container pipelineApp ContainerView {
+            include 
+            autolayout lr
+        }
+
+        # 3. Views chi tiết Component của từng Bước riêng biệt
+        component step1Container View_Step1_Triage {
+            include 
+            autolayout lr
+        }
+        component step2Container View_Step2_Analyzer {
+            include 
+            autolayout lr
+        }
+        component step3Container View_Step3_Coverage {
+            include 
+            autolayout lr
+        }
+        component step4Container View_Step4_Telemetry {
+            include 
+            autolayout lr
+        }
+        component step6Container View_Step6_Writer {
+            include 
+            autolayout lr
+        }
+        component step7Container View_Step7_Estimator {
+            include 
+            autolayout lr
+        }
+
+        # ==========================================
+        # ĐỊNH DẠNG MÀU SẮC HÌNH KHỐI ĐỒ HỌA
+        # ==========================================
+        styles {
+            element External System {
+                background #b3c2d1
+                color #333333
+            }
+            element PythonStatic {
+                background #e1f5fe
+                color #0288d1
+            }
+            element LLM WrapperAI {
+                background #fff3e0
+                color #f57c00
+            }
+            element Database {
+                shape Cylinder
+                background #c8e6c9
+                color #388e3c
+            }
+            element PythonStaticDecision {
+                background #f8bbd0
+                color #c2185b
+                shape Hexagon
+            }
+        }
+    }
+}

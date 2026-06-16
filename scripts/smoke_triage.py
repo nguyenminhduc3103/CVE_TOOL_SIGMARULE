@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from app.triage.orchestrator import TriageOrchestrator
+from app.steps.step_1_triage.orchestrator import TriageOrchestrator
 
 
 def _print_list(items: list[str] | None) -> None:

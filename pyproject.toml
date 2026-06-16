@@ -8,8 +8,10 @@ requires-python = ">=3.12"
 fastapi = "^0.99.0"
 uvicorn = "^0.23.0"
 pydantic = "^2.3"
+pydantic-settings = "^2.0"
 httpx = "^0.24.0"
 structlog = "^23.1.0"
+openai = "^1.40.0"
 pytest = {version = "^7.4", optional = true}
 
 [project.optional-dependencies]

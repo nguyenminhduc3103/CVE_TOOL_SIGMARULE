@@ -11,8 +11,8 @@ import sys as _sys
 if str(ROOT) not in _sys.path:
     _sys.path.insert(0, str(ROOT))
 
-from app.triage.orchestrator import TriageOrchestrator
-from app.sigma_generator.services.sigma_rule_generator import SigmaRuleGenerator
+from app.steps.step_1_triage.orchestrator import TriageOrchestrator
+from app.steps.step_6_rule_writer._shared_engines.services.sigma_rule_generator import SigmaRuleGenerator
 
 
 async def validate(cve_id: str) -> None:

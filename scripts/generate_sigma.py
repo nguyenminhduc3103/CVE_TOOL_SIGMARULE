@@ -8,16 +8,16 @@ sys.path.insert(0, str(ROOT))
 
 import asyncio
 import json
-from app.models.core import CoreCVEData
-from app.models.attack import AttackMapping, TechnicalAnalysis
-from app.models.telemetry import TelemetryAssessment, SigmaLogsource
-from app.models.coverage import CoverageAssessment
-from app.sigma_generator.services.sigma_rule_generator import SigmaRuleGenerator
-from app.quality_assessment.quality_scorer import QualityAssessmentEngine
-from app.sigma_validation.validator import SigmaValidator
+from app.shared.models.core import CoreCVEData
+from app.shared.models.attack import AttackMapping, TechnicalAnalysis
+from app.shared.models.telemetry import TelemetryAssessment, SigmaLogsource
+from app.shared.models.coverage import CoverageAssessment
+from app.steps.step_6_rule_writer._shared_engines.services.sigma_rule_generator import SigmaRuleGenerator
+from app.steps.step_6_rule_writer.validators.quality_scorer import QualityAssessmentEngine
+from app.steps.step_6_rule_writer.validators.validator import SigmaValidator
 # Triage orchestrator is optional — used to fetch real enrichment outputs when available
 try:
-    from app.triage.orchestrator import TriageOrchestrator  # type: ignore
+    from app.steps.step_1_triage.orchestrator import TriageOrchestrator  # type: ignore
 except Exception:
     TriageOrchestrator = None
 

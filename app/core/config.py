@@ -1,4 +1,4 @@
-from pydantic.v1 import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -15,8 +15,16 @@ class Settings(BaseSettings):
     opencti_username: str | None = None
     opencti_password: str | None = None
 
-    class Config:
-        env_file = ".env"
+    # --- AI service (V1: OpenAI-compatible: Groq / Anthropic / Ollama) ---
+    ai_enabled: bool = False
+    ai_api_key: str | None = None
+    ai_base_url: str | None = None
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
 
 settings = Settings()
