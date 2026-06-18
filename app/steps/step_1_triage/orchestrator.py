@@ -27,6 +27,18 @@ from app.steps.step_1_triage.stages.kev_stage import run_kev_stage
 from app.steps.step_1_triage.stages.telemetry_stage import run_telemetry_stage
 
 
+def _err_line(exc: BaseException) -> str:
+    """Return the first line of str(exc), or the exception class name if empty.
+
+    Some exceptions (e.g. ``httpx.ReadTimeout``) have an empty ``str()``,
+    which would make ``str(exc).splitlines()[0]`` raise ``IndexError``.
+    """
+    text = str(exc)
+    if not text:
+        return type(exc).__name__
+    return text.splitlines()[0]
+
+
 class TriageOrchestrator:
     def __init__(self) -> None:
         self.nvd = NVDProvider()
@@ -61,7 +73,7 @@ class TriageOrchestrator:
         for name, result in zip(provider_tasks.keys(), provider_results):
             if isinstance(result, Exception):
                 provider_status[name] = "failed"
-                provider_errors[name] = str(result).splitlines()[0]
+                provider_errors[name] = _err_line(result)
                 provider_durations.setdefault(name, int((perf_counter() - provider_started) * 1000))
             elif name == "nvd":
                 nvd_raw = result
@@ -227,7 +239,7 @@ class TriageOrchestrator:
                 return result, False
             return fallback, True
         except Exception as exc:
-            self.logger.warning("[ORCHESTRATOR] stage_failed", stage=stage_name, cve_id=cve_id, error=str(exc).splitlines()[0])
+            self.logger.warning("[ORCHESTRATOR] stage_failed", stage=stage_name, cve_id=cve_id, error=_err_line(exc))
             return fallback, True
 
     async def _run_analysis_stage(self, context: EnrichedCVEContext, capability):
@@ -314,14 +326,14 @@ class TriageOrchestrator:
                 self.logger.warning(
                     "[ORCHESTRATOR] analysis_stage_ai_failed_fallback",
                     cve_id=context.core.cve_id,
-                    error=str(exc).splitlines()[0],
+                    error=_err_line(exc),
                 )
                 # Fall through to rule-based path bên dưới.
             except Exception as exc:
                 self.logger.warning(
                     "[ORCHESTRATOR] analysis_stage_ai_unexpected_fallback",
                     cve_id=context.core.cve_id,
-                    error=str(exc).splitlines()[0],
+                    error=_err_line(exc),
                 )
                 # Fall through to rule-based path bên dưới.
 
@@ -348,7 +360,7 @@ class TriageOrchestrator:
                 attack_context.subtechniques = validation["valid_subtechniques"] or None
             return analysis_context, attack_context, False
         except Exception as exc:
-            self.logger.warning("[ORCHESTRATOR] stage_failed", stage="analysis_stage", cve_id=context.core.cve_id, error=str(exc).splitlines()[0])
+            self.logger.warning("[ORCHESTRATOR] stage_failed", stage="analysis_stage", cve_id=context.core.cve_id, error=_err_line(exc))
             return None, None, True
 
     async def _run_enriched_stage(self, stage_name: str, stage_fn, context: EnrichedCVEContext, capability, fallback):
@@ -356,7 +368,7 @@ class TriageOrchestrator:
             result = await stage_fn(context, capability)
             return result, False
         except Exception as exc:
-            self.logger.warning("[ORCHESTRATOR] stage_failed", stage=stage_name, cve_id=context.core.cve_id, error=str(exc).splitlines()[0])
+            self.logger.warning("[ORCHESTRATOR] stage_failed", stage=stage_name, cve_id=context.core.cve_id, error=_err_line(exc))
             return fallback, True
 
     async def _run_provider(
@@ -387,12 +399,12 @@ class TriageOrchestrator:
             return data
         except (TimeoutError, httpx.TimeoutException) as exc:
             provider_status[provider_name] = "timeout"
-            provider_errors[provider_name] = str(exc).splitlines()[0]
+            provider_errors[provider_name] = _err_line(exc)
             provider_durations[provider_name] = int((perf_counter() - started) * 1000)
             self.logger.warning("[ORCHESTRATOR] provider_failed", provider=provider_name, cve_id=cve_id, duration_ms=provider_durations[provider_name], error=provider_errors[provider_name])
         except Exception as exc:
             provider_status[provider_name] = "failed"
-            provider_errors[provider_name] = str(exc).splitlines()[0]
+            provider_errors[provider_name] = _err_line(exc)
             provider_durations[provider_name] = int((perf_counter() - started) * 1000)
             self.logger.warning("[ORCHESTRATOR] provider_failed", provider=provider_name, cve_id=cve_id, duration_ms=provider_durations[provider_name], error=provider_errors[provider_name])
         return None

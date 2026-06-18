@@ -22,7 +22,10 @@ class NVDProvider(BaseProvider):
             self.logger.info("[NVD] Success", cve_id=cve_id)
             return parsed
         except Exception as exc:
-            self.logger.warning("[NVD] Enrichment failed", cve_id=cve_id, error=str(exc).splitlines()[0])
+            # Some exceptions (e.g. httpx.ReadTimeout) have an empty str(),
+            # so splitlines()[0] would IndexError. Fall back to the type name.
+            message = str(exc).splitlines()[0] if str(exc) else type(exc).__name__
+            self.logger.warning("[NVD] Enrichment failed", cve_id=cve_id, error=message)
             raise
 
     async def fetch(self, cve_id: str):

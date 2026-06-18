@@ -22,7 +22,8 @@ You will receive a single CVE in JSON form and MUST respond with a SINGLE JSON o
   "techniques": list[str],                   // technique IDs, e.g. ["T1190", "T1059"]
   "subtechniques": list[str],                // sub-technique IDs, e.g. ["T1059.001"]
   "attack_confidence": float between 0.0 and 1.0,
-  "mapping_reasons": list[str]
+  "mapping_reasons": list[str],
+  "reasoning": list[str]                     // 2-4 brief bullet points capturing the analytical narrative of the exploit end-to-end
 }}
 
 MANDATORY RULES (no exceptions):
@@ -34,8 +35,7 @@ MANDATORY RULES (no exceptions):
 - If unsure about OTHER fields, set to null or []. But attack_flow MUST be fully populated.
 - Use MITRE ATT&CK Enterprise v15 IDs.
 - For cwe_metadata.cwe_ids: list ALL relevant CWE IDs that apply to this CVE (e.g. for Log4Shell return ["CWE-20", "CWE-502", "CWE-917"]). Do not pick just one.
-
-Reference Example (for CVE-2021-44228 Log4Shell):
+{{SHARED_MITRE_RULES}}Reference Example (for CVE-2021-44228 Log4Shell):
 {{
   "attack_flow": {{
     "entry_vector": "log message or parameter injection with JNDI lookup string",

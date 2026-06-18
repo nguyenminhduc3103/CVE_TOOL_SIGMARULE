@@ -33,22 +33,13 @@ def classify_family(
         reasons.append("product:spring")
         return VulnerabilityFamily.CODE_INJECTION, 0.9, reasons
 
-    # CWE mapping
+    # CWE mapping — use the family declared on the CWEProfile itself.
     profiles = map_cwe_profiles(cwe_ids)
     if profiles:
-        # choose family based on first profile
         first = profiles[0]
-        mapping = {
-            "CWE-502": VulnerabilityFamily.DESERIALIZATION,
-            "CWE-22": VulnerabilityFamily.PATH_TRAVERSAL,
-            "CWE-434": VulnerabilityFamily.FILE_UPLOAD,
-            "CWE-269": VulnerabilityFamily.PRIVILEGE_ESCALATION,
-            "CWE-78": VulnerabilityFamily.CODE_INJECTION,
-        }
-        key = first.cwe_id
-        if key in mapping:
-            reasons.append(f"cwe:{key}")
-            return mapping[key], 0.85, reasons
+        if first.family is not None:
+            reasons.append(f"cwe:{first.cwe_id}")
+            return first.family, 0.85, reasons
 
     # Description keyword fallback
     text = (description or "").lower()

@@ -13,6 +13,11 @@ trước khi return.
 
 Đây là fix bug cốt lõi: trước đây data flow bị mix giữa Pydantic + Dict +
 nested + top-level, gây mất dữ liệu ở 3 fields attack_flow.
+
+Helpers được tách ra các module:
+- _data_flow.py: Pydantic <-> dict conversion + normalize
+- _merge_strategy.py: _merge_old_new + _apply_3_tier_fallback
+- _retry.py: _build_retry_payload (retry loop body vẫn ở đây)
 """
 from __future__ import annotations
 
@@ -21,18 +26,11 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from pydantic import ValidationError
-
 from app.shared.models.attack import (
-    AttackFlow,
     AttackMapping,
-    CWEMetadata,
     TechnicalAnalysis,
 )
 from app.shared.ai.core import AIServiceError, BaseAIClient
-from app.steps.step_2_tech_analysis.fallbacks.attack_flow import (
-    apply_attack_flow_fallback,
-)
 from app.steps.step_2_tech_analysis.gap_analysis import (
     build_gap_report,
     compute_coverage,
@@ -41,283 +39,37 @@ from app.steps.step_2_tech_analysis.gap_analysis import (
 from app.steps.step_2_tech_analysis.services.ai_service import (
     AIBehaviorService,
 )
-from app.shared.types.vulnerability_class import VulnerabilityClass
+from app.steps.step_2_tech_analysis._data_flow import (
+    _ai_dict_to_pydantic,
+    _normalize_ai_dict,
+)
+from app.steps.step_2_tech_analysis._merge_strategy import (
+    _apply_3_tier_fallback,
+    _merge_old_new,
+)
+from app.steps.step_2_tech_analysis._retry import (
+    _build_retry_payload,
+)
 
 logger = logging.getLogger(__name__)
 
 # Ngưỡng retry
 THRESHOLD_FULL_PASS = 1.0
-THRESHOLD_RETRY_FALLBACK = 0.4
-MAX_RETRIES = 2
+# Retry cho MỌI case chưa full pass (kể cả 0%). MAX_RETRIES=3 chặn runaway.
+# Với gap report mạnh (REMOVE extras + ADD missing), AI có cơ hội sửa lỗi
+# kể cả khi lần 1 trả rất tệ (vd DoS thuần, coverage 33% do thiếu ATT&CK).
+THRESHOLD_RETRY_FALLBACK = 0.0
+MAX_RETRIES = 3
 
 _RETRY_SYSTEM_PROMPT = (
     Path(__file__).parent / "prompts" / "retry_behavior.system.txt"
-).read_text(encoding="utf-8")
+).read_text(encoding="utf-8").replace(
+    "{{SHARED_MITRE_RULES}}",
+    (Path(__file__).parent / "prompts" / "_shared_mitre_rules.md").read_text(
+        encoding="utf-8"
+    ),
+)
 
-
-# ==============================================================
-# Data Flow Helpers - thao tác trên DICT thuần (không Pydantic)
-# ==============================================================
-
-def _vulnerability_class_to_str(vc) -> str | None:
-    """Convert Pydantic enum hoặc str sang string (None nếu rỗng)."""
-    if vc is None:
-        return None
-    if hasattr(vc, "value"):
-        return str(vc.value)
-    return str(vc).strip() or None
-
-
-def _ai_pydantic_to_dict(tech_analysis: TechnicalAnalysis, attack_mapping: AttackMapping, cve_id: str, cwe_ids: list[str] | None) -> dict[str, Any]:
-    """Convert Pydantic sang dict (CHO DATA FLOW TRUNG GIAN).
-
-    QUAN TRỌNG: cả 2 fields entry_vector + execution_mechanism được
-    lưu ở CẢ top-level + nested attack_flow (để serializer format target
-    đọc top-level, Pydantic AttackFlow đọc nested).
-    """
-    # CẢ 2 nguồn (top-level + nested)
-    af = tech_analysis.attack_flow
-    entry_vector = af.entry_vector if af else None
-    execution_mechanism = af.execution_mechanism if af else None
-    obs_effects = af.observable_side_effects if af else None
-
-    return {
-        "cve_id": cve_id,
-        "cwe_ids": cwe_ids or [],
-        "pre_auth": getattr(tech_analysis, "pre_auth", None),
-        "remote_exploitable": getattr(tech_analysis, "remote_exploitable", None),
-        "technical_analysis": {
-            "family": getattr(tech_analysis, "family", None),
-            "vulnerability_type": getattr(tech_analysis, "vulnerability_type", None),
-            "vulnerability_class": _vulnerability_class_to_str(
-                getattr(tech_analysis, "vulnerability_class", None)
-            ),
-            "exploit_vector": getattr(tech_analysis, "exploit_vector", None),
-            "exploit_complexity": getattr(tech_analysis, "exploit_complexity", None),
-            "entry_vector": entry_vector,                # TOP-LEVEL (cho serializer)
-            "execution_mechanism": execution_mechanism, # TOP-LEVEL
-            "cwe_metadata": (
-                tech_analysis.cwe_metadata.model_dump(exclude_none=True)
-                if getattr(tech_analysis, "cwe_metadata", None) is not None
-                else None
-            ),
-            "attack_flow": {
-                "entry_vector": entry_vector,            # NESTED (cho Pydantic)
-                "execution_mechanism": execution_mechanism,
-                "observable_side_effects": obs_effects or [],
-            },
-            "mandatory_behaviors": getattr(tech_analysis, "mandatory_behaviors", None) or [],
-            "exploit_requirements": getattr(tech_analysis, "exploit_requirements", None) or [],
-        },
-        "attack_mapping": {
-            "tactics": getattr(attack_mapping, "tactics", None) or [],
-            "techniques": getattr(attack_mapping, "techniques", None) or [],
-            "subtechniques": getattr(attack_mapping, "subtechniques", None) or [],
-            "confidence": getattr(attack_mapping, "confidence", None),
-            "mapping_reasons": getattr(attack_mapping, "mapping_reasons", None) or [],
-        },
-        "metadata": {
-            "ai_used": True,
-            "ai_model": getattr(tech_analysis, "ai_model", None),
-        },
-    }
-
-
-def _ai_dict_to_pydantic(
-    data: dict[str, Any], base_tech: TechnicalAnalysis, base_attack: AttackMapping
-) -> tuple[TechnicalAnalysis, AttackMapping]:
-    """Convert dict (data flow trung gian) sang Pydantic.
-
-    Đây là CHỖ DUY NHẤT build Pydantic từ dict (cuối pipeline).
-    """
-    tech_dict = data.get("technical_analysis") or {}
-    atk_dict = data.get("attack_mapping") or {}
-
-    # CWE metadata
-    cwe_meta_raw = tech_dict.get("cwe_metadata")
-    cwe_meta = None
-    if isinstance(cwe_meta_raw, dict):
-        # Normalize cwe_id (singular) -> cwe_ids (list)
-        if "cwe_id" in cwe_meta_raw and "cwe_ids" not in cwe_meta_raw:
-            single = cwe_meta_raw.pop("cwe_id")
-            cwe_meta_raw["cwe_ids"] = [single] if single else []
-        if "cwe_name" in cwe_meta_raw and "cwe_names" not in cwe_meta_raw:
-            single_name = cwe_meta_raw.pop("cwe_name")
-            cwe_meta_raw["cwe_names"] = [single_name] if single_name else []
-        cwe_meta = CWEMetadata(**cwe_meta_raw)
-
-    # AttackFlow: ưu tiên nested (Pydantic AttackFlow), fallback top-level
-    flow_dict = tech_dict.get("attack_flow") or {}
-    attack_flow = AttackFlow(
-        entry_vector=flow_dict.get("entry_vector") or tech_dict.get("entry_vector"),
-        execution_mechanism=flow_dict.get("execution_mechanism") or tech_dict.get("execution_mechanism"),
-        observable_side_effects=flow_dict.get("observable_side_effects") or [],
-    )
-
-    # Coerce vulnerability_class
-    vc_raw = tech_dict.get("vulnerability_class")
-    vc = None
-    if vc_raw:
-        text = str(vc_raw).strip().lower()
-        if text.startswith("vulnerabilityclass."):
-            text = text[len("vulnerabilityclass."):]
-        text = text.replace(" ", "_").replace("-", "_").strip("_")
-        try:
-            vc = VulnerabilityClass(text)
-        except ValueError:
-            for candidate in VulnerabilityClass:
-                if candidate.value == text or text in candidate.value:
-                    vc = candidate
-                    break
-            if vc is None:
-                vc = VulnerabilityClass.UNKNOWN
-
-    # Resolve ai_model once, before constructing the Pydantic models (the
-    # `tech_analysis` / `attack_mapping` locals can't be referenced inside
-    # their own initializer — that would raise UnboundLocalError).
-    metadata_raw = tech_dict.get("metadata")
-    ai_model = (
-        metadata_raw.get("ai_model")
-        if isinstance(metadata_raw, dict)
-        else None
-    ) or getattr(base_tech, "ai_model", None) or getattr(base_attack, "ai_model", None)
-
-    tech_analysis = TechnicalAnalysis(
-        family=tech_dict.get("family") or getattr(base_tech, "family", None),
-        signature=tech_dict.get("signature") or getattr(base_tech, "signature", None),
-        vulnerability_type=tech_dict.get("vulnerability_type"),
-        vulnerability_class=vc,
-        exploit_vector=tech_dict.get("exploit_vector"),
-        pre_auth=getattr(base_tech, "pre_auth", None),
-        remote_exploitable=getattr(base_tech, "remote_exploitable", None),
-        exploit_complexity=tech_dict.get("exploit_complexity"),
-        confidence=tech_dict.get("confidence") or getattr(base_tech, "confidence", None),
-        likely_outcome=tech_dict.get("likely_outcome") or getattr(base_tech, "likely_outcome", None),
-        mandatory_behaviors=tech_dict.get("mandatory_behaviors") or None,
-        evasive_indicators=tech_dict.get("evasive_indicators") or None,
-        exploit_requirements=tech_dict.get("exploit_requirements") or None,
-        cwe_metadata=cwe_meta,
-        attack_flow=attack_flow,
-        ai_used=True,
-        ai_model=ai_model,
-    )
-
-    attack_mapping = AttackMapping(
-        tactics=atk_dict.get("tactics") or None,
-        techniques=atk_dict.get("techniques") or None,
-        subtechniques=atk_dict.get("subtechniques") or None,
-        confidence=atk_dict.get("confidence") or getattr(base_attack, "confidence", None),
-        mapping_reasons=atk_dict.get("mapping_reasons") or None,
-        ai_used=True,
-        ai_model=ai_model,
-    )
-    return tech_analysis, attack_mapping
-
-
-def _apply_3_tier_fallback(
-    data: dict[str, Any],
-    exploit_vector: str | None,
-    vulnerability_class: str | None,
-    mandatory_behaviors: list[str],
-) -> dict[str, Any]:
-    """Apply 3-tier fallback cho 3 MANDATORY fields TRONG DICT.
-
-    Tier 1: dùng giá trị từ data hiện tại (top-level + nested)
-    Tier 2: derive rule-based từ exploit_vector + vulnerability_class + behaviors
-    Set CẢ 2 chỗ (top-level + nested) để atomic.
-    """
-    tech = data.setdefault("technical_analysis", {})
-    flow = tech.setdefault("attack_flow", {})
-
-    # Tier 1: lấy giá trị từ cả 2 chỗ
-    current = {
-        "entry_vector": tech.get("entry_vector") or flow.get("entry_vector"),
-        "execution_mechanism": tech.get("execution_mechanism") or flow.get("execution_mechanism"),
-        "observable_side_effects": flow.get("observable_side_effects") or [],
-    }
-
-    # Tier 2: fill missing
-    filled = apply_attack_flow_fallback(
-        current=current,
-        exploit_vector=exploit_vector,
-        vulnerability_class=vulnerability_class,
-        mandatory_behaviors=mandatory_behaviors,
-    )
-
-    # Set CẢ 2 chỗ atomic
-    tech["entry_vector"] = filled["entry_vector"]
-    tech["execution_mechanism"] = filled["execution_mechanism"]
-    flow["entry_vector"] = filled["entry_vector"]
-    flow["execution_mechanism"] = filled["execution_mechanism"]
-    flow["observable_side_effects"] = filled["observable_side_effects"]
-
-    return data
-
-
-# ==============================================================
-# Retry logic (với gap report)
-# ==============================================================
-
-def _merge_old_new(old: dict, new: dict) -> dict:
-    """Merge old + new dicts (set union cho lists, prefer new cho scalars)."""
-    merged = {**old, **new}
-
-    # Gộp lists
-    for key in ("tactics", "techniques", "subtechniques", "mapping_reasons",
-                "mandatory_behaviors", "exploit_requirements"):
-        in_attack = key in ("tactics", "techniques", "subtechniques", "mapping_reasons")
-        if in_attack:
-            old_list = (old.get("attack_mapping") or {}).get(key) or []
-            new_list = (new.get("attack_mapping") or {}).get(key) or []
-        else:
-            old_list = (old.get("technical_analysis") or {}).get(key) or []
-            new_list = (new.get("technical_analysis") or {}).get(key) or []
-        # Guard: AI may return scalar/None for fields it didn't generate.
-        old_list = old_list if isinstance(old_list, list) else []
-        new_list = new_list if isinstance(new_list, list) else []
-        merged_list = sorted(set(old_list + new_list))
-        if key in ("tactics", "techniques", "subtechniques", "mapping_reasons"):
-            (merged.setdefault("attack_mapping", {}))[key] = merged_list
-        else:
-            (merged.setdefault("technical_analysis", {}))[key] = merged_list
-
-    # Gộp observable_side_effects
-    old_obs = ((old.get("technical_analysis") or {}).get("attack_flow") or {}).get("observable_side_effects") or []
-    new_obs = ((new.get("technical_analysis") or {}).get("attack_flow") or {}).get("observable_side_effects") or []
-    old_obs = old_obs if isinstance(old_obs, list) else []
-    new_obs = new_obs if isinstance(new_obs, list) else []
-    merged_obs = sorted(set(old_obs + new_obs))
-    (merged.setdefault("technical_analysis", {}).setdefault("attack_flow", {}))["observable_side_effects"] = merged_obs
-
-    return merged
-
-
-def _build_retry_payload(
-    description: str,
-    cvss_vector: str,
-    cwe_ids: list[str],
-    previous_output: dict,
-    gap_analysis: dict,
-    retry_num: int,
-) -> str:
-    """Build user prompt cho retry call (JSON)."""
-    payload = {
-        "step1_context": {
-            "description": description,
-            "cvss_vector": cvss_vector,
-            "cwe_ids": cwe_ids,
-        },
-        "previous_ai_output": previous_output,
-        "system_gap_report": gap_analysis,
-        "retry_count": retry_num,
-        "max_retries": MAX_RETRIES,
-    }
-    return json.dumps(payload, indent=2, ensure_ascii=False)
-
-
-# ==============================================================
-# Main entry point
-# ==============================================================
 
 async def run_step2_tech_analysis(
     ai_service: AIBehaviorService,
@@ -378,49 +130,136 @@ async def run_step2_tech_analysis(
     # Bước 4: Coverage check
     ground_truth = compute_ground_truth(cve_id, description, cwe_ids, cvss_vector)
     coverage = compute_coverage(current_output, ground_truth)
-    logger.info(
-        "[Step 2 - Gap Analysis] %s attempt 1: coverage=%.0f%% verdict=%s",
-        cve_id, coverage["overall_coverage"] * 100, coverage["verdict"],
+
+    # PHASE 4: Warn khi ground truth UNKNOWN hoặc coverage None
+    if coverage.get("ground_truth_quality") == "UNKNOWN":
+        logger.warning(
+            "[Step 2 - Gap Analysis] %s: NO ground truth available "
+            "(CWE=%s, CVSS=%s). Verdict=UNKNOWN - skipping retry loop.",
+            cve_id, cwe_ids, cvss_vector,
+        )
+    if coverage["overall_coverage"] is None:
+        logger.warning(
+            "[Step 2 - Gap Analysis] %s: coverage=None (verdict=UNKNOWN). "
+            "Skip retry.",
+            cve_id,
+        )
+
+    # Format coverage cho log - xử lý None
+    cov_pct = (
+        f"{coverage['overall_coverage'] * 100:.0f}%"
+        if coverage["overall_coverage"] is not None
+        else "N/A"
+    )
+    logger.debug(
+        "[Step 2 - Gap Analysis] %s attempt 1: coverage=%s verdict=%s",
+        cve_id, cov_pct, coverage["verdict"],
     )
 
     # Track how many gap-analysis retries were used to reach the final output.
     # 0 = success on first AI attempt (no retry needed).
     retries_used: int = 0
 
-    # Bước 5: Retry loop nếu coverage 40-99%
-    if THRESHOLD_RETRY_FALLBACK <= coverage["overall_coverage"] < THRESHOLD_FULL_PASS:
+    # Bước 5: Retry loop
+    # PHASE 4: None-safe retry decision
+    # Retry khi:
+    #   (a) coverage ở vùng 40-99% (thiếu items), HOẶC
+    #   (b) coverage cao NHƯNG AI vẫn bịa extras (needs_retry=True), HOẶC
+    #   (c) AI output có quality_gaps (evasive_indicators/reasoning/mapping_reasons rỗng).
+    # Nếu overall_coverage = None (UNKNOWN verdict) → KHÔNG retry
+    # (không biết đúng/sai thì không thể feedback AI).
+    # LƯU Ý: quality_gaps detection đã được centralize trong compute_coverage()
+    # (gap_analysis.py) - ở đây chỉ cần đọc coverage["needs_retry"] đã bao gồm.
+    overall_for_retry = coverage["overall_coverage"]
+    quality_gaps = coverage.get("quality_gaps", [])
+
+    if overall_for_retry is None:
+        should_retry = False
+    else:
+        should_retry = coverage.get("needs_retry", False) or (
+            THRESHOLD_RETRY_FALLBACK <= overall_for_retry < THRESHOLD_FULL_PASS
+        )
+        if quality_gaps:
+            logger.debug(
+                "[Step 2 - Gap Retry] %s: AI quality gaps: %s - forcing retry",
+                cve_id, quality_gaps,
+            )
+
+    if should_retry:
+        retry_reason = "needs_retry (AI bịa extras)" if coverage.get("needs_retry") else "partial coverage"
+        logger.debug(
+            "[Step 2 - Gap Retry] %s entering retry loop (reason=%s, coverage=%.0f%%, max=%d)",
+            cve_id, retry_reason, overall_for_retry * 100, MAX_RETRIES,
+        )
+
         for retry_num in range(1, MAX_RETRIES + 1):
             gap_report = build_gap_report(current_output, ground_truth, coverage)
-            logger.info(
-                "[Step 2 - Gap Retry] %s retry %d/%d: missing_behaviors=%s missing_techniques=%s",
+            logger.debug(
+                "[Step 2 - Gap Retry] %s retry %d/%d: missing_behaviors=%s missing_techniques=%s extra_techniques=%s",
                 cve_id, retry_num, MAX_RETRIES,
                 gap_report["gap_analysis"]["missing_behaviors"],
                 gap_report["gap_analysis"]["missing_techniques"],
+                coverage.get("extra_techniques", []),
             )
+
+            # Merge extras từ coverage vào gap_analysis để feedback prompt
+            # có thể truy cập (build_gap_report không trả extra_techniques
+            # ở top level - chỉ compute_coverage mới có).
+            gap_for_payload = dict(gap_report["gap_analysis"])
+            gap_for_payload["extra_techniques"] = coverage.get("extra_techniques", [])
 
             retry_user_prompt = _build_retry_payload(
                 description=description,
                 cvss_vector=cvss_vector,
                 cwe_ids=cwe_ids,
                 previous_output=current_output,
-                gap_analysis=gap_report["gap_analysis"],
+                gap_analysis=gap_for_payload,
                 retry_num=retry_num,
+                cve_id=cve_id,
             )
 
             try:
+                # Mark retry model BEFORE the call so it's recorded even if
+                # the call raises (e.g. rate-limit). The analyze model was
+                # already recorded inside fetch_raw_response().
+                ai_service.record_retry_model()
+                # Switch to retry override endpoint if configured (e.g. Gemini
+                # 1M TPM to dodge Groq's 6K TPM ceiling on large retry
+                # payloads). Falls back to primary client if not set.
+                from app.core.config import settings as _settings
+                _retry_key = getattr(_settings, "retry_ai_api_key", None) or None
+                _retry_url = getattr(_settings, "retry_ai_base_url", None) or None
                 response_text = await base_client.call_llm(
                     system_prompt=_RETRY_SYSTEM_PROMPT,
                     user_prompt=retry_user_prompt,
-                    model=ai_service._MODEL,
+                    model=ai_service._RETRY_MODEL,
+                    override_api_key=_retry_key,
+                    override_base_url=_retry_url,
                 )
-                # Clean + parse (dùng helper của ai_service)
-                cleaned = ai_service._clean_json(response_text)
-                retry_data = json.loads(cleaned)
-            except (json.JSONDecodeError, AIServiceError, Exception) as exc:
+                # Parse trực tiếp response_text (KHÔNG gọi _clean_json private
+                # method vì không tồn tại trên ai_service - bug cũ làm
+                # retry loop crash silently sau attempt 1)
+                try:
+                    retry_data = json.loads(response_text)
+                except json.JSONDecodeError:
+                    # Thử clean thủ công nếu AI trả markdown wrapper
+                    text = response_text.strip()
+                    if text.startswith("```json"):
+                        text = text[7:]
+                    if text.startswith("```"):
+                        text = text[3:]
+                    if text.endswith("```"):
+                        text = text[:-3]
+                    retry_data = json.loads(text.strip())
+            except Exception as exc:
+                # Catch TẤT CẢ exceptions - bao gồm AIServiceError, JSONDecodeError,
+                # httpx errors, rate limit (429), network, etc.
                 logger.warning(
                     "[Step 2 - Gap Retry] %s retry %d failed: %s",
                     cve_id, retry_num, exc,
                 )
+                # Track retry đã chạy dù fail
+                retries_used = retry_num
                 break
 
             # Normalize + merge
@@ -437,29 +276,59 @@ async def run_step2_tech_analysis(
 
             # Re-check coverage
             new_coverage = compute_coverage(merged, ground_truth)
-            logger.info(
-                "[Step 2 - Gap Retry] %s after retry %d: coverage=%.0f%% (was %.0f%%)",
-                cve_id, retry_num, new_coverage["overall_coverage"] * 100,
-                coverage["overall_coverage"] * 100,
+            new_overall = new_coverage["overall_coverage"]
+            old_overall = coverage["overall_coverage"]
+
+            # Format None thành "N/A" cho log
+            new_pct = f"{new_overall * 100:.0f}%" if new_overall is not None else "N/A"
+            old_pct = f"{old_overall * 100:.0f}%" if old_overall is not None else "N/A"
+            logger.debug(
+                "[Step 2 - Gap Retry] %s after retry %d: coverage=%s (was %s), extras=%s",
+                cve_id, retry_num, new_pct, old_pct,
+                new_coverage.get("extra_techniques", []),
             )
 
-            if new_coverage["overall_coverage"] > coverage["overall_coverage"]:
-                current_output = merged
-                coverage = new_coverage
-                retries_used = retry_num
-                if coverage["overall_coverage"] >= THRESHOLD_FULL_PASS:
-                    logger.info(
-                        "[Step 2 - Gap Retry] %s reached 100%% after retry %d",
-                        cve_id, retry_num,
-                    )
-                    break
-            else:
-                logger.info(
-                    "[Step 2 - Gap Retry] %s retry %d no improvement, stop",
+            # Track retry đã chạy (LOGIC MỚI: luôn update bên ngoài if)
+            retries_used = retry_num
+
+            # PHASE 4: None-safe comparison - treat None as 0.0 cho numeric
+            # compare (preserve None ở final output metadata)
+            new_for_compare = new_overall if new_overall is not None else 0.0
+            old_for_compare = old_overall if old_overall is not None else 0.0
+
+            # LUÔN cập nhật current_output + coverage sau mỗi retry.
+            # Lý do: _merge_old_new() dùng REPLACE strategy cho ATT&CK →
+            # extras cũ bị cắt, output mới luôn "tốt hơn" previous attempt
+            # về mặt factual (kể cả khi coverage score không tăng).
+            current_output = merged
+            coverage = new_coverage
+
+            # CHỈ break khi full pass + không còn extras (đạt mục tiêu)
+            # Nếu chưa full pass → tiếp tục retry cho đến MAX_RETRIES
+            # để AI có cơ hội thử lại với feedback mới (gap report khác).
+            if (
+                new_overall is not None
+                and new_overall >= THRESHOLD_FULL_PASS
+                and not coverage.get("needs_retry", False)
+            ):
+                logger.debug(
+                    "[Step 2 - Gap Retry] %s reached 100%% clean after retry %d",
                     cve_id, retry_num,
                 )
-                retries_used = retry_num
                 break
+
+        # Khi loop kết thúc do exhausted (retry_num == MAX_RETRIES mà vẫn
+        # chưa clean pass), current_output + coverage là kết quả lần cuối.
+        # Đây là behavior theo Option A: giữ best-effort kết quả, đánh dấu
+        # retries_used=MAX_RETRIES để caller biết AI fail correction.
+        if retries_used == 0 and should_retry:
+            # Defensive: nếu loop không chạy lần nào (vd exception trước loop)
+            # → đánh dấu MAX_RETRIES để log.
+            retries_used = MAX_RETRIES
+            logger.warning(
+                "[Step 2 - Gap Retry] %s loop did not execute; forced retries_used=%d",
+                cve_id, MAX_RETRIES,
+            )
 
     # Bước 6: REBUILD Pydantic từ dict cuối (CHỖ DUY NHẤT)
     # Tạo dummy base_tech/base_attack để giữ các field không có trong data flow
@@ -503,6 +372,9 @@ async def run_step2_tech_analysis(
             cwe_profiles=cwe_profiles_list,
             classifier=classifier,
             ontology_confidence=behavior.get("ontology_confidence") if isinstance(behavior.get("ontology_confidence"), float) else None,
+            cve_id=cve_id,
+            description=description,
+            cvss_vector=cvss_vector,
         )
     except Exception as exc:
         logger.warning("Rule-based fallback failed: %s", exc)
@@ -546,34 +418,3 @@ async def run_step2_tech_analysis(
     final_tech, final_attack = _ai_dict_to_pydantic(current_output, base_tech, base_attack)
 
     return final_tech, final_attack, coverage
-
-
-def _normalize_ai_dict(
-    ai_data: dict[str, Any], cve_id: str, cwe_ids: list[str] | None
-) -> dict[str, Any]:
-    """Normalize AI dict: chuẩn hoá format, đảm bảo các field ở đúng chỗ.
-
-    AI có thể trả:
-    - attack_flow ở nested (đúng chuẩn)
-    - attack_flow fields ở top-level (AI Groq quirk)
-    → Normalize: copy top-level vào nested nếu nested thiếu.
-    """
-    tech = ai_data.get("technical_analysis") or {}
-    if not tech and "family" in ai_data:
-        # AI trả thẳng ở root (không có wrapper technical_analysis)
-        tech = {k: v for k, v in ai_data.items() if k not in (
-            "attack_mapping", "metadata", "cve_id", "pre_auth", "remote_exploitable"
-        )}
-        ai_data = {"technical_analysis": tech, "attack_mapping": ai_data.get("attack_mapping", {}), "metadata": ai_data.get("metadata", {})}
-
-    # Chuẩn hoá: copy top-level attack_flow fields xuống nested nếu nested thiếu
-    flow = tech.setdefault("attack_flow", {})
-    for field in ("entry_vector", "execution_mechanism"):
-        if not flow.get(field) and tech.get(field):
-            flow[field] = tech[field]
-
-    # Đảm bảo cve_id, cwe_ids, pre_auth, remote_exploitable ở root
-    ai_data.setdefault("cve_id", cve_id)
-    ai_data.setdefault("cwe_ids", cwe_ids or [])
-
-    return ai_data

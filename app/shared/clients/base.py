@@ -12,14 +12,14 @@ class BaseHTTPClient:
         self._client: httpx.AsyncClient | None = None
 
     async def get(self, endpoint: str, **kwargs):
+        # Always inject a real User-Agent — some feeds (CISA KEV, NVD via
+        # Cloudflare) reject requests with the default httpx/urllib UA.
+        headers = kwargs.pop("headers", None) or {}
+        headers.setdefault(
+            "User-Agent", "cve-ti-platform/1.0 (+https://github.com/cve-ti)"
+        )
+        kwargs["headers"] = headers
         if self._client is None:
-            # Set a real User-Agent — some feeds (CISA KEV) reject requests
-            # with the default httpx/urllib UA.
-            headers = kwargs.pop("headers", None) or {}
-            headers.setdefault(
-                "User-Agent", "cve-ti-platform/1.0 (+https://github.com/cve-ti)"
-            )
-            kwargs["headers"] = headers
             self._client = httpx.AsyncClient(base_url=self.base_url, timeout=self.timeout)
         return await self._client.get(endpoint, **kwargs)
 

@@ -159,6 +159,12 @@ async def main(cve_id: str) -> None:
         print(f"  AI steps used: {ai_steps}")
         if enriched.analysis:
             print(f"  Retries:       {enriched.analysis.ai_retry_count}")
+        # ai_models_used: list of every distinct model that actually fired
+        # for this CVE (analyze + retry if invoked). Order-preserved.
+        if enriched.analysis and enriched.analysis.ai_models_used:
+            print(f"  AI models used: {enriched.analysis.ai_models_used}")
+        elif enriched.attack and enriched.attack.ai_models_used:
+            print(f"  AI models used: {enriched.attack.ai_models_used}")
     else:
         print("  AI not used in Bước 2 — fell back to rule-based")
 
@@ -186,22 +192,43 @@ async def main(cve_id: str) -> None:
     )
     cov = compute_coverage(ai_output, ground_truth)
 
-    print(f"  CWE coverage:       {cov['cwe_coverage']:.0%}  "
-          f"({len(ground_truth['expected_cwes'])} expected, "
-          f"missing: {cov['missing_cwes']})")
-    print(f"  Behavior coverage:  {cov['behavior_coverage']:.0%}  "
-          f"({len(ground_truth['expected_behaviors'])} expected, "
-          f"missing: {cov['missing_behaviors']})")
-    print(f"  TTP coverage:       {cov['ttp_coverage']:.0%}  "
-          f"({len(ground_truth['expected_techniques'])} expected, "
-          f"missing: {cov['missing_techniques']})")
+    # PHASE 5: Format None-aware (UNKNOWN verdict cho CVEs ngoài whitelist)
+    def _fmt_pct(v) -> str:
+        return f"{v:.0%}" if v is not None else "N/A"
+
+    def _fmt_count(expected_set, missing_list) -> str:
+        if not expected_set:
+            return "(0 expected)"
+        return f"({len(expected_set)} expected, missing: {missing_list})"
+
+    print(f"  Ground truth:       source={ground_truth.get('ground_truth_source', '?')} "
+          f"quality={ground_truth.get('ground_truth_quality', '?')}")
+    print(f"  CWE coverage:       {_fmt_pct(cov['cwe_coverage'])}  "
+          f"{_fmt_count(ground_truth['expected_cwes'], cov['missing_cwes'])}")
+    print(f"  Behavior coverage:  {_fmt_pct(cov['behavior_coverage'])}  "
+          f"{_fmt_count(ground_truth['expected_behaviors'], cov['missing_behaviors'])}")
+    print(f"  TTP coverage:       {_fmt_pct(cov['ttp_coverage'])}  "
+          f"{_fmt_count(ground_truth['expected_techniques'], cov['missing_techniques'])}")
     print(f"  ─────────────────────────────────────")
-    print(f"  Overall:            {cov['overall_coverage']:.0%}  → {cov['verdict']}")
-    if cov["needs_retry"]:
+    print(f"  Overall:            {_fmt_pct(cov['overall_coverage'])}  → {cov['verdict']}")
+
+    if cov["verdict"] == "UNKNOWN":
+        print(f"  ⚠️  No ground truth available for this CVE - cannot evaluate AI output")
+    elif cov["needs_retry"]:
         print(f"  Retry requested:    True (AI produced extras that hurt coverage)")
 
+    # Phân loại extras: contradictory (AI thực sự sai context) vs additional
+    # (AI thông minh hơn whitelist, technique hợp lý với CVE)
     if cov["extra_techniques"]:
-        print(f"  Extra techniques (AI bịa?): {cov['extra_techniques']}")
+        contradictory = set(cov.get("contradictory_techniques") or [])
+        additional = [t for t in cov["extra_techniques"] if t not in contradictory]
+        if contradictory:
+            print(f"  ⚠️  Contradictory techniques (sai context CVE): "
+                  f"{sorted(contradictory)}")
+        if additional:
+            print(f"  Additional techniques (AI smarter than whitelist): {additional}")
+    if cov.get("notes"):
+        print(f"  Notes: {cov['notes']}")
 
     # =========================================================================
     # METADATA

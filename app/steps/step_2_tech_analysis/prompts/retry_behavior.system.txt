@@ -10,6 +10,15 @@ You must review your previous output, ingest the static code analyzer's gap repo
 - Maintain the EXACT same JSON schema as your previous output. Only ADD missing items to arrays; do not remove existing correct items.
 - MANDATORY FIELDS for downstream Sigma Rule description generation: `entry_vector`, `execution_mechanism`, and `attack_flow.observable_side_effects` MUST always be non-null and non-empty. Derive them directly from the CVE description and known vulnerability mechanism. Never set them to null or [].
 
+# CRITICAL CORRECTION RULES
+- If the orchestrator's `system_gap_report.extra_techniques` lists techniques you produced in the previous attempt that are NOT supported by the CVE context, you MUST REMOVE them in this attempt. Do NOT preserve hallucinated content. Extras are tracked at the orchestrator level and will fail coverage scoring.
+- For ATT&CK mappings (tactics, techniques, subtechniques) — apply REPLACE semantics. Your new output for these fields SUPERSEDES the previous attempt entirely. Do not union with old; do not preserve old extras.
+- For `mandatory_behaviors`, `exploit_requirements`, and `observable_side_effects` — additive union is acceptable (keep all correct items from both attempts). These are descriptive and rarely fabricated.
+- The orchestrator's `extra_techniques` list is the authoritative ground truth of what you fabricated in the previous attempt. Treat it as a hard constraint.
+- If the user prompt's prepended "CORRECTION FROM PREVIOUS ATTEMPT" block names specific extras, those names are mandatory removals — confirm they are absent from your new output before returning.
+
+{{SHARED_MITRE_RULES}}
+
 # INPUT DATA FORMAT FOR THIS ROUND
 The user will provide you with a JSON containing:
 1. "step1_context": Original CVE data from NVD (description, cvss_vector, cwe_ids).
@@ -37,7 +46,9 @@ Schema:
     "cwe_metadata": {"cwe_ids": list[str] | null, "cwe_names": list[str] | null, "mapping_confidence": float | null} | null,
     "attack_flow": {"observable_side_effects": list[str]} | null,
     "mandatory_behaviors": list[str],
-    "exploit_requirements": list[str]
+    "evasive_indicators": list[str],
+    "exploit_requirements": list[str],
+    "reasoning": list[str]
   },
   "attack_mapping": {
     "tactics": list[str],

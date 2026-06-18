@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from app.shared.types.vulnerability_class import VulnerabilityClass
+from app.shared.types.vulnerability_family import VulnerabilityFamily
 
 
 @dataclass(frozen=True)
@@ -16,6 +17,7 @@ class CWEProfile:
     evasive_indicators: tuple[str, ...]
     exploit_requirements: tuple[str, ...]
     likely_outcome: str
+    family: VulnerabilityFamily | None = None
 
 
 CWE_BEHAVIOR_MAP: dict[str, CWEProfile] = {
@@ -25,10 +27,18 @@ CWE_BEHAVIOR_MAP: dict[str, CWEProfile] = {
         vulnerability_type="command_injection",
         vulnerability_class=VulnerabilityClass.COMMAND_INJECTION,
         mapping_confidence=0.95,
-        mandatory_behaviors=("process_execution", "shell_spawn"),
+        # process_creation: real CMDi RCE leads to subprocess spawn (sh -c, cmd.exe /c).
+        # Without this, MITRE T1059 mapping is missed because process_execution
+        # behavior is internal-only and has no BEHAVIOR_ATTACK_GRAPH entry.
+        mandatory_behaviors=(
+            "process_execution",
+            "shell_spawn",
+            "process_creation",
+        ),
         evasive_indicators=("encoded_command", "living_off_the_land"),
         exploit_requirements=("attacker_controlled_input", "reachable_service"),
         likely_outcome="remote_code_execution",
+        family=VulnerabilityFamily.CODE_INJECTION,
     ),
     "CWE-89": CWEProfile(
         cwe_id="CWE-89",
@@ -36,10 +46,18 @@ CWE_BEHAVIOR_MAP: dict[str, CWEProfile] = {
         vulnerability_type="sql_injection",
         vulnerability_class=VulnerabilityClass.SQL_INJECTION,
         mapping_confidence=0.95,
-        mandatory_behaviors=("database_query", "http_request"),
+        # data_exfiltration: SQLi primary impact IS data theft. Move from
+        # likely_outcome (informational) to mandatory_behaviors (actionable
+        # MITRE mapping → T1020/T1114 via BEHAVIOR_ATTACK_GRAPH).
+        mandatory_behaviors=(
+            "database_query",
+            "http_request",
+            "data_exfiltration",
+        ),
         evasive_indicators=("union_select_pattern",),
         exploit_requirements=("attacker_controlled_query_parameter",),
         likely_outcome="data_exfiltration",
+        family=None,
     ),
     "CWE-22": CWEProfile(
         cwe_id="CWE-22",
@@ -51,6 +69,7 @@ CWE_BEHAVIOR_MAP: dict[str, CWEProfile] = {
         evasive_indicators=("encoded_path_sequence",),
         exploit_requirements=("path_parameter_control",),
         likely_outcome="information_disclosure",
+        family=VulnerabilityFamily.PATH_TRAVERSAL,
     ),
     "CWE-434": CWEProfile(
         cwe_id="CWE-434",
@@ -62,6 +81,7 @@ CWE_BEHAVIOR_MAP: dict[str, CWEProfile] = {
         evasive_indicators=("double_extension_filename",),
         exploit_requirements=("upload_endpoint_exposed",),
         likely_outcome="webshell_persistence",
+        family=VulnerabilityFamily.FILE_UPLOAD,
     ),
     "CWE-502": CWEProfile(
         cwe_id="CWE-502",
@@ -69,10 +89,25 @@ CWE_BEHAVIOR_MAP: dict[str, CWEProfile] = {
         vulnerability_type="deserialization",
         vulnerability_class=VulnerabilityClass.DESERIALIZATION,
         mapping_confidence=0.97,
-        mandatory_behaviors=("network_connection", "process_creation"),
+        # public_facing_exploit: CWE-502 thường exploit qua HTTP/API
+        # endpoint công khai (Log4Shell, JSON deserialization attacks, etc.)
+        # mà chỉ network_connection/process_creation không phản ánh
+        # attack surface đầu vào.
+        #
+        # tool_download: Deserialization exploits typically fetch malicious
+        # class files (Log4Shell: .class via LDAP/HTTP, Java deserialization
+        # gadget chains). T1105 (Ingress Tool Transfer) là kỹ thuật MITRE
+        # chuẩn cho hành vi này.
+        mandatory_behaviors=(
+            "network_connection",
+            "process_creation",
+            "public_facing_exploit",
+            "tool_download",
+        ),
         evasive_indicators=("serialized_payload",),
         exploit_requirements=("deserialization_sink_reachable",),
         likely_outcome="remote_code_execution",
+        family=VulnerabilityFamily.DESERIALIZATION,
     ),
     "CWE-918": CWEProfile(
         cwe_id="CWE-918",
@@ -84,6 +119,7 @@ CWE_BEHAVIOR_MAP: dict[str, CWEProfile] = {
         evasive_indicators=("internal_host_targeting",),
         exploit_requirements=("server_side_request_primitive",),
         likely_outcome="internal_service_reachability",
+        family=VulnerabilityFamily.SSRF,
     ),
     "CWE-306": CWEProfile(
         cwe_id="CWE-306",
@@ -95,6 +131,7 @@ CWE_BEHAVIOR_MAP: dict[str, CWEProfile] = {
         evasive_indicators=("missing_authentication_gate",),
         exploit_requirements=("reachable_service",),
         likely_outcome="unauthorized_access",
+        family=None,
     ),
     "CWE-269": CWEProfile(
         cwe_id="CWE-269",
@@ -106,6 +143,7 @@ CWE_BEHAVIOR_MAP: dict[str, CWEProfile] = {
         evasive_indicators=("service_abuse",),
         exploit_requirements=("privileged_execution_path",),
         likely_outcome="privilege_escalation",
+        family=VulnerabilityFamily.PRIVILEGE_ESCALATION,
     ),
 }
 

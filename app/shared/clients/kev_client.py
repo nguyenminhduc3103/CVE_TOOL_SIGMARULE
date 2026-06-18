@@ -14,6 +14,7 @@ import httpx
 
 from app.shared.clients.base import BaseHTTPClient
 from app.core.logging import get_logger
+from app.shared.cache.response_cache import ResponseCache
 
 
 class KEVHTTPClient(BaseHTTPClient):
@@ -28,7 +29,7 @@ class KEVHTTPClient(BaseHTTPClient):
         "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
     )
 
-    def __init__(self, timeout: float = 10.0, retries: int = 3, backoff_seconds: float = 0.5) -> None:
+    def __init__(self, timeout: float = 10.0, retries: int = 3, backoff_seconds: float = 0.5, cache: ResponseCache | None = None) -> None:
         kev_api_url = os.environ.get("KEV_API_URL")
         self.endpoint = kev_api_url or self.ENDPOINT
         self._using_default_endpoint = kev_api_url is None
@@ -56,8 +57,23 @@ class KEVHTTPClient(BaseHTTPClient):
         self.logger = get_logger(__name__)
         self.last_error_message: str | None = None
         self.last_failure_kind: str | None = None
+        self._cache = cache or ResponseCache()
 
     async def fetch_raw(self, cve_id: str) -> Any:
+        # KEV is catalog-wide: every (cve_id, year) ask returns the same
+        # JSON document, so we cache the whole payload keyed per-endpoint.
+        cache_key = f"catalog::{self.endpoint}"
+        cached = self._cache.get("kev", cache_key)
+        if cached is not None:
+            if isinstance(cached, dict) and "__error__" in cached:
+                # Cached failure — surface it as None (KEV semantics) and
+                # remember the failure kind so callers can branch on it.
+                status = cached["__error__"]
+                self.last_failure_kind = f"http_{status}"
+                self.last_error_message = f"cached KEV failure (status={status})"
+                return None
+            return cached
+
         last_error: Exception | None = None
         self.last_error_message = None
         self.last_failure_kind = None
@@ -75,6 +91,7 @@ class KEVHTTPClient(BaseHTTPClient):
                     cve_id=cve_id,
                     status_code=response.status_code,
                 )
+                self._cache.set("kev", cache_key, payload)
                 return payload
             except (httpx.TimeoutException, httpx.NetworkError, httpx.HTTPStatusError) as exc:
                 if isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code == 403:
@@ -107,6 +124,21 @@ class KEVHTTPClient(BaseHTTPClient):
                 if not retryable or attempt >= self.retries:
                     break
                 await asyncio.sleep(self.backoff_seconds * (2 ** (attempt - 1)))
+
+        # Cache transient upstream failures briefly so we don't hammer CISA
+        # when it's down. Only cache retryable failures (429/5xx/timeout).
+        if last_error is not None and self._is_retryable(last_error):
+            status = (
+                last_error.response.status_code
+                if isinstance(last_error, httpx.HTTPStatusError)
+                else 503
+            )
+            self._cache.set(
+                "kev",
+                cache_key,
+                {"__error__": status},
+                ttl_seconds=60,
+            )
 
         if isinstance(last_error, httpx.HTTPStatusError) and last_error.response.status_code == 403:
             self.logger.error(f"[KEV] Failed cve_id={cve_id} error=403 Forbidden")

@@ -265,14 +265,50 @@ def _normalize_id(value: object) -> str | None:
     return text
 
 
+def is_known_ttp(value: str) -> str | None:
+    """Phân loại một TTP ID (đã được normalize) theo whitelist.
+
+    Trả về category string để giúp debug/giảm duplication giữa
+    validate_tactic và validate_technique:
+
+    Returns:
+        - "tactic" : ID khớp _TACTIC_PATTERN và có trong VALID_TACTICS.
+        - "parent" : base technique (T1059) có trong VALID_TECHNIQUES.
+        - "sub"    : subtechnique (T1059.001) có trong VALID_SUBTECHNIQUES
+                     HOẶC có parent technique hợp lệ (parent-child fallback).
+        - None     : ID không hợp lệ về format hoặc không nằm trong whitelist.
+
+    Lưu ý: "sub" trả về ngay cả khi match qua parent-child fallback, vì
+    validate_technique() vẫn pass trong trường hợp đó.
+    """
+    if not value:
+        return None
+    if _TACTIC_PATTERN.match(value) and value in VALID_TACTICS:
+        return "tactic"
+    if not _TECHNIQUE_PATTERN.match(value):
+        return None
+    if "." in value:
+        # Subtechnique - ưu tiên whitelist cứng
+        if value in VALID_SUBTECHNIQUES:
+            return "sub"
+        # Fallback: parent technique hợp lệ → coi như sub-technique hợp lý
+        # theo convention. Tránh phải maintain ~600 subtechnique IDs thủ công.
+        parent = value.split(".", 1)[0]
+        if parent in VALID_TECHNIQUES:
+            return "sub"
+        return None
+    # Base technique
+    if value in VALID_TECHNIQUES:
+        return "parent"
+    return None
+
+
 def validate_tactic(value: object) -> bool:
     """Kiểm tra 1 tactic ID có hợp lệ không."""
     normalized = _normalize_id(value)
     if normalized is None:
         return False
-    if not _TACTIC_PATTERN.match(normalized):
-        return False
-    return normalized in VALID_TACTICS
+    return is_known_ttp(normalized) == "tactic"
 
 
 def validate_technique(value: object) -> bool:
@@ -280,19 +316,15 @@ def validate_technique(value: object) -> bool:
 
     Quy tắc:
     - Technique (T1059): phải có trong VALID_TECHNIQUES.
-    - Subtechnique (T1059.001): phải có trong VALID_SUBTECHNIQUES (whitelist cứng,
-      không chấp nhận subtechnique 'ảo' dù base hợp lệ).
+    - Subtechnique (T1059.001): ưu tiên check trong VALID_SUBTECHNIQUES.
+      Nếu không có trong whitelist, fallback: chấp nhận nếu parent technique
+      hợp lệ (vd AI trả T1021.003 dù chưa list trong whitelist nhưng T1021
+      hợp lệ → pass). Vẫn reject T9999.001 (parent invalid).
     """
     normalized = _normalize_id(value)
     if normalized is None:
         return False
-    if not _TECHNIQUE_PATTERN.match(normalized):
-        return False
-    if "." in normalized:
-        # Là subtechnique - check whitelist cứng
-        return normalized in VALID_SUBTECHNIQUES
-    # Là base technique
-    return normalized in VALID_TECHNIQUES
+    return is_known_ttp(normalized) in ("parent", "sub")
 
 
 def validate_ttp_list(
