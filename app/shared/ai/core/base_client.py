@@ -41,10 +41,11 @@ class BaseAIClient:
         if not self.ai_enabled or not self.client:
             raise AIServiceError('AI is disabled.')
 
+        model_to_use = getattr(settings, 'ai_model', None) or model
         for attempt in range(max_retries):
             try:
                 response = await self.client.chat.completions.create(
-                    model=model,
+                    model=model_to_use,
                     messages=[
                         {'role': 'system', 'content': system_prompt},
                         {'role': 'user', 'content': user_prompt},

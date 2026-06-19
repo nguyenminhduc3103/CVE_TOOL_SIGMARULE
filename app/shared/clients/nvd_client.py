@@ -1,5 +1,6 @@
 """NVD HTTP client."""
 from app.shared.clients.base import BaseHTTPClient
+from app.core.config import settings
 
 
 class NVDHTTPClient(BaseHTTPClient):
@@ -10,10 +11,11 @@ class NVDHTTPClient(BaseHTTPClient):
         super().__init__(base_url=self.BASE_URL, timeout=timeout)
 
     async def fetch_raw(self, cve_id: str):
-        response = await self.get(self.ENDPOINT, params={'cveId': cve_id})
-        # Return parsed JSON body (dict), not the raw httpx.Response object —
-        # downstream NVDParser calls dict-style .get() on the result.
-        try:
-            return response.json()
-        except Exception:
-            return {}
+        headers = {}
+        if settings.nvd_api_key:
+            headers['apiKey'] = settings.nvd_api_key
+
+        response = await self.get(self.ENDPOINT, params={'cveId': cve_id}, headers=headers)
+        # Raise HTTPStatusError for non-2xx responses to bubble up the status (e.g. 503, 403)
+        response.raise_for_status()
+        return response.json()

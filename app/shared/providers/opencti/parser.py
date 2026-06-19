@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime
 from typing import Any
 
 from app.core.logging import get_logger
@@ -66,17 +65,8 @@ class OpenCTIParser:
         """Chuẩn hóa một đối tượng vulnerability STIX 2.1 đơn lẻ thành CoreCVEData."""
         cve_id = self._extract_cve_id(raw)
         
-        # Trích xuất các trường mốc thời gian xuất bản và cập nhật
-        published_at = self._parse_datetime(raw.get("created") or raw.get("published_at"))
-        modified_at = self._parse_datetime(raw.get("modified") or raw.get("modified_at"))
-
-        # Khởi tạo mô hình CoreCVEData 
-        parsed = CoreCVEData(
-            cve_id=cve_id,
-            description=None,
-            published_at=published_at,
-            modified_at=modified_at,
-        )
+        # Khởi tạo mô hình CoreCVEData chỉ với cve_id (các trường khác tự động là None)
+        parsed = CoreCVEData(cve_id=cve_id)
 
         self.logger.info(
             "[OpenCTI] Đã chuẩn hóa lỗ hổng",
@@ -106,19 +96,3 @@ class OpenCTIParser:
 
         # Nếu không tìm thấy, trả về ID mặc định của đối tượng
         return str(raw.get("id") or "UNKNOWN-CVE")
-
-    def _parse_datetime(self, value: Any) -> datetime | None:
-        """Phân tích cú pháp chuỗi thời gian thành đối tượng datetime của Python."""
-        if not value:
-            return None
-        if isinstance(value, datetime):
-            return value
-        text = str(value).replace("Z", "+00:00")
-        try:
-            return datetime.fromisoformat(text)
-        except ValueError:
-            # Thử phân tích chuỗi thời gian bằng cách lấy 19 ký tự đầu (định dạng YYYY-MM-DDTHH:MM:SS)
-            try:
-                return datetime.strptime(text[:19], "%Y-%m-%dT%H:%M:%S")
-            except ValueError:
-                return None
