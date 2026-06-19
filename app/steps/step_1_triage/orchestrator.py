@@ -16,6 +16,8 @@ from app.shared.models.triage import TriageContext
 from app.shared.providers.epss.provider import EPSSProvider
 from app.shared.providers.kev.provider import KEVProvider
 from app.shared.providers.nvd.provider import NVDProvider
+from app.shared.providers.otx.provider import OTXProvider
+from app.shared.providers.poc.provider import PoCProvider
 from app.steps.step_1_triage.capability_checker import CapabilityChecker
 from app.steps.step_1_triage.priority_engine import PriorityEngine
 from app.steps.step_1_triage.stages.analysis_stage import run_analysis_stage
@@ -24,6 +26,7 @@ from app.steps.step_1_triage.stages.coverage_stage import run_coverage_stage
 from app.steps.step_1_triage.stages.epss_stage import run_epss_stage
 from app.steps.step_1_triage.stages.exposure_stage import run_exposure_stage
 from app.steps.step_1_triage.stages.kev_stage import run_kev_stage
+from app.steps.step_1_triage.stages.poc_stage import run_poc_stage
 from app.steps.step_1_triage.stages.telemetry_stage import run_telemetry_stage
 
 
@@ -44,6 +47,8 @@ class TriageOrchestrator:
         self.nvd = NVDProvider()
         self.kev = KEVProvider()
         self.epss = EPSSProvider()
+        self.otx = OTXProvider()
+        self.poc = PoCProvider()
         self.priority_engine = PriorityEngine()
         self.capability_checker = CapabilityChecker()
         self.logger = get_logger(__name__)
@@ -66,10 +71,12 @@ class TriageOrchestrator:
             "nvd": self._run_provider("nvd", self.nvd, self.nvd.fetch, cve_id, provider_status, provider_errors, provider_durations),
             "kev": self._run_provider("kev", self.kev, self.kev.fetch, cve_id, provider_status, provider_errors, provider_durations),
             "epss": self._run_provider("epss", self.epss, self.epss.fetch, cve_id, provider_status, provider_errors, provider_durations),
+            "otx": self._run_provider("otx", self.otx, self.otx.fetch, cve_id, provider_status, provider_errors, provider_durations),
+            "poc": self._run_provider("poc", self.poc, self.poc.fetch, cve_id, provider_status, provider_errors, provider_durations),
         }
         provider_results = await asyncio.gather(*provider_tasks.values(), return_exceptions=True)
 
-        nvd_raw = kev_raw = epss_raw = None
+        nvd_raw = kev_raw = epss_raw = poc_raw = None
         for name, result in zip(provider_tasks.keys(), provider_results):
             if isinstance(result, Exception):
                 provider_status[name] = "failed"
@@ -81,6 +88,10 @@ class TriageOrchestrator:
                 kev_raw = result
             elif name == "epss":
                 epss_raw = result
+            elif name == "otx":
+                otx_raw = result
+            elif name == "poc":
+                poc_raw = result
 
         provider_batch_duration_ms = int((perf_counter() - provider_started) * 1000)
         self.logger.info("[ORCHESTRATOR] provider_batch_completed", cve_id=cve_id, duration_ms=provider_batch_duration_ms)
@@ -116,8 +127,17 @@ class TriageOrchestrator:
         )
         stage_partial = stage_partial or stage_failed
 
+        poc_stage_raw, stage_failed = await self._run_stage(
+            stage_name="poc_stage",
+            stage_fn=run_poc_stage,
+            cve_id=cve_id,
+            payload=poc_raw or {},
+            fallback={"poc_references": None, "public_poc": False},
+        )
+        stage_partial = stage_partial or stage_failed
+
         # Build CoreCVEData from NVD raw (minimal mapping)
-        core = self._build_core_context(cve_id, nvd_core_raw)
+        core = self._build_core_context(cve_id, nvd_core_raw, otx_raw)
 
         exposure_raw, stage_failed = await self._run_stage(
             stage_name="exposure_stage",
@@ -132,14 +152,32 @@ class TriageOrchestrator:
         if isinstance(exposure_raw, dict):
             internet_exposure = exposure_raw.get("internet_exposure")
 
-        # Build TriageContext from provider outputs (skeleton-only)
+        threat_actors = []
+        if isinstance(otx_raw, dict):
+            threat_actors = otx_raw.get("threat_actors") or []
+
+        # Build TriageContext from provider outputs
+        in_kev_val = self._get_optional_bool(kev_stage_raw, "in_kev")
+        _poc_refs = poc_stage_raw.get("poc_references") if isinstance(poc_stage_raw, dict) else None
+        public_poc = poc_stage_raw.get("public_poc") or False if isinstance(poc_stage_raw, dict) else False
+        poc_references = _poc_refs
         triage = TriageContext(
-            in_kev=self._get_optional_bool(kev_stage_raw, "in_kev"),
+            in_kev=in_kev_val,
             kev_added_date=self._get_optional_datetime(kev_stage_raw, "kev_added_date"),
+            ransomware_usage=self._get_optional_bool(kev_stage_raw, "known_ransomware_campaign_use") or False,
+            observed_in_the_wild=in_kev_val or False,
             epss_score=self._get_optional_float(epss_stage_raw, "epss_score"),
             epss_percentile=self._get_optional_float(epss_stage_raw, "epss_percentile"),
             internet_exposure=internet_exposure,
+            threat_actors=threat_actors,
+            public_poc=public_poc,
+            poc_references=poc_references or None,
         )
+
+        # Enrich Core CWE IDs from KEV if NVD returned noinfo or empty
+        if not core.cwe_ids or core.cwe_ids == ["NVD-CWE-noinfo"]:
+            if isinstance(kev_stage_raw, dict) and kev_stage_raw.get("cwes"):
+                core.cwe_ids = kev_stage_raw.get("cwes")
 
         # Priority & capability assessments (skeleton)
         priority, score = await self.priority_engine.assess(core, triage)
@@ -150,54 +188,69 @@ class TriageOrchestrator:
         triage.capability_assessment = capability
         capability_classification = self.capability_checker.classify(core)
 
-        # Auto GO/NO-GO decision based on capability assessment.
-        # Happy case: in_scope -> GO; out_of_scope_* -> NO-GO.
-        if capability_classification.value == "in_scope":
-            triage.decision = "GO"
-            triage.decision_reason = (
-                f"Capability assessment=in_scope (confidence_modifier="
-                f"{capability_classification.confidence_modifier}); proceed to "
-                f"technical analysis and rule generation."
-            )
-        else:
+        # Auto GO/NO-GO decision based on capability assessment, KEV, and public PoC.
+        if capability_classification.value != "in_scope":
             triage.decision = "NO-GO"
             triage.decision_reason = (
-                f"Capability assessment={capability_classification.value}; "
-                f"reason={capability_classification.reasoning}. Pipeline stops "
-                f"at triage; rule generation skipped."
+                f"Capability assessment={capability_classification.value} (out of scope); "
+                f"reason={capability_classification.reasoning}. Pipeline stops at triage; "
+                f"rule generation skipped (even with in_kev={triage.in_kev}, "
+                f"epss_percentile={f'{triage.epss_percentile*100:.3f}%' if triage.epss_percentile is not None else 'None'}, "
+                f"public_poc={triage.public_poc})."
             )
+        else:
+            if triage.in_kev is True:
+                triage.decision = "GO"
+                triage.decision_reason = (
+                    f"Capability assessment=in_scope, with active exploitation confirmed in CISA KEV. "
+                    f"Proceed to technical analysis with high priority (epss_percentile={f'{triage.epss_percentile*100:.3f}%' if triage.epss_percentile is not None else 'None'})."
+                )
+            elif triage.public_poc is True:
+                triage.decision = "GO"
+                triage.decision_reason = (
+                    f"Capability assessment=in_scope, and while in_kev is False/None, "
+                    f"a public PoC/exploit was detected in references. Proceed to technical analysis "
+                    f"(epss_percentile={f'{triage.epss_percentile*100:.3f}%' if triage.epss_percentile is not None else 'None'})."
+                )
+            else:
+                triage.decision = "NO-GO"
+                triage.decision_reason = (
+                    f"Capability assessment=in_scope, but no active threat or exploit detected "
+                    f"(in_kev={triage.in_kev}, epss_percentile={f'{triage.epss_percentile*100:.3f}%' if triage.epss_percentile is not None else 'None'}, "
+                    f"public_poc={triage.public_poc}). Pipeline stops at triage to conserve resources."
+                )
 
-        enriched_seed = EnrichedCVEContext(
+        enriched = EnrichedCVEContext(
             core=core,
             triage=triage,
             provider_status=provider_status,
             provider_errors=provider_errors,
         )
 
-        analysis_context, attack_context, stage_failed = await self._run_analysis_stage(enriched_seed, capability_classification)
+        analysis_context, attack_context, stage_failed = await self._run_analysis_stage(enriched, capability_classification)
         stage_partial = stage_partial or stage_failed
-        enriched_seed.analysis = analysis_context
-        enriched_seed.attack = attack_context
+        enriched.analysis = analysis_context
+        enriched.attack = attack_context
 
         coverage_context, stage_failed = await self._run_enriched_stage(
             stage_name="coverage_stage",
             stage_fn=run_coverage_stage,
-            context=enriched_seed,
+            context=enriched,
             capability=capability_classification,
             fallback=CoverageAssessment(),
         )
         stage_partial = stage_partial or stage_failed
-        enriched_seed.coverage = coverage_context
+        enriched.coverage = coverage_context
 
         telemetry_context, stage_failed = await self._run_enriched_stage(
             stage_name="telemetry_stage",
             stage_fn=run_telemetry_stage,
-            context=enriched_seed,
+            context=enriched,
             capability=capability_classification,
             fallback=TelemetryAssessment(),
         )
         stage_partial = stage_partial or stage_failed
-        enriched_seed.telemetry = telemetry_context
+        enriched.telemetry = telemetry_context
 
         enrichment_duration_ms = int((perf_counter() - pipeline_started) * 1000)
         metadata = EnrichmentMetadata(
@@ -212,17 +265,7 @@ class TriageOrchestrator:
             ai_total_cost_usd=self._ai_total_cost_usd or None,
         )
 
-        enriched = EnrichedCVEContext(
-            core=core,
-            triage=triage,
-            analysis=enriched_seed.analysis,
-            attack=enriched_seed.attack,
-            coverage=enriched_seed.coverage,
-            telemetry=enriched_seed.telemetry,
-            provider_status=provider_status,
-            provider_errors=provider_errors,
-            metadata=metadata,
-        )
+        enriched.metadata = metadata
         return enriched
 
     async def _run_stage(
@@ -326,14 +369,14 @@ class TriageOrchestrator:
                 self.logger.warning(
                     "[ORCHESTRATOR] analysis_stage_ai_failed_fallback",
                     cve_id=context.core.cve_id,
-                    error=_err_line(exc),
+error=_err_line(exc),
                 )
                 # Fall through to rule-based path bên dưới.
             except Exception as exc:
                 self.logger.warning(
                     "[ORCHESTRATOR] analysis_stage_ai_unexpected_fallback",
                     cve_id=context.core.cve_id,
-                    error=_err_line(exc),
+error=_err_line(exc),
                 )
                 # Fall through to rule-based path bên dưới.
 
@@ -409,19 +452,152 @@ class TriageOrchestrator:
             self.logger.warning("[ORCHESTRATOR] provider_failed", provider=provider_name, cve_id=cve_id, duration_ms=provider_durations[provider_name], error=provider_errors[provider_name])
         return None
 
-    def _build_core_context(self, cve_id: str, nvd_raw: dict[str, Any] | None) -> CoreCVEData:
+    def _build_core_context(self, cve_id: str, nvd_raw: dict[str, Any] | None, otx_raw: dict[str, Any] | None = None) -> CoreCVEData:
         payload = nvd_raw or {}
+        
+        # 1. Trích xuất cơ bản từ NVD (nếu có)
+        cve_id_val = payload.get("cve_id") or cve_id
+        description = payload.get("description")
+        cvss_score = payload.get("cvss_score")
+        cvss_vector = payload.get("cvss_vector")
+        severity = payload.get("severity")
+        cwe_ids = payload.get("cwe_ids")
+        references = payload.get("references")
+        cpes = payload.get("cpes")
+        affected_products = payload.get("affected_products")
+        published_at = payload.get("published_at")
+        modified_at = payload.get("modified_at")
+
+        # 2. Dự phòng (Fallback) sang AlienVault OTX nếu NVD bị thiếu thông tin hoặc lỗi (e.g. description rỗng)
+        otx_data = None
+        if isinstance(otx_raw, dict):
+            otx_data = otx_raw.get("raw")
+            if not otx_data and "base_indicator" in otx_raw:
+                otx_data = otx_raw
+
+        if otx_data and isinstance(otx_data, dict):
+            self.logger.info("[ORCHESTRATOR] Tiến hành kiểm tra và làm giàu dự phòng từ nguồn AlienVault OTX...", cve_id=cve_id)
+            
+            # Dự phòng Description
+            if not description:
+                description = otx_data.get("description") or (otx_data.get("base_indicator") or {}).get("description")
+                if description:
+                    self.logger.info("[ORCHESTRATOR] Fallback thành công: Đã lấy description từ OTX", cve_id=cve_id)
+            
+            # Dự phòng CVSS
+            if not cvss_score:
+                # Ưu tiên CVSSv3
+                cvss_score = otx_data.get("cvssv3", {}).get("cvssV3", {}).get("baseScore")
+                cvss_vector = otx_data.get("cvssv3", {}).get("cvssV3", {}).get("vectorString")
+                severity = otx_data.get("cvssv3", {}).get("cvssV3", {}).get("baseSeverity")
+                
+                # Fallback sang CVSSv2
+                if not cvss_score:
+                    cvss_score_raw = otx_data.get("cvss", {}).get("Score")
+                    try:
+                        cvss_score = float(cvss_score_raw) if cvss_score_raw is not None else None
+                    except (ValueError, TypeError):
+                        cvss_score = None
+                    cvss_vector = otx_data.get("cvss", {}).get("vectorString")
+                
+                # Tính severity từ score nếu vẫn thiếu
+                if cvss_score and not severity:
+                    try:
+                        score_f = float(cvss_score)
+                        if score_f >= 9.0:
+                            severity = "CRITICAL"
+                        elif score_f >= 7.0:
+                            severity = "HIGH"
+                        elif score_f >= 4.0:
+                            severity = "MEDIUM"
+                        elif score_f > 0:
+                            severity = "LOW"
+                    except Exception:
+                        pass
+                
+                if cvss_score:
+                    self.logger.info("[ORCHESTRATOR] Fallback thành công: Lấy CVSS từ OTX", score=cvss_score, vector=cvss_vector, severity=severity)
+
+            # Dự phòng CWE
+            if not cwe_ids or cwe_ids == ["NVD-CWE-noinfo"]:
+                cwe_raw = otx_data.get("cwe")
+                if cwe_raw:
+                    cwe_clean = str(cwe_raw).strip()
+                    if cwe_clean.startswith("CWE-"):
+                        cwe_ids = [cwe_clean]
+                        self.logger.info("[ORCHESTRATOR] Fallback thành công: Lấy CWE từ OTX", cwe_ids=cwe_ids)
+
+            # Dự phòng References
+            if not references:
+                refs_list = otx_data.get("references") or []
+                extracted_refs = []
+                for ref in refs_list:
+                    if isinstance(ref, dict) and ref.get("href"):
+                        extracted_refs.append(ref.get("href"))
+                    elif isinstance(ref, str):
+                        extracted_refs.append(ref)
+                if extracted_refs:
+                    references = extracted_refs
+                    self.logger.info("[ORCHESTRATOR] Fallback thành công: Lấy references từ OTX", count=len(references))
+
+            # Dự phòng CPEs & affected_products
+            if not cpes:
+                products_list = otx_data.get("products") or []
+                if products_list:
+                    cpes = [str(p) for p in products_list if str(p).startswith("cpe:")]
+                    if cpes and not affected_products:
+                        try:
+                            from app.shared.parsers.cpe_parser import parse_cpe
+                            mapped_products = []
+                            for cpe in cpes:
+                                try:
+                                    parsed = parse_cpe(cpe)
+                                    tag = "[APP]"
+                                    if parsed.part == "o":
+                                        tag = "[OS]"
+                                    elif parsed.part == "h":
+                                        tag = "[HW]"
+                                    label = f"{tag} {parsed.vendor.capitalize()} {parsed.product.capitalize()}"
+                                    if parsed.version and parsed.version != "*":
+                                        label += f" {parsed.version}"
+                                    mapped_products.append(label)
+                                except Exception:
+                                    pass
+                            if mapped_products:
+                                affected_products = sorted(list(set(mapped_products)))
+                        except Exception:
+                            pass
+                    self.logger.info("[ORCHESTRATOR] Fallback thành công: Lấy CPEs từ OTX", count=len(cpes))
+
+            # Dự phòng Datetime
+            from datetime import datetime
+            if not published_at:
+                date_created = otx_data.get("date_created")
+                if date_created:
+                    try:
+                        published_at = datetime.fromisoformat(str(date_created).replace("Z", "+00:00"))
+                    except Exception:
+                        pass
+            if not modified_at:
+                date_modified = otx_data.get("date_modified")
+                if date_modified:
+                    try:
+                        modified_at = datetime.fromisoformat(str(date_modified).replace("Z", "+00:00"))
+                    except Exception:
+                        pass
+
         return CoreCVEData(
-            cve_id=payload.get("cve_id") or cve_id,
-            description=payload.get("description"),
-            cvss_score=payload.get("cvss_score"),
-            cvss_vector=payload.get("cvss_vector"),
-            severity=payload.get("severity"),
-            cwe_ids=payload.get("cwe_ids") or None,
-            references=payload.get("references") or None,
-            cpes=payload.get("cpes") or None,
-            published_at=payload.get("published_at"),
-            modified_at=payload.get("modified_at"),
+            cve_id=cve_id_val,
+            description=description,
+            cvss_score=cvss_score,
+            cvss_vector=cvss_vector,
+            severity=severity,
+            cwe_ids=cwe_ids or None,
+            references=references or None,
+            cpes=cpes or None,
+            affected_products=affected_products or None,
+            published_at=published_at,
+            modified_at=modified_at,
         )
 
     def _get_optional_float(self, payload: dict[str, Any] | None, key: str) -> float | None:
@@ -444,7 +620,7 @@ class TriageOrchestrator:
         if isinstance(value, bool):
             return value
         normalized = str(value).strip().lower()
-        if normalized in {"", "false", "no", "0", "none", "null"}:
+        if normalized in {"", "false", "no", "0", "none", "null", "unknown"}:
             return False
         return True
 

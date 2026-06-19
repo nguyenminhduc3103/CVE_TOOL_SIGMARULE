@@ -76,7 +76,7 @@ class KEVParser:
         if value is None:
             return False
         normalized = str(value).strip().lower()
-        if normalized in {"", "false", "no", "0", "none", "null"}:
+        if normalized in {"", "false", "no", "0", "none", "null", "unknown"}:
             return False
         return True
 

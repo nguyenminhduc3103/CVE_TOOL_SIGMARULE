@@ -40,6 +40,42 @@ class NVDParser:
             "cpes_truncated": self._has_more_cpes(cve, cpes),
         }
 
+        affected_products = []
+        if cpes:
+            try:
+                from app.shared.parsers.cpe_parser import parse_cpe_list
+                parsed_cpes = parse_cpe_list(cpes)
+                seen = set()
+                for item in parsed_cpes:
+                    part = item.get("part", "")
+                    vendor = item.get("vendor", "")
+                    product = item.get("product", "")
+                    version = item.get("version", "")
+                    update = item.get("update", "")
+
+                    # Tiền tố theo phân loại thiết bị
+                    prefix = ""
+                    if part == "o":
+                        prefix = "[OS] "
+                    elif part == "h":
+                        prefix = "[HW] "
+                    elif part == "a":
+                        prefix = "[APP] "
+
+                    formatted_vendor = vendor.capitalize()
+                    formatted_prod = product.replace("_", " ").title()
+                    prod_label = f"{prefix}{formatted_vendor} {formatted_prod}"
+                    if version and version != "*" and version != "-":
+                        prod_label += f" {version}"
+                    if update and update != "*" and update != "-":
+                        prod_label += f" {update}"
+
+                    if prod_label not in seen:
+                        seen.add(prod_label)
+                        affected_products.append(prod_label)
+            except Exception as e:
+                self.logger.warning("[NVD] Failed to parse affected products from CPEs", error=str(e))
+
         parsed = CoreCVEData(
             cve_id=str(cve.get("id") or raw.get("cve_id") or ""),
             description=description,
@@ -49,6 +85,7 @@ class NVDParser:
             cwe_ids=cwe_ids or None,
             references=references or None,
             cpes=cpes or None,
+            affected_products=affected_products or None,
             published_at=published_at,
             modified_at=modified_at,
         )

@@ -8,6 +8,18 @@ class Settings(BaseSettings):
     kev_api_url: str = "https://www.cisa.gov/known-exploited-vulnerabilities"
     epss_api_url: str = "https://epss.example"
 
+    # OpenCTI Integration
+    opencti_url: str = "http://localhost:8080"
+    opencti_cookie: str | None = None
+    opencti_token: str | None = None
+    opencti_taxii_collection_id: str | None = None
+    opencti_username: str | None = None
+    opencti_password: str | None = None
+
+    # AlienVault OTX Integration
+    otx_api_url: str = "https://otx.alienvault.com"
+    otx_api_key: str | None = None
+
     # --- AI service (V1: OpenAI-compatible: Groq / Anthropic / Ollama) ---
     ai_enabled: bool = False
     ai_api_key: str | None = None
@@ -26,6 +38,7 @@ class Settings(BaseSettings):
     cache_enabled: bool = True
     cache_ttl_seconds: int = 86400  # 24h
     cache_dir: str = ".cache/cve_responses"
+    ai_model: str = "llama-3.3-70b-versatile"
 
     model_config = SettingsConfigDict(
         env_file=".env",

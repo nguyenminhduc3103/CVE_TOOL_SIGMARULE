@@ -1,6 +1,13 @@
-"""NVD HTTP client."""
+"""NVD HTTP client.
+
+Layered design:
+- Outer: per-CVE ResponseCache (24h TTL for success, 60s for cached failures).
+- Inner: 3-attempt retry with exponential backoff, content-type guard,
+  and status-aware error caching (5xx/429 retried, others fail-fast).
+"""
 import asyncio
 import os
+
 import httpx
 
 from app.shared.clients.base import BaseHTTPClient

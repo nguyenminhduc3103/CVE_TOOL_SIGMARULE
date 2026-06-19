@@ -1,4 +1,4 @@
 """Shared providers."""
-from app.shared.providers import epss, kev, nvd
+from app.shared.providers import epss, kev, nvd, opencti, otx
 
-__all__ = ["epss", "kev", "nvd"]
+__all__ = ["epss", "kev", "nvd", "opencti", "otx"]
