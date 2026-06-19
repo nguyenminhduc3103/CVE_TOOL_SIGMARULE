@@ -7,13 +7,13 @@ Downloads:
      Source: https://raw.githubusercontent.com/center-for-threat-informed-defense/attack_to_cve/main/Att&ckToCveMappings.csv
 
 Usage:
-    python -m app.steps.step_2_tech_analysis._shared_engines.ground_truth_sources.fetch_ground_truth
+    python -m app.steps.step_2_tech_analysis.rule_based.ground_truth_sources.fetch_ground_truth
     # hoặc:
     cd f:\\cve-ti-platform
-    python -X utf8 -m app.steps.step_2_tech_analysis._shared_engines.ground_truth_sources.fetch_ground_truth
+    python -X utf8 -m app.steps.step_2_tech_analysis.rule_based.ground_truth_sources.fetch_ground_truth
 
 Kết quả:
-    app/steps/step_2_tech_analysis/_shared_engines/ground_truth_sources/
+    app/steps/step_2_tech_analysis/rule_based/ground_truth_sources/
         ├── capec_stix.json   (4.3MB)
         ├── cti_mappings.csv  (34KB)
         ├── __init__.py

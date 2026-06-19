@@ -31,7 +31,7 @@ from app.shared.utils.cvss_parser import (
     is_network_reachable as _is_network_reachable,
     is_pre_auth as _is_pre_auth,
 )
-from app.steps.step_2_tech_analysis._shared_engines.cwe_mapper import (
+from app.steps.step_2_tech_analysis.rule_based.cwe_mapper import (
     CWE_BEHAVIOR_MAP,
 )
 
@@ -323,12 +323,19 @@ class OntologyManager:
             ExpectedTTPs với 4 sets + source/quality metadata.
         """
         # Lazy import để tránh circular import (attack_mapper → ontology_manager)
-        from app.steps.step_2_tech_analysis._shared_engines.attack_mapper import (
+        from app.steps.step_2_tech_analysis.rule_based.attack_mapper import (
             BEHAVIOR_ATTACK_GRAPH,
         )
 
         cve_id = ctx.cve_id
-        cwe_ids = tuple(c.upper() for c in (ctx.cwe_ids or ()))
+        # Filter NVD placeholder CWEs (vd "NVD-CWE-noinfo", "NVD-CWE-Other") -
+        # chúng không phải CWE thật, không có trong CAPEC/WHITELIST, sẽ làm
+        # PRIMARY CWE selection rơi vào placeholder → inflate ground truth
+        # với techniques từ CWE "primary" không có thật.
+        cwe_ids = tuple(
+            c.upper() for c in (ctx.cwe_ids or ())
+            if not c.upper().startswith("NVD-CWE")
+        )
 
         # ----------------------------------------------------------------
         # Layer 1: CTID direct lookup

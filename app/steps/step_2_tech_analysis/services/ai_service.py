@@ -111,19 +111,6 @@ class AIBehaviorService:
             modified_at=modified_at or "N/A",
         )
 
-        # Inject MITRE hint (Cách 3 - RAG cheat sheet): giúp AI cover whitelist
-        # CAPEC/CTID ngay từ attempt 1, giảm retry. Same expected_techniques
-        # as gap_analysis → consistency tuyệt đối.
-        from app.steps.step_2_tech_analysis._mitre_hint import build_mitre_hint
-        mitre_hint = build_mitre_hint(
-            cve_id=cve_id,
-            description=description,
-            cwe_ids=cwe_ids,
-            cvss_vector=cvss_vector,
-        )
-        if mitre_hint:
-            formatted_user = f"{mitre_hint}\n\n{formatted_user}"
-
         try:
             response_text = await self.client.call_llm(
                 system_prompt=self.system_prompt_template,

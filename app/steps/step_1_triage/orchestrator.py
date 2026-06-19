@@ -244,7 +244,7 @@ class TriageOrchestrator:
 
     async def _run_analysis_stage(self, context: EnrichedCVEContext, capability):
         from app.core.config import settings
-        from app.steps.step_2_tech_analysis._shared_engines.attack_validator import filter_attack_mapping, normalize_family
+        from app.steps.step_2_tech_analysis.rule_based.attack_validator import filter_attack_mapping, normalize_family
         # NEW: import từ clean architecture folder
         from app.shared.ai.core import AIServiceError, BaseAIClient
         from app.steps.step_2_tech_analysis.services.ai_service import AIBehaviorService
@@ -341,7 +341,7 @@ class TriageOrchestrator:
         try:
             analysis_context, attack_context = await run_analysis_stage(context, capability)
             # Apply MITRE ATT&CK validator cho rule-based output
-            from app.steps.step_2_tech_analysis._shared_engines.attack_validator import validate_ttp_list
+            from app.steps.step_2_tech_analysis.rule_based.attack_validator import validate_ttp_list
 
             validation = validate_ttp_list(
                 attack_context.tactics if attack_context else None,

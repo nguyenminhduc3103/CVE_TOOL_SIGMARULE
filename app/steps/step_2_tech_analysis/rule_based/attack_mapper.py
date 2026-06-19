@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import logging
 
-from app.steps.step_2_tech_analysis._shared_engines.cwe_mapper import CWEProfile
-from app.steps.step_2_tech_analysis._shared_engines.ontology_manager import (
+from app.steps.step_2_tech_analysis.rule_based.cwe_mapper import CWEProfile
+from app.steps.step_2_tech_analysis.rule_based.ontology_manager import (
     CveContext,
     OntologyManager,
 )

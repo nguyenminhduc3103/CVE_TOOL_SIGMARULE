@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from app.steps.step_2_tech_analysis._shared_engines.attack_mapper import map_attack
-from app.steps.step_2_tech_analysis._shared_engines.behavior_analyzer import analyze_behavior
-from app.steps.step_2_tech_analysis._shared_engines.cwe_mapper import map_cwe_profiles
-from app.steps.step_2_tech_analysis._shared_engines.exploit_classifier import classify_exploit_vector
+from app.steps.step_2_tech_analysis.rule_based.attack_mapper import map_attack
+from app.steps.step_2_tech_analysis.rule_based.behavior_analyzer import analyze_behavior
+from app.steps.step_2_tech_analysis.rule_based.cwe_mapper import map_cwe_profiles
+from app.steps.step_2_tech_analysis.rule_based.exploit_classifier import classify_exploit_vector
 from app.shared.models.attack import AttackMapping, TechnicalAnalysis
 from app.shared.models.enriched import EnrichedCVEContext
 from app.steps.step_1_triage.capability_checker import CapabilityClassification

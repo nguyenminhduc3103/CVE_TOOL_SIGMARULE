@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from typing import Tuple
 
-from app.steps.step_2_tech_analysis._shared_engines.vulnerability_signature_engine import match_signature
+from app.steps.step_2_tech_analysis.rule_based.vulnerability_signature_engine import match_signature
 from app.shared.types.vulnerability_family import VulnerabilityFamily
-from app.steps.step_2_tech_analysis._shared_engines.cwe_mapper import CWEProfile, map_cwe_profiles
+from app.steps.step_2_tech_analysis.rule_based.cwe_mapper import CWEProfile, map_cwe_profiles
 
 
 def classify_family(

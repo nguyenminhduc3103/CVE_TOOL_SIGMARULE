@@ -1,25 +1,15 @@
 from __future__ import annotations
 
-from app.steps.step_2_tech_analysis._shared_engines.cwe_mapper import CWEProfile
-from app.steps.step_2_tech_analysis._shared_engines.exploit_ontology import (
+from app.steps.step_2_tech_analysis.rule_based.cwe_mapper import CWEProfile
+from app.steps.step_2_tech_analysis.rule_based.exploit_ontology import (
     ExploitOntologyResult,
     infer_exploit_ontology,
     infer_exploit_ontology_family_scoped,
 )
-from app.steps.step_2_tech_analysis._shared_engines.vulnerability_signature_engine import SignatureMatch, match_signature
-from app.steps.step_2_tech_analysis._shared_engines.family_classifier import classify_family
+from app.steps.step_2_tech_analysis.rule_based.vulnerability_signature_engine import SignatureMatch, match_signature
+from app.steps.step_2_tech_analysis.rule_based.family_classifier import classify_family
 from app.shared.types.vulnerability_family import VulnerabilityFamily
 from app.shared.types.vulnerability_class import VulnerabilityClass
-
-
-def _unique(items: list[str]) -> list[str]:
-    seen: set[str] = set()
-    result: list[str] = []
-    for item in items:
-        if item not in seen:
-            seen.add(item)
-            result.append(item)
-    return result
 
 
 def _derive_vulnerability_class(
@@ -159,16 +149,16 @@ def analyze_behavior(
     family_reasons: list[str] = []
 
     # Start with ontology-derived behaviors and CWE profiles
-    mandatory_behaviors = _unique(ontology.behaviors + [behavior for profile in cwe_profiles for behavior in profile.mandatory_behaviors])
+    mandatory_behaviors = list(dict.fromkeys(ontology.behaviors + [behavior for profile in cwe_profiles for behavior in profile.mandatory_behaviors]))
     optional_behaviors: list[str] = []
-    evasive_indicators = _unique([indicator for profile in cwe_profiles for indicator in profile.evasive_indicators])
-    exploit_requirements = _unique([requirement for profile in cwe_profiles for requirement in profile.exploit_requirements])
+    evasive_indicators = list(dict.fromkeys([indicator for profile in cwe_profiles for indicator in profile.evasive_indicators]))
+    exploit_requirements = list(dict.fromkeys([requirement for profile in cwe_profiles for requirement in profile.exploit_requirements]))
 
     signature_name = signature_match.signature.name if signature_match is not None else None
 
     # Apply signature-enforced behaviors (signature has highest priority for behavior requirements)
     if signature_match is not None:
-        mandatory_behaviors = _unique(mandatory_behaviors + list(signature_match.signature.mandatory_behaviors))
+        mandatory_behaviors = list(dict.fromkeys(mandatory_behaviors + list(signature_match.signature.mandatory_behaviors)))
 
     # Family-scoped inference (authoritative for families like Spring4Shell)
     spring_override = False
@@ -176,7 +166,7 @@ def analyze_behavior(
     if family and getattr(family, "value", str(family)).lower() == "spring4shell":
         spring_override = True
         # Use family-scoped behaviors as authoritative; ensure signature-required behaviors are preserved
-        mandatory_behaviors = _unique(list(inferred_family.behaviors) + list(mandatory_behaviors))
+        mandatory_behaviors = list(dict.fromkeys(list(inferred_family.behaviors) + list(mandatory_behaviors)))
         # record family-scoped reasoning to merge later
         family_reasons.extend(getattr(inferred_family, "reasoning", []))
 
@@ -214,18 +204,18 @@ def analyze_behavior(
         classification_reasons.append(f"family:{family.value}")
         classification_reasons.extend(fam_reasons)
     if signature_match is not None:
-        classification_reasons = _unique(classification_reasons + [f"signature:{signature_match.signature.name}"] + list(signature_match.reasons))
+        classification_reasons = list(dict.fromkeys(classification_reasons + [f"signature:{signature_match.signature.name}"] + list(signature_match.reasons)))
 
     vulnerability_class = _derive_vulnerability_class(cve_id, description, cwe_profiles, ontology, signature_match)
     if vulnerability_class == VulnerabilityClass.CODE_INJECTION and "network_callback" in mandatory_behaviors:
         vulnerability_class = VulnerabilityClass.REMOTE_CODE_EXECUTION
 
     likely_outcome = _derive_likely_outcome(vulnerability_class, cwe_profiles, classifier, ontology)
-    behavior_reason = _unique([
+    behavior_reason = list(dict.fromkeys([
         f"ontology_behaviors:{','.join(ontology.behaviors)}" if ontology.behaviors else "ontology_behaviors:none",
-        f"mandatory_behaviors:{','.join(_unique(mandatory_behaviors))}" if mandatory_behaviors else "mandatory_behaviors:none",
+        f"mandatory_behaviors:{','.join(list(dict.fromkeys(mandatory_behaviors)))}" if mandatory_behaviors else "mandatory_behaviors:none",
         "classifier:remote_exploitable" if classifier.get("remote_exploitable") else "classifier:non_remote",
-    ])
+    ]))
 
     vulnerability_type = vulnerability_class.value
     if signature_match is not None:
@@ -246,14 +236,14 @@ def analyze_behavior(
         "vulnerability_class": vulnerability_class,
         "family": family,
         "cwe_metadata": _build_cwe_metadata(cwe_profiles),
-        "attack_flow": _build_attack_flow(vulnerability_class, classifier, _unique(mandatory_behaviors)),
+        "attack_flow": _build_attack_flow(vulnerability_class, classifier, list(dict.fromkeys(mandatory_behaviors))),
         "likely_outcome": likely_outcome,
-        "mandatory_behaviors": _unique(mandatory_behaviors),
-        "evasive_indicators": _unique(evasive_indicators),
-        "exploit_requirements": _unique(exploit_requirements),
+        "mandatory_behaviors": list(dict.fromkeys(mandatory_behaviors)),
+        "evasive_indicators": list(dict.fromkeys(evasive_indicators)),
+        "exploit_requirements": list(dict.fromkeys(exploit_requirements)),
         "ontology_confidence": ontology.confidence,
         "analysis_confidence": analysis_confidence,
-        "classification_reason": _unique(classification_reasons),
+        "classification_reason": list(dict.fromkeys(classification_reasons)),
         "behavior_reason": behavior_reason,
-        "ontology_reasoning": _unique(classification_reasons),
+        "ontology_reasoning": list(dict.fromkeys(classification_reasons)),
     }

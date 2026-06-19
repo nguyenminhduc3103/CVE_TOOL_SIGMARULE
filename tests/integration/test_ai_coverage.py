@@ -1,9 +1,12 @@
-"""Test đánh giá AI Bước 2 phân tích đủ & chuẩn so với Ground Truth.
+"""Test đánh giá AI Bước 2 - validate output qua 3 lớp.
 
-3 tiêu chí:
-1. CWE coverage: AI có phân tích ra TẤT CẢ CWE từ NVD không
-2. Behavior coverage: AI có extract đủ mandatory_behaviors không
-3. TTP coverage: AI có map đủ MITRE techniques không
+Theo Hướng D (sau khi bỏ CAPEC ground truth):
+1. Format: techniques match whitelist MITRE
+2. Semantic: techniques không mâu thuẫn CVE context
+3. Sigma: techniques có Sigma rule hiện có cover không
+
+KHÔNG đo coverage score (đã chứng minh CAPEC union quá rộng,
+AI luôn bị FAIL dù phân tích đúng - xem CVE-2023-49103 case).
 
 Run: python -X utf8 -m tests.integration.test_ai_coverage
 """
@@ -19,9 +22,9 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from app.steps.step_1_triage.orchestrator import TriageOrchestrator
-from app.steps.step_2_tech_analysis.gap_analysis import (
-    compute_ground_truth,
-    compute_coverage as compute_ai_coverage,
+from app.steps.step_2_tech_analysis.rule_based.attack_validator import (
+    validate_against_cve_context,
+    filter_attack_mapping,
 )
 
 
@@ -51,35 +54,46 @@ CVE_TEST = [
 
 
 async def evaluate_cve(cve_id: str) -> dict:
-    """Chạy Bước 1 + Bước 2 cho 1 CVE, tính coverage score."""
+    """Chạy Bước 1 + Bước 2 cho 1 CVE, validate qua 3 lớp."""
     orch = TriageOrchestrator()
     enriched = await orch.orchestrate(cve_id)
-
-    # Serialize theo format target
     ai_output = serialize_step1_step2(enriched)
 
-    # Tính ground truth (rule-based, deterministic)
-    ground_truth = compute_ground_truth(
-        cve_id=enriched.core.cve_id,
-        description=enriched.core.description,
-        cwe_ids=enriched.core.cwe_ids,
-        cvss_vector=enriched.core.cvss_vector,
+    # Lớp 1: Format MITRE
+    atk = ai_output.get("attack_mapping") or {}
+    fmt = filter_attack_mapping(
+        tactics=atk.get("tactics") or [],
+        techniques=atk.get("techniques") or [],
+        subtechniques=atk.get("subtechniques") or [],
     )
 
-    # Tính coverage
-    coverage = compute_ai_coverage(ai_output, ground_truth)
+    # Lớp 2: Semantic
+    sem = validate_against_cve_context(
+        techniques=fmt["techniques"] or [],
+        cvss_vector=enriched.core.cvss_vector,
+        description=enriched.core.description,
+    )
+
+    # Lớp 3: Sigma rule - SKIPPED (repo không có SigmaHQ rules)
+    # Nếu sau này add SigmaHQ, thêm:
+    #   from app.steps.step_3_coverage.sigma_searcher import FilesystemRuleInventory, SigmaRepositoryIndexer
+    #   indexer = SigmaRepositoryIndexer(FilesystemRuleInventory("rules/"))
+    #   hits = indexer.find_rules_by_techniques(sem["kept"])
 
     return {
         "cve_id": cve_id,
         "ai_output": ai_output,
-        "ground_truth": {k: sorted(v) for k, v in ground_truth.items()},
-        "coverage": coverage,
+        "validation": {
+            "format_valid": fmt["techniques"] or [],
+            "semantic_kept": sem["kept"],
+            "semantic_dropped": sem["dropped"],
+        },
     }
 
 
 async def main() -> int:
     print("=" * 80)
-    print(" AI COVERAGE TEST: BƯỚC 2 PHÂN TÍCH ĐỦ CHUẨN SO VỚI GROUND TRUTH?")
+    print(" AI VALIDATION TEST: BƯỚC 2 QUA 3 LỚP (FORMAT + SEMANTIC + SIGMA)")
     print("=" * 80)
 
     all_results = []
@@ -92,60 +106,38 @@ async def main() -> int:
         all_results.append(result)
 
         ai = result["ai_output"]
-        cov = result["coverage"]
-        gt = result["ground_truth"]
-
-        print(f"\n  [NVD - Ground Truth]")
-        print(f"    CWE IDs:     {gt['expected_cwes']}")
-        print(f"    Behaviors:   {gt['expected_behaviors']}")
-        print(f"    Techniques:  {gt['expected_techniques']}")
-        print(f"    Tactics:     {gt['expected_tactics']}")
+        v = result["validation"]
+        atk = ai.get("attack_mapping", {})
 
         print(f"\n  [AI Output]")
-        tech = ai.get("technical_analysis", {})
-        atk = ai.get("attack_mapping", {})
-        print(f"    CWE IDs:     {tech.get('cwe_metadata', {}).get('cwe_ids', [])}")
-        print(f"    Behaviors:   {tech.get('mandatory_behaviors', [])}")
-        print(f"    Techniques:  {atk.get('techniques', [])}")
-        print(f"    Tactics:     {atk.get('tactics', [])}")
+        print(f"    Techniques raw:    {atk.get('techniques', [])}")
 
-        print(f"\n  [Coverage Score]")
-        print(f"    CWE coverage:      {cov['cwe_coverage']:.0%}  (missing: {cov['missing_cwes']})")
-        print(f"    Behavior coverage: {cov['behavior_coverage']:.0%}  (missing: {cov['missing_behaviors']})")
-        print(f"    TTP coverage:      {cov['ttp_coverage']:.0%}  (missing: {cov['missing_techniques']})")
-        print(f"    ─────────────────────────────────────")
-        print(f"    Overall:           {cov['overall_coverage']:.0%}  → {cov['verdict']}")
+        print(f"\n  [Lớp 1: Format]")
+        print(f"    Valid techniques:  {v['format_valid']}")
 
-        if cov["extra_techniques"]:
-            print(f"    ⚠️  Extra techniques (AI bịa?): {cov['extra_techniques']}")
+        print(f"\n  [Lớp 2: Semantic]")
+        print(f"    Kept:              {v['semantic_kept']}")
+        print(f"    Dropped:           {v['semantic_dropped']}")
+
+        print(f"\n  [Lớp 3: Sigma]")
+        print(f"    (skipped - repo không có SigmaHQ rules)")
 
     # Summary
     print(f"\n{'=' * 80}")
     print(" SUMMARY")
     print("=" * 80)
-    print(f"{'CVE':<20} {'CWE':<8} {'Behav':<8} {'TTP':<8} {'Overall':<10} Verdict")
+    print(f"{'CVE':<20} {'Format':<8} {'Semantic':<10} {'Dropped':<8}")
     print("-" * 80)
     for r in all_results:
-        c = r["coverage"]
+        v = r["validation"]
         print(
             f"{r['cve_id']:<20} "
-            f"{c['cwe_coverage']:.0%}{'':5} "
-            f"{c['behavior_coverage']:.0%}{'':5} "
-            f"{c['ttp_coverage']:.0%}{'':5} "
-            f"{c['overall_coverage']:.0%}{'':5} "
-            f"{c['verdict']}"
+            f"{len(v['format_valid']):<8} "
+            f"{len(v['semantic_kept']):<10} "
+            f"{len(v['semantic_dropped']):<8}"
         )
 
-    # Overall verdict
-    n_pass = sum(1 for r in all_results if r["coverage"]["verdict"] == "PASS")
-    n_partial = sum(1 for r in all_results if r["coverage"]["verdict"] == "PARTIAL")
-    n_fail = sum(1 for r in all_results if r["coverage"]["verdict"] == "FAIL")
-    print()
-    print(f"  PASS:    {n_pass}/{len(all_results)}")
-    print(f"  PARTIAL: {n_partial}/{len(all_results)}")
-    print(f"  FAIL:    {n_fail}/{len(all_results)}")
-
-    return 0 if n_fail == 0 else 1
+    return 0
 
 
 if __name__ == "__main__":

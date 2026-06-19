@@ -4,6 +4,11 @@ Các helper này được orchestrator dùng để:
 - Convert Pydantic -> dict (cho data flow trung gian)
 - Convert dict -> Pydantic (CHỖ DUY NHẤT build Pydantic ở cuối pipeline)
 - Normalize AI dict (move attack_flow fields từ top-level xuống nested)
+- Merge old + new dicts theo UNION/REPLACE strategy
+- Apply 3-tier fallback cho entry_vector, execution_mechanism, observable_side_effects
+
+CHÚ Ý: 4 hàm này được gộp từ _data_flow.py + _merge_strategy.py (cùng context,
+dùng chung intermediate dict) để orchestrator.py dễ đọc hơn.
 """
 from __future__ import annotations
 
@@ -16,7 +21,14 @@ from app.shared.models.attack import (
     TechnicalAnalysis,
 )
 from app.shared.types.vulnerability_class import VulnerabilityClass
+from app.steps.step_2_tech_analysis.fallbacks.attack_flow import (
+    apply_attack_flow_fallback,
+)
 
+
+# ==============================================================
+# Pydantic <-> dict conversions
+# ==============================================================
 
 def _vulnerability_class_to_str(vc) -> str | None:
     """Convert Pydantic enum hoặc str sang string (None nếu rỗng)."""
@@ -232,3 +244,128 @@ def _normalize_ai_dict(
     ai_data.setdefault("cwe_ids", cwe_ids or [])
 
     return ai_data
+
+
+# ==============================================================
+# Sanitize None / "none" placeholders từ AI output
+# ==============================================================
+
+def _normalize_none_placeholders(ai_data: dict[str, Any]) -> dict[str, Any]:
+    """Convert None / ["none"] placeholders từ AI thành giá trị an toàn.
+
+    AI Groq đôi khi trả:
+      - techniques = null  (thay vì [])
+      - techniques = []
+      - evasive_indicators = ["none"]  (placeholder AI)
+      - mapping_reasons = ["none"]
+
+    Hàm này normalize thành empty list / None để Pydantic build không crash,
+    và downstream filter "none" placeholder không bị sót.
+
+    Returns:
+        ai_data (modified in-place, cũng return để chain).
+    """
+    tech = ai_data.get("technical_analysis") or {}
+    atk = ai_data.get("attack_mapping") or {}
+    flow = tech.get("attack_flow") or {}
+
+    # AI trả null cho list field → empty list (an toàn hơn None)
+    for key in ("techniques", "subtechniques", "tactics"):
+        if atk.get(key) is None:
+            atk[key] = []
+        if not isinstance(atk.get(key), list):
+            atk[key] = [atk[key]] if atk.get(key) else []
+
+    # Filter "none" placeholder cho behavioral fields
+    for key in ("evasive_indicators", "mandatory_behaviors", "exploit_requirements"):
+        raw = tech.get(key) or []
+        if isinstance(raw, list):
+            tech[key] = [x for x in raw if str(x).lower().strip() not in ("none", "n/a", "unknown")]
+        elif raw and str(raw).lower().strip() in ("none", "n/a", "unknown"):
+            tech[key] = []
+
+    for key in ("mapping_reasons",):
+        raw = atk.get(key) or []
+        if isinstance(raw, list):
+            atk[key] = [x for x in raw if str(x).lower().strip() not in ("none", "n/a", "unknown")]
+        elif raw and str(raw).lower().strip() in ("none", "n/a", "unknown"):
+            atk[key] = []
+
+    # Reasoning - cùng pattern
+    raw_reasoning = tech.get("reasoning")
+    if isinstance(raw_reasoning, list):
+        tech["reasoning"] = [x for x in raw_reasoning if str(x).lower().strip() not in ("none", "n/a", "unknown")]
+    elif raw_reasoning and str(raw_reasoning).lower().strip() in ("none", "n/a", "unknown"):
+        tech["reasoning"] = []
+
+    # observable_side_effects - list field, không filter "none" vì có thể legitimate
+    if flow.get("observable_side_effects") is None:
+        flow["observable_side_effects"] = []
+
+    return ai_data
+
+
+# ==============================================================
+# 3-tier fallback cho 3 MANDATORY attack_flow fields
+# ==============================================================
+
+def _apply_3_tier_fallback(
+    data: dict[str, Any],
+    exploit_vector: str | None,
+    vulnerability_class: str | None,
+    mandatory_behaviors: list[str],
+) -> dict[str, Any]:
+    """Apply 3-tier fallback cho 3 MANDATORY fields TRONG DICT.
+
+    Tier 1: dùng giá trị từ data hiện tại (top-level + nested)
+    Tier 2: derive rule-based từ exploit_vector + vulnerability_class + behaviors
+    Set CẢ 2 chỗ (top-level + nested) để atomic.
+    """
+    tech = data.setdefault("technical_analysis", {})
+    flow = tech.setdefault("attack_flow", {})
+
+    # Tier 1: lấy giá trị từ cả 2 chỗ
+    current = {
+        "entry_vector": tech.get("entry_vector") or flow.get("entry_vector"),
+        "execution_mechanism": tech.get("execution_mechanism") or flow.get("execution_mechanism"),
+        "observable_side_effects": flow.get("observable_side_effects") or [],
+    }
+
+    # Tier 2: fill missing
+    filled = apply_attack_flow_fallback(
+        current=current,
+        exploit_vector=exploit_vector,
+        vulnerability_class=vulnerability_class,
+        mandatory_behaviors=mandatory_behaviors,
+    )
+
+    # Set CẢ 2 chỗ atomic
+    tech["entry_vector"] = filled["entry_vector"]
+    tech["execution_mechanism"] = filled["execution_mechanism"]
+    flow["entry_vector"] = filled["entry_vector"]
+    flow["execution_mechanism"] = filled["execution_mechanism"]
+    flow["observable_side_effects"] = filled["observable_side_effects"]
+
+    return data
+
+
+# ==============================================================
+# (Removed) _merge_old_new — root cause of wipeout bug CVE-2023-22515
+# ==============================================================
+# Hàm này đã được thay thế bằng partial-fill retry (retry.py + orchestrator.py).
+# Lý do xóa:
+#   - Khi AI retry trả output gần như rỗng, _merge_old_new REPLACE cho
+#     ATT&CK fields (techniques, tactics, subtechniques) dùng "new rỗng
+#     → fallback về old" - nhưng nếu old cũng bị _apply_3_tier_fallback
+#     wipe sau khi filter dropped → mất hết entries.
+#   - UNION cho descriptive fields (mandatory_behaviors, mapping_reasons)
+#     với nhau vẫn ổn, nhưng vì AI retry trả scalar/None thay vì list,
+#     sort+set cũng produce output mong manh.
+#
+# Cách mới (partial-fill):
+#   - Attempt 1 dict giữ nguyên các field valid.
+#   - Retry dict chỉ điền vào field invalid.
+#   - Orchestrator merge per-field (xem _partial_fill_attempt trong
+#     orchestrator.py) — đơn giản, không touch field valid, không có
+#     nhánh logic phức tạp để sinh bug.
+

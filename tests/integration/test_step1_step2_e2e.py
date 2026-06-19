@@ -21,9 +21,9 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from app.steps.step_1_triage.orchestrator import TriageOrchestrator
-from app.steps.step_2_tech_analysis.gap_analysis import (
-    compute_coverage,
-    compute_ground_truth,
+from app.steps.step_2_tech_analysis.rule_based.attack_validator import (
+    filter_attack_mapping,
+    validate_against_cve_context,
 )
 
 
@@ -169,66 +169,35 @@ async def main(cve_id: str) -> None:
         print("  AI not used in Bước 2 — fell back to rule-based")
 
     # =========================================================================
-    # STEP 2 — COVERAGE vs GROUND TRUTH
+    # STEP 2 — VALIDATION (2 lớp: format + semantic)
     # =========================================================================
-    _section("STEP 2 — COVERAGE vs GROUND TRUTH (rule-based)")
-    ai_output = {
-        "cve_id": enriched.core.cve_id,
-        "cwe_ids": enriched.core.cwe_ids or [],
-        "technical_analysis": (
-            enriched.analysis.model_dump(mode="json", exclude_none=True)
-            if enriched.analysis else {}
-        ),
-        "attack_mapping": (
-            enriched.attack.model_dump(mode="json", exclude_none=True)
-            if enriched.attack else {}
-        ),
-    }
-    ground_truth = compute_ground_truth(
-        cve_id=enriched.core.cve_id,
-        description=enriched.core.description,
-        cwe_ids=enriched.core.cwe_ids,
+    # Lớp 3 (Sigma rule validation) SKIPPED - repo không có SigmaHQ rules.
+    # Nếu sau này add SigmaHQ: thêm FilesystemRuleInventory("rules/") ở đây.
+    _section("STEP 2 — VALIDATION (2 lớp: format + semantic)")
+    atk = enriched.attack
+    raw_techs = (atk.techniques if atk else None) or []
+    raw_subtechs = (atk.subtechniques if atk else None) or []
+
+    # Lớp 1: Format MITRE
+    fmt = filter_attack_mapping(tactics=None, techniques=raw_techs, subtechniques=raw_subtechs)
+    fmt_techs = fmt["techniques"] or []
+
+    # Lớp 2: Semantic (MÂU THUẪN context CVE)
+    sem = validate_against_cve_context(
+        techniques=fmt_techs,
         cvss_vector=enriched.core.cvss_vector,
+        description=enriched.core.description,
     )
-    cov = compute_coverage(ai_output, ground_truth)
+    sem_kept = sem["kept"]
+    sem_dropped = sem["dropped"]
 
-    # PHASE 5: Format None-aware (UNKNOWN verdict cho CVEs ngoài whitelist)
-    def _fmt_pct(v) -> str:
-        return f"{v:.0%}" if v is not None else "N/A"
-
-    def _fmt_count(expected_set, missing_list) -> str:
-        if not expected_set:
-            return "(0 expected)"
-        return f"({len(expected_set)} expected, missing: {missing_list})"
-
-    print(f"  Ground truth:       source={ground_truth.get('ground_truth_source', '?')} "
-          f"quality={ground_truth.get('ground_truth_quality', '?')}")
-    print(f"  CWE coverage:       {_fmt_pct(cov['cwe_coverage'])}  "
-          f"{_fmt_count(ground_truth['expected_cwes'], cov['missing_cwes'])}")
-    print(f"  Behavior coverage:  {_fmt_pct(cov['behavior_coverage'])}  "
-          f"{_fmt_count(ground_truth['expected_behaviors'], cov['missing_behaviors'])}")
-    print(f"  TTP coverage:       {_fmt_pct(cov['ttp_coverage'])}  "
-          f"{_fmt_count(ground_truth['expected_techniques'], cov['missing_techniques'])}")
+    print(f"  Raw techniques (AI/rule): {raw_techs}")
+    print(f"  Format valid:             {fmt_techs}")
+    print(f"  Semantic kept:            {sem_kept}")
+    if sem_dropped:
+        print(f"  ⚠️  Semantic dropped (mâu thuẫn CVE): {sem_dropped}")
     print(f"  ─────────────────────────────────────")
-    print(f"  Overall:            {_fmt_pct(cov['overall_coverage'])}  → {cov['verdict']}")
-
-    if cov["verdict"] == "UNKNOWN":
-        print(f"  ⚠️  No ground truth available for this CVE - cannot evaluate AI output")
-    elif cov["needs_retry"]:
-        print(f"  Retry requested:    True (AI produced extras that hurt coverage)")
-
-    # Phân loại extras: contradictory (AI thực sự sai context) vs additional
-    # (AI thông minh hơn whitelist, technique hợp lý với CVE)
-    if cov["extra_techniques"]:
-        contradictory = set(cov.get("contradictory_techniques") or [])
-        additional = [t for t in cov["extra_techniques"] if t not in contradictory]
-        if contradictory:
-            print(f"  ⚠️  Contradictory techniques (sai context CVE): "
-                  f"{sorted(contradictory)}")
-        if additional:
-            print(f"  Additional techniques (AI smarter than whitelist): {additional}")
-    if cov.get("notes"):
-        print(f"  Notes: {cov['notes']}")
+    print(f"  ✓ Validation passed ({len(sem_kept)} techniques)")
 
     # =========================================================================
     # METADATA

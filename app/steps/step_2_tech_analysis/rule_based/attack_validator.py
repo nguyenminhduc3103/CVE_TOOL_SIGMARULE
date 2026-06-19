@@ -482,3 +482,114 @@ def normalize_family(value: object) -> str | None:
 
     # No match -> unknown
     return "unknown"
+
+
+# =============================================================================
+# Semantic validation - filter techniques MÂU THUẪN context CVE
+# =============================================================================
+# Mục đích: bắt hallucination AI obvious - technique không hợp với CVSS vector
+# hoặc description của CVE. KHÔNG dùng ground truth CAPEC (quá rộng).
+#
+# Theo spec (CVE-2-Sigma.md): Step 2 phải phân tích đúng thì Step 3 mới có ý nghĩa.
+# Validation này giúp Step 2 loại bỏ techniques sai trước khi pass cho Step 3.
+
+# Network-only techniques - chỉ hợp lý khi CVE exploit được từ xa
+_NETWORK_ONLY_TECHNIQUES: frozenset[str] = frozenset({
+    "T1190",  # Exploit Public-Facing Application
+    "T1133",  # External Remote Services
+    "T1199",  # Trusted Relationship
+    "T1566",  # Phishing (nếu remote)
+    "T1078",  # Valid Accounts (nếu remote)
+    "T1071",  # Application Layer Protocol (C2 network)
+})
+
+# Phishing-specific techniques - chỉ hợp với social engineering context
+_PHISHING_TECHNIQUES: frozenset[str] = frozenset({
+    "T1566", "T1566.001", "T1566.002", "T1566.003",
+    "T1598", "T1598.001", "T1598.002", "T1598.003",
+})
+
+
+def _is_local_only(cvss_vector: str | None) -> bool:
+    """CVSS AV:L (Local) - exploit cần local access."""
+    if not cvss_vector:
+        return False
+    return "AV:L" in cvss_vector.upper()
+
+
+def _has_hardware_context(description: str | None) -> bool:
+    """CVE description nhắc tới local/hardware/physical access."""
+    if not description:
+        return False
+    text = description.lower()
+    keywords = (
+        "local ", "locally", "physical access", "physically",
+        "hardware", "usb", "kernel driver", "kernel module",
+        "requires physical", "on the same machine",
+    )
+    return any(kw in text for kw in keywords)
+
+
+def validate_against_cve_context(
+    techniques: list[str] | None,
+    cvss_vector: str | None,
+    description: str | None,
+) -> dict[str, list[str]]:
+    """Filter techniques MÂU THUẪN context CVE (semantic validation).
+
+    3 rule hiện tại (mở rộng được nếu cần):
+      Rule 1: Network-only techniques (T1190, T1133, ...) MÂU THUẪN với
+              CVSS AV:L (local-only CVE).
+      Rule 2: Phishing techniques (T1566, ...) MÂU THUẪN với description
+              nhắc tới local/hardware/physical access.
+      Rule 3: T1190 vs explicit local context (redundant với rule 1+2 nhưng
+              explicit để dễ debug).
+
+    Args:
+        techniques: List technique IDs AI trả (vd ['T1190', 'T1059']).
+        cvss_vector: CVSS vector string (vd 'CVSS:3.1/AV:N/AC:L/...').
+        description: CVE description text.
+
+    Returns:
+        {
+            "kept": [...],         # techniques qua validation
+            "dropped": [...],      # techniques bị loại
+            "dropped_reasons": {tech: reason, ...},
+        }
+    """
+    kept: list[str] = []
+    dropped: list[str] = []
+    dropped_reasons: dict[str, str] = {}
+
+    for tech in techniques or []:
+        if not isinstance(tech, str):
+            continue
+        norm = tech.strip().upper()
+        if not norm.startswith("T"):
+            # Không phải technique ID → giữ nguyên để caller xử lý
+            if norm not in kept:
+                kept.append(norm)
+            continue
+
+        # Rule 1: Network-only vs AV:L
+        if _is_local_only(cvss_vector) and norm in _NETWORK_ONLY_TECHNIQUES:
+            dropped.append(norm)
+            dropped_reasons[norm] = "network_only_vs_AV_L"
+            continue
+
+        # Rule 2: Phishing vs hardware context
+        if _has_hardware_context(description) and norm in _PHISHING_TECHNIQUES:
+            dropped.append(norm)
+            dropped_reasons[norm] = "phishing_vs_hardware_context"
+            continue
+
+        # Rule 3: T1190 vs explicit local context
+        if _has_hardware_context(description) and norm == "T1190":
+            dropped.append(norm)
+            dropped_reasons[norm] = "t1190_vs_local_context"
+            continue
+
+        if norm not in kept:
+            kept.append(norm)
+
+    return {"kept": kept, "dropped": dropped, "dropped_reasons": dropped_reasons}

@@ -164,6 +164,27 @@ class SigmaRepositoryIndexer:
     def load(self) -> list[SigmaRule]:
         return self.inventory.list_rules()
 
+    def find_rules_by_techniques(
+        self, techniques: list[str]
+    ) -> list[SigmaRule]:
+        """Tìm Sigma rules có chứa ÍT NHẤT 1 technique trong danh sách.
+
+        Dùng để validate AI output (Bước 2 - CVE-2-Sigma.md dòng 49):
+        nếu technique AI trả khớp rule cũ (đã được cộng đồng validate) → an tâm.
+        Nếu không khớp → flag "unvalidated" cho human review.
+
+        Args:
+            techniques: List MITRE technique IDs (vd ['T1190', 'T1059']).
+
+        Returns:
+            List SigmaRule match (không filter score - caller tự quyết định threshold).
+        """
+        if not techniques:
+            return []
+        wanted = {t.upper() for t in techniques if t}
+        all_rules = self.load()
+        return [r for r in all_rules if set(r.attack_techniques) & wanted]
+
 
 # Backward-compatible aliases
 SigmaRuleRepository = RuleInventory
