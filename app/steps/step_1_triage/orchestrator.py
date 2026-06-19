@@ -17,6 +17,7 @@ from app.shared.providers.epss.provider import EPSSProvider
 from app.shared.providers.kev.provider import KEVProvider
 from app.shared.providers.nvd.provider import NVDProvider
 from app.shared.providers.otx.provider import OTXProvider
+from app.shared.providers.poc.provider import PoCProvider
 from app.steps.step_1_triage.capability_checker import CapabilityChecker
 from app.steps.step_1_triage.priority_engine import PriorityEngine
 from app.steps.step_1_triage.stages.analysis_stage import run_analysis_stage
@@ -25,6 +26,7 @@ from app.steps.step_1_triage.stages.coverage_stage import run_coverage_stage
 from app.steps.step_1_triage.stages.epss_stage import run_epss_stage
 from app.steps.step_1_triage.stages.exposure_stage import run_exposure_stage
 from app.steps.step_1_triage.stages.kev_stage import run_kev_stage
+from app.steps.step_1_triage.stages.poc_stage import run_poc_stage
 from app.steps.step_1_triage.stages.telemetry_stage import run_telemetry_stage
 
 
@@ -41,6 +43,7 @@ class TriageOrchestrator:
         self.kev = KEVProvider()
         self.epss = EPSSProvider()
         self.otx = OTXProvider()
+        self.poc = PoCProvider()
         self.priority_engine = PriorityEngine()
         self.capability_checker = CapabilityChecker()
         self.logger = get_logger(__name__)
@@ -64,10 +67,11 @@ class TriageOrchestrator:
             "kev": self._run_provider("kev", self.kev, self.kev.fetch, cve_id, provider_status, provider_errors, provider_durations),
             "epss": self._run_provider("epss", self.epss, self.epss.fetch, cve_id, provider_status, provider_errors, provider_durations),
             "otx": self._run_provider("otx", self.otx, self.otx.fetch, cve_id, provider_status, provider_errors, provider_durations),
+            "poc": self._run_provider("poc", self.poc, self.poc.fetch, cve_id, provider_status, provider_errors, provider_durations),
         }
         provider_results = await asyncio.gather(*provider_tasks.values(), return_exceptions=True)
 
-        nvd_raw = kev_raw = epss_raw = otx_raw = None
+        nvd_raw = kev_raw = epss_raw = poc_raw = None
         for name, result in zip(provider_tasks.keys(), provider_results):
             if isinstance(result, Exception):
                 provider_status[name] = "failed"
@@ -81,6 +85,8 @@ class TriageOrchestrator:
                 epss_raw = result
             elif name == "otx":
                 otx_raw = result
+            elif name == "poc":
+                poc_raw = result
 
         provider_batch_duration_ms = int((perf_counter() - provider_started) * 1000)
         self.logger.info("[ORCHESTRATOR] provider_batch_completed", cve_id=cve_id, duration_ms=provider_batch_duration_ms)
@@ -116,7 +122,16 @@ class TriageOrchestrator:
         )
         stage_partial = stage_partial or stage_failed
 
-        # Build CoreCVEData from NVD raw (minimal mapping), fallback to OTX raw if needed
+        poc_stage_raw, stage_failed = await self._run_stage(
+            stage_name="poc_stage",
+            stage_fn=run_poc_stage,
+            cve_id=cve_id,
+            payload=poc_raw or {},
+            fallback={"poc_references": None, "public_poc": False},
+        )
+        stage_partial = stage_partial or stage_failed
+
+        # Build CoreCVEData from NVD raw (minimal mapping)
         core = self._build_core_context(cve_id, nvd_core_raw, otx_raw)
 
         exposure_raw, stage_failed = await self._run_stage(
@@ -136,22 +151,11 @@ class TriageOrchestrator:
         if isinstance(otx_raw, dict):
             threat_actors = otx_raw.get("threat_actors") or []
 
-        # Extract public PoC references using the reference parser
-        public_poc = False
-        poc_references = []
-        if core.references:
-            try:
-                from app.shared.parsers.reference_parser import extract_urls
-                enriched_refs = extract_urls(core.references)
-                for ref in enriched_refs:
-                    if ref.get("is_exploit"):
-                        public_poc = True
-                        poc_references.append(ref.get("url"))
-            except Exception:
-                pass
-
-        # Build TriageContext from provider outputs (skeleton-only)
+        # Build TriageContext from provider outputs
         in_kev_val = self._get_optional_bool(kev_stage_raw, "in_kev")
+        _poc_refs = poc_stage_raw.get("poc_references") if isinstance(poc_stage_raw, dict) else None
+        public_poc = poc_stage_raw.get("public_poc") or False if isinstance(poc_stage_raw, dict) else False
+        poc_references = _poc_refs
         triage = TriageContext(
             in_kev=in_kev_val,
             kev_added_date=self._get_optional_datetime(kev_stage_raw, "kev_added_date"),

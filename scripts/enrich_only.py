@@ -28,6 +28,7 @@ from app.shared.providers.kev.provider import KEVProvider
 from app.shared.providers.epss.provider import EPSSProvider
 from app.shared.providers.otx.provider import OTXProvider
 from app.shared.providers.opencti import OpenCTIProvider
+from app.shared.providers.poc.provider import PoCProvider
 from app.steps.step_1_triage.priority_engine import PriorityEngine
 from app.steps.step_1_triage.capability_checker import CapabilityChecker
 from app.shared.parsers.cvss_parser import parse_cvss
@@ -52,6 +53,7 @@ async def enrich(cve_id: str) -> None:
     kev = KEVProvider()
     epss = EPSSProvider()
     otx = OTXProvider()
+    poc = PoCProvider()
 
     # ---- NVD ----
     print("\n[NVD] fetching...")
@@ -76,6 +78,11 @@ async def enrich(cve_id: str) -> None:
     # ---- OTX ----
     print("\n[OTX] fetching...")
     otx_raw = await otx.enrich(cve_id)
+    print(f"  ✓ done")
+
+    # ---- PoC ----
+    print("\n[PoC] fetching...")
+    poc_raw = await poc.enrich(cve_id)
     print(f"  ✓ done")
 
     # ---- Enrich Core CWEs from KEV if noinfo ----
@@ -145,7 +152,15 @@ async def enrich(cve_id: str) -> None:
             poc_references.append(ref.get("url"))
 
     # ---- Build TriageContext ----
-    in_kev_val = bool(kev_raw.get("in_kev"))
+    in_kev_val = bool(kev_raw.get("in_kev")) if kev_raw else False
+    _poc_refs = poc_raw.get("poc_references") if poc_raw else None
+    if _poc_refs:
+        public_poc = True
+        # Merge unique poc references
+        existing_set = set(poc_references)
+        for ref in _poc_refs:
+            if ref not in existing_set:
+                poc_references.append(ref)
     triage = TriageContext(
         in_kev=in_kev_val,
         kev_added_date=kev_raw.get("kev_added_date"),
@@ -153,7 +168,7 @@ async def enrich(cve_id: str) -> None:
         observed_in_the_wild=in_kev_val,
         epss_score=epss_raw.get("epss_score"),
         epss_percentile=epss_raw.get("epss_percentile"),
-        threat_actors=otx_raw.get("threat_actors", []),
+        threat_actors=otx_raw.get("threat_actors", []) if otx_raw else [],
         public_poc=public_poc,
         poc_references=poc_references or None,
     )
