@@ -28,7 +28,9 @@ class AIBehaviorAnalyzer:
     _MODEL = "llama-3.3-70b-versatile"  # full-fat 70B — best quality, but Groq free tier rate-limits TPD (100k)
 
     def __init__(self, base_client: BaseAIClient) -> None:
+        from app.core.config import settings
         self.client = base_client
+        self.model = settings.ai_model or self._MODEL
         self.system_prompt_template = (self._PROMPTS_DIR / self._SYSTEM_FILE).read_text(
             encoding="utf-8"
         )
@@ -96,7 +98,7 @@ class AIBehaviorAnalyzer:
             response_text = await self.client.call_llm(
                 system_prompt=system_prompt,
                 user_prompt=formatted_user,
-                model=self._MODEL,
+                model=self.model,
             )
             cleaned_text = self._clean_json(response_text)
             data = json.loads(cleaned_text)
@@ -130,7 +132,7 @@ class AIBehaviorAnalyzer:
                 cwe_metadata=cwe_meta,
                 attack_flow=attack_flow,
                 ai_used=True,
-                ai_model=self._MODEL,
+                ai_model=self.model,
             )
 
             attack_mapping = AttackMapping(
@@ -140,7 +142,7 @@ class AIBehaviorAnalyzer:
                 confidence=data.get("attack_confidence") or data.get("confidence"),
                 mapping_reasons=data.get("mapping_reasons") or None,
                 ai_used=True,
-                ai_model=self._MODEL,
+                ai_model=self.model,
             )
             return tech_analysis, attack_mapping
 

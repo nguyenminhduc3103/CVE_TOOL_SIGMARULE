@@ -373,7 +373,7 @@ async def run_step2_tech_analysis(
     # Bước 6: Quyết định path
     if validation["valid"]:
         # HAPPY PATH: AI OK → build Pydantic từ dict
-        ai_model = ai_service._MODEL
+        ai_model = ai_service.model
         base_tech = TechnicalAnalysis(
             confidence=0.85,
             ai_used=True,
@@ -408,7 +408,7 @@ async def run_step2_tech_analysis(
         cpes=cpes,
         cvss_vector=cvss_vector,
         cwe_ids=cwe_ids,
-        ai_model=ai_service._MODEL,
+        ai_model=ai_service.model,
         ai_retry_count=retries_used,
     )
     return tech, attack, {

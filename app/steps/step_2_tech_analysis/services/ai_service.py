@@ -45,7 +45,9 @@ class AIBehaviorService:
     _RETRY_MODEL = "gemini-2.5-flash"
 
     def __init__(self, base_client: BaseAIClient) -> None:
+        from app.core.config import settings
         self.client = base_client
+        self.model = settings.ai_model or self._MODEL
         # Load shared MITRE rules once; both analyze + retry templates reference them.
         shared_rules = (_PROMPTS_DIR / self._SHARED_FILE).read_text(encoding="utf-8")
         analyze_template = (
@@ -115,12 +117,12 @@ class AIBehaviorService:
             response_text = await self.client.call_llm(
                 system_prompt=self.system_prompt_template,
                 user_prompt=formatted_user,
-                model=self._MODEL,
+                model=self.model,
             )
             # Record analyze model ONLY after a successful dispatch (the call
             # itself didn't raise). Retry model is recorded separately by
             # the orchestrator via record_retry_model() before its call.
-            self._record_model(self._MODEL)
+            self._record_model(self.model)
             cleaned_text = self._clean_json(response_text)
             data = json.loads(cleaned_text)
             return data
