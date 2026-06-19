@@ -263,13 +263,17 @@ def validate_field_level(
         invalid_fields["technical_analysis.reasoning"] = rs["reason"]
 
     # Build validated_data (giữ nguyên cấu trúc, chỉ clean value)
+    # subtechniques: nếu rỗng sau whitelist → fill ["none"] để downstream
+    # consumer biết "đã cố nhưng không tìm được subtechnique hợp lệ".
+    # Tránh dùng None (mất info) hoặc [] (khó phân biệt "chưa chạy" vs "không có").
+    _sub_empty_sentinel: list[str] = ["none"]
     validated_data = {
         **data,
         "attack_mapping": {
             **atk,
             "tactics": ttp["valid_tactics"] or None,
             "techniques": ttp["valid_techniques"] or None,
-            "subtechniques": ttp["valid_subtechniques"] or None,
+            "subtechniques": ttp["valid_subtechniques"] or _sub_empty_sentinel,
             "mapping_reasons": mr["value"] if mr["valid"] else None,
         },
         "technical_analysis": {

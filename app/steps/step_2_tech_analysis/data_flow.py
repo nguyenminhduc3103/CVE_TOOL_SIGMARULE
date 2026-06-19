@@ -183,10 +183,17 @@ def _ai_dict_to_pydantic(
         ai_models_used=ai_models_used,
     )
 
+    # subtechniques: empty list / None → fill ["none"] sentinel để downstream
+    # consumer phân biệt được "không tìm được sub" với "chưa chạy pipeline".
+    # Match behavior ở _validation.py:272 để tránh inconsistency.
+    _sub_val = atk_dict.get("subtechniques")
+    if not _sub_val:  # None hoặc [] đều rỗng
+        _sub_val = ["none"]
+
     attack_mapping = AttackMapping(
         tactics=atk_dict.get("tactics") or None,
         techniques=atk_dict.get("techniques") or None,
-        subtechniques=atk_dict.get("subtechniques") or None,
+        subtechniques=_sub_val,
         confidence=atk_dict.get("confidence") or getattr(base_attack, "confidence", None),
         mapping_reasons=atk_dict.get("mapping_reasons") or None,
         ai_used=True,

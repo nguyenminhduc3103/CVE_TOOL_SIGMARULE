@@ -21,10 +21,6 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from app.steps.step_1_triage.orchestrator import TriageOrchestrator
-from app.steps.step_2_tech_analysis.gap_analysis import (
-    compute_coverage,
-    compute_ground_truth,
-)
 
 
 def _print_list(items, indent: str = "    ") -> None:
@@ -59,7 +55,7 @@ async def run_interactive_pipeline(cve_id: str) -> bool:
     from app.shared.parsers.reference_parser import extract_urls
     from app.shared.models.triage import TriageContext
     from app.shared.models.enriched import EnrichedCVEContext
-    from app.steps.step_1_triage.orchestrator import _safe_get_first_line
+    from app.steps.step_1_triage.orchestrator import _err_line
     import httpx
 
     orch = TriageOrchestrator()
@@ -87,7 +83,7 @@ async def run_interactive_pipeline(cve_id: str) -> bool:
     for name, result in zip(provider_tasks.keys(), provider_results):
         if isinstance(result, Exception):
             provider_status[name] = "failed"
-            provider_errors[name] = _safe_get_first_line(result)
+            provider_errors[name] = _err_line(result)
             provider_durations.setdefault(name, int((perf_counter() - provider_started) * 1000))
         elif name == "nvd":
             nvd_raw = result
@@ -297,47 +293,14 @@ async def run_interactive_pipeline(cve_id: str) -> bool:
         print("  AI not used in Bước 2 — fell back to rule-based")
 
     # =========================================================================
-    # BƯỚC 4 — COVERAGE vs GROUND TRUTH
+    # BƯỚC 4 — AI USAGE SUMMARY (coverage đã bị loại bỏ — gap_analysis không còn)
     # =========================================================================
-    wait_for_user(f"Bước 4: Đánh giá độ phủ (CWE / Behavior / TTP) so với Ground Truth của {cve_id}")
-
-    _section("STEP 2 — COVERAGE vs GROUND TRUTH (rule-based)")
-    ai_output = {
-        "cve_id": enriched.core.cve_id,
-        "cwe_ids": enriched.core.cwe_ids or [],
-        "technical_analysis": (
-            enriched.analysis.model_dump(mode="json", exclude_none=True)
-            if enriched.analysis else {}
-        ),
-        "attack_mapping": (
-            enriched.attack.model_dump(mode="json", exclude_none=True)
-            if enriched.attack else {}
-        ),
-    }
-    ground_truth = compute_ground_truth(
-        cve_id=enriched.core.cve_id,
-        description=enriched.core.description,
-        cwe_ids=enriched.core.cwe_ids,
-        cvss_vector=enriched.core.cvss_vector,
+    wait_for_user(
+        f"Bước 4: Tổng kết AI usage & metadata cho {cve_id} "
+        "(đánh giá coverage vs ground truth đã được loại bỏ — gap_analysis không tồn tại)"
     )
-    cov = compute_coverage(ai_output, ground_truth)
 
-    print(f"  CWE coverage:       {cov['cwe_coverage']:.0%}  "
-          f"({len(ground_truth['expected_cwes'])} expected, "
-          f"missing: {cov['missing_cwes']})")
-    print(f"  Behavior coverage:  {cov['behavior_coverage']:.0%}  "
-          f"({len(ground_truth['expected_behaviors'])} expected, "
-          f"missing: {cov['missing_behaviors']})")
-    print(f"  TTP coverage:       {cov['ttp_coverage']:.0%}  "
-          f"({len(ground_truth['expected_techniques'])} expected, "
-          f"missing: {cov['missing_techniques']})")
-    print(f"  ─────────────────────────────────────")
-    print(f"  Overall:            {cov['overall_coverage']:.0%}  → {cov['verdict']}")
-    if cov["needs_retry"]:
-        print(f"  Retry requested:    True (AI produced extras that hurt coverage)")
-
-    if cov["extra_techniques"]:
-        print(f"  Extra techniques (AI bịa?): {cov['extra_techniques']}")
+    _section("STEP 2 — AI USAGE (coverage block removed)")
 
     # METADATA
     _section("METADATA")

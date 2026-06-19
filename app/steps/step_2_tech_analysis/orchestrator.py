@@ -211,10 +211,17 @@ def _build_rule_based_pydantic(
         ai_model=ai_model,
     )
 
+    # subtechniques: rule-based fallback cũng dùng ["none"] sentinel để
+    # đồng bộ với AI happy-path (_validation.py:272 + data_flow.py:189).
+    # Nếu attack_rb không trả subtechnique nào → fill ["none"] thay vì []/None
+    # để downstream consumer biết "không tìm được sub" (không phải lỗi).
+    _rb_sub = attack_rb.get("subtechniques") or []
+    attack_rb_sub: list[str] = _rb_sub if _rb_sub else ["none"]
+
     attack = AttackMapping(
         tactics=attack_rb.get("tactics"),
         techniques=attack_rb.get("techniques"),
-        subtechniques=attack_rb.get("subtechniques"),
+        subtechniques=attack_rb_sub,
         confidence=attack_rb.get("confidence"),
         mapping_reasons=attack_rb.get("mapping_reasons"),
         ai_used=False,

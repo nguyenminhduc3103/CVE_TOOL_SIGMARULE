@@ -33,17 +33,44 @@
     - Process spawn with bash → T1059.004. Process spawn with cmd.exe → T1059.003.
       Process spawn with PowerShell → T1059.001. Shellcode loader → T1059 (parent only).
 
-  IMPORTANT: Empty `subtechniques: []` IS VALID when:
-    1. The parent technique has no widely-used sub-techniques (e.g., T1190, T1566, T1210)
-    2. The CVE description does not provide enough context to pick a specific sub-technique
-    3. The vulnerability is cross-platform and OS-specific sub-technique would mislead
+  IMPORTANT: Empty `subtechniques: []` IS VALID ONLY when ALL of these hold:
+    1. The parent technique has no widely-used sub-techniques in current MITRE ATT&CK
+       (e.g., T1190, T1566, T1210 — these are widely-known parent-only techniques).
+    2. The CVE description, CVSS vector, CPEs, references, and CWE do NOT mention
+       any specific tool, interpreter, protocol, shell, OS service, or execution
+       environment that would let you pick a sub-technique.
+    3. The vulnerability is genuinely cross-platform AND choosing an OS-specific
+       sub-technique would mislead downstream consumers.
 
-  Empty `subtechniques: []` is INVALID when:
-    1. The CVE description EXPLICITLY mentions a specific tool/interpreter/protocol
-       (e.g., "PowerShell script execution", "bash command injection", "SMBv3 protocol")
-    2. The OS target is unambiguous (Windows-only CVE → Windows sub-tech, Unix-only → Unix sub-tech)
-    3. The parent technique has only 3-5 sub-techniques (e.g., T1059.x, T1566.x)
-       and the CVE description clearly fits one
+  If ANY of the following signals appear in CVE data (description, CVSS vector,
+  CPEs, references, CWE), you MUST emit at least 1 subtechnique — do your own
+  reasoning, do not default to empty:
+    - Specific shell/interpreter/tool name: bash, sh, cmd.exe, PowerShell,
+      Python, Perl, Ruby, JavaScript, VBScript, AppleScript, PHP, SSH, RDP,
+      SMB, FTP, LDAP, Kerberos, NTLM, WinRM, sql, mysql, postgres, oracle,
+      docker, kubectl, aws, azure-cli, gcloud, etc.
+    - Specific OS/service: Windows Service, IIS, Apache, nginx, Tomcat,
+      Jenkins, WebLogic, JBoss, SharePoint, Exchange, Active Directory, etc.
+    - File type / payload hint: .ps1, .sh, .bat, .vbs, .hta, .jar, .war,
+      .php, .aspx, .jsp, .elf, .dll, .so, .dylib, etc.
+    - Execution primitive: command injection, shell command, script execution,
+      DLL injection, process injection, lateral movement via [protocol],
+      authentication via [mechanism], etc.
+    - CVE category keyword: RCE + Windows, RCE + Linux, RCE + WordPress,
+      RCE + Joomla, RCE + Jenkins, privilege escalation + Windows kernel,
+      auth bypass + SSO/SAML/OAuth, etc.
+
+  When you emit a subtechnique, you MUST justify it in `mapping_reasons` with
+  an explicit tie to the CVE signal (e.g. "T1059.004 selected because CVE
+  describes bash command injection in a Linux web application"). Empty
+  `subtechniques: []` WITHOUT `mapping_reasons` explaining why no signal was
+  found is INVALID and will be rejected by the coverage engine.
+
+  Anti-hallucination guard: only emit subtechniques you can tie to a concrete
+  signal above. If genuinely no signal exists (rare), emit `subtechniques: []`
+  AND add a `mapping_reason` stating "No specific tool/interpreter/protocol
+  signal in description or references; parent technique sufficient for
+  threat modeling."
 - EVASIVE INDICATORS ENFORCEMENT (CRITICAL):
   Do NOT default to "none" for evasive_indicators. The field MUST NOT BE EMPTY unless the CVE
   is a pure hardware/physical bug with no software telemetry path. For all software CVEs, you
