@@ -16,6 +16,7 @@ from app.shared.models.triage import TriageContext
 from app.shared.providers.epss.provider import EPSSProvider
 from app.shared.providers.kev.provider import KEVProvider
 from app.shared.providers.nvd.provider import NVDProvider
+from app.shared.providers.poc.provider import PoCProvider
 from app.steps.step_1_triage.capability_checker import CapabilityChecker
 from app.steps.step_1_triage.priority_engine import PriorityEngine
 from app.steps.step_1_triage.stages.analysis_stage import run_analysis_stage
@@ -24,6 +25,7 @@ from app.steps.step_1_triage.stages.coverage_stage import run_coverage_stage
 from app.steps.step_1_triage.stages.epss_stage import run_epss_stage
 from app.steps.step_1_triage.stages.exposure_stage import run_exposure_stage
 from app.steps.step_1_triage.stages.kev_stage import run_kev_stage
+from app.steps.step_1_triage.stages.poc_stage import run_poc_stage
 from app.steps.step_1_triage.stages.telemetry_stage import run_telemetry_stage
 
 
@@ -32,6 +34,7 @@ class TriageOrchestrator:
         self.nvd = NVDProvider()
         self.kev = KEVProvider()
         self.epss = EPSSProvider()
+        self.poc = PoCProvider()
         self.priority_engine = PriorityEngine()
         self.capability_checker = CapabilityChecker()
         self.logger = get_logger(__name__)
@@ -54,10 +57,11 @@ class TriageOrchestrator:
             "nvd": self._run_provider("nvd", self.nvd, self.nvd.fetch, cve_id, provider_status, provider_errors, provider_durations),
             "kev": self._run_provider("kev", self.kev, self.kev.fetch, cve_id, provider_status, provider_errors, provider_durations),
             "epss": self._run_provider("epss", self.epss, self.epss.fetch, cve_id, provider_status, provider_errors, provider_durations),
+            "poc": self._run_provider("poc", self.poc, self.poc.fetch, cve_id, provider_status, provider_errors, provider_durations),
         }
         provider_results = await asyncio.gather(*provider_tasks.values(), return_exceptions=True)
 
-        nvd_raw = kev_raw = epss_raw = None
+        nvd_raw = kev_raw = epss_raw = poc_raw = None
         for name, result in zip(provider_tasks.keys(), provider_results):
             if isinstance(result, Exception):
                 provider_status[name] = "failed"
@@ -69,6 +73,8 @@ class TriageOrchestrator:
                 kev_raw = result
             elif name == "epss":
                 epss_raw = result
+            elif name == "poc":
+                poc_raw = result
 
         provider_batch_duration_ms = int((perf_counter() - provider_started) * 1000)
         self.logger.info("[ORCHESTRATOR] provider_batch_completed", cve_id=cve_id, duration_ms=provider_batch_duration_ms)
@@ -104,6 +110,15 @@ class TriageOrchestrator:
         )
         stage_partial = stage_partial or stage_failed
 
+        poc_stage_raw, stage_failed = await self._run_stage(
+            stage_name="poc_stage",
+            stage_fn=run_poc_stage,
+            cve_id=cve_id,
+            payload=poc_raw or {},
+            fallback={"poc_references": None, "public_poc": False},
+        )
+        stage_partial = stage_partial or stage_failed
+
         # Build CoreCVEData from NVD raw (minimal mapping)
         core = self._build_core_context(cve_id, nvd_core_raw)
 
@@ -120,13 +135,18 @@ class TriageOrchestrator:
         if isinstance(exposure_raw, dict):
             internet_exposure = exposure_raw.get("internet_exposure")
 
-        # Build TriageContext from provider outputs (skeleton-only)
+        # Build TriageContext from provider outputs
+        _poc_refs = poc_stage_raw.get("poc_references") if isinstance(poc_stage_raw, dict) else None
+        
         triage = TriageContext(
             in_kev=self._get_optional_bool(kev_stage_raw, "in_kev"),
             kev_added_date=self._get_optional_datetime(kev_stage_raw, "kev_added_date"),
+            ransomware_usage=self._get_optional_bool(kev_stage_raw, "ransomware_campaign_use") or False,
             epss_score=self._get_optional_float(epss_stage_raw, "epss_score"),
             epss_percentile=self._get_optional_float(epss_stage_raw, "epss_percentile"),
             internet_exposure=internet_exposure,
+            poc_references=_poc_refs or None,
+            public_poc=bool(_poc_refs),
         )
 
         # Priority & capability assessments (skeleton)
