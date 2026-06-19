@@ -24,6 +24,7 @@ from app.shared.models.triage import TriageContext
 from app.shared.providers.nvd.provider import NVDProvider
 from app.shared.providers.kev.provider import KEVProvider
 from app.shared.providers.epss.provider import EPSSProvider
+from app.shared.providers.poc.provider import PoCProvider
 from app.steps.step_1_triage.priority_engine import PriorityEngine
 from app.steps.step_1_triage.capability_checker import CapabilityChecker
 
@@ -45,6 +46,7 @@ async def enrich(cve_id: str) -> None:
     nvd = NVDProvider()
     kev = KEVProvider()
     epss = EPSSProvider()
+    poc = PoCProvider()
 
     # ---- NVD ----
     print("\n[NVD] fetching...")
@@ -83,13 +85,21 @@ async def enrich(cve_id: str) -> None:
     epss_raw = await epss.enrich(cve_id)
     print(f"  ✓ done")
 
+    # ---- PoC ----
+    print("\n[PoC] fetching...")
+    poc_raw = await poc.enrich(cve_id)
+    print(f"   done")
+
     # ---- Build TriageContext ----
+    _poc_refs = poc_raw.get("poc_references") if poc_raw else None
     triage = TriageContext(
         in_kev=bool(kev_raw.get("in_kev")),
         kev_added_date=kev_raw.get("kev_added_date"),
         ransomware_usage=bool(kev_raw.get("known_ransomware_campaign_use", False)),
         epss_score=epss_raw.get("epss_score"),
         epss_percentile=epss_raw.get("epss_percentile"),
+        poc_references=_poc_refs,
+        public_poc=bool(_poc_refs),
     )
 
     # ---- Priority + Capability (rule-based) ----
