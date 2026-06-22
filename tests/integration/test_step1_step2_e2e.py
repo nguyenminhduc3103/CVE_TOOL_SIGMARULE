@@ -12,6 +12,7 @@ Run: python -X utf8 -m tests.integration.test_step1_step2_e2e CVE-2021-44228
 from __future__ import annotations
 
 import asyncio
+import os
 import sys
 from pathlib import Path
 from time import perf_counter
@@ -38,8 +39,13 @@ def _section(title: str) -> None:
 
 
 def wait_for_user(step_description: str) -> None:
-    """Yêu cầu người dùng nhấn phím Enter để tiếp tục thực hiện bước tiếp theo."""
+    """Yêu cầu người dùng nhấn phím Enter để tiếp tục thực hiện bước tiếp theo.
+
+    Set env CVE_TI_NONINTERACTIVE=1 to auto-skip (CI / batch runs).
+    """
     print(f"\n👉 [BẤM ENTER] để thực hiện: {step_description}")
+    if os.getenv("CVE_TI_NONINTERACTIVE", "0").lower() in ("1", "true", "yes"):
+        return
     input()
 
 
@@ -263,6 +269,11 @@ async def run_interactive_pipeline(cve_id: str) -> bool:
         print(f"  Reasoning ({len(a.reasoning or [])} items):")
         _print_list(a.reasoning or [])
 
+        # Two-phase fields (Phase 1 output).
+        print(f"  Execution surface:   {a.execution_surface.value if a.execution_surface else 'n/a'}")
+        print(f"  Delivery vector:     {a.delivery_vector.value if a.delivery_vector else 'n/a'}")
+        print(f"  User interaction:    {a.user_interaction_required}")
+
     # =========================================================================
     # BƯỚC 3 — ATT&CK MAPPING
     # =========================================================================
@@ -289,25 +300,25 @@ async def run_interactive_pipeline(cve_id: str) -> bool:
         print(f"  AI steps used: {list(ai_steps)}")
         if enriched.analysis:
             print(f"  Retries:       {enriched.analysis.ai_retry_count}")
+            # Show ai_models_used (Phase 1 + Phase 2) if available.
+            models_used = enriched.analysis.ai_models_used
+            if models_used and len(models_used) > 1:
+                print(f"  Models per phase: {models_used}")
     else:
         print("  AI not used in Bước 2 — fell back to rule-based")
 
     # =========================================================================
-    # BƯỚC 4 — AI USAGE SUMMARY (coverage đã bị loại bỏ — gap_analysis không còn)
+    # BƯỚC 4 — METADATA
     # =========================================================================
-    wait_for_user(
-        f"Bước 4: Tổng kết AI usage & metadata cho {cve_id} "
-        "(đánh giá coverage vs ground truth đã được loại bỏ — gap_analysis không tồn tại)"
-    )
+    wait_for_user(f"Bước 4: Tổng kết metadata cho {cve_id}")
 
-    _section("STEP 2 — AI USAGE (coverage block removed)")
-
-    # METADATA
     _section("METADATA")
     partial_val = any(status != 'success' for status in provider_status.values()) or stage_failed
     print(f"  Partial enrichment:  {partial_val}")
     print(f"  Pipeline duration:   {int((perf_counter() - pipeline_started) * 1000)} ms")
     print(f"  AI steps used:       {list(ai_steps)}")
+    if enriched.analysis and enriched.analysis.ai_models_used:
+        print(f"  AI models used:      {list(enriched.analysis.ai_models_used)}")
     print("=" * 80 + "\n")
     return True
 

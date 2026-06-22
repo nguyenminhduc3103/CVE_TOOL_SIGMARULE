@@ -46,3 +46,32 @@ MANDATORY RULES (no exceptions):
   "tactics": ["TA0001", "TA0002", "TA0011"],
   "techniques": ["T1190", "T1059", "T1071"]
 }}
+
+# MEMORY-CORRUPTION CVEs — REQUIRED ADDITIONS
+
+When the CVE's CWE IDs include ANY memory-corruption class (CWE-787, CWE-125,
+CWE-416, CWE-119, CWE-190), the kill chain MUST span THREE tactics — not just
+TA0001. Concretely:
+
+  1. Emit T1203 (Exploitation for Client Execution) + TA0002 (Execution).
+     Despite the "Client" name, MITRE ATT&CK applies this to server-side
+     memory-corruption exploits as well (Apache mod_fcgid, OpenSSL heartbleed,
+     IIS buffer overflow). The memory-corruption primitive IS the execution
+     technique that translates the attacker input into code execution.
+
+  2. Emit T1499.004 (Endpoint DoS: Application or System Exploitation) +
+     TA0040 (Impact) when the description or attack flow mentions "crash",
+     "segfault", "service crash", "denial of service". Memory-corruption
+     exploits frequently crash the target process due to corrupted metadata,
+     even when stable RCE is the attacker's ultimate goal.
+
+  3. Populate `evasive_indicators` with concrete WAF-bypass techniques for
+     HTTP-delivered memory corruption:
+       - HTTP chunked transfer encoding (split oversized header/payload)
+       - URL/hex encoding of shellcode bytes (%XX form)
+       - Header obfuscation / smuggling (parser differential attack)
+       - ROP chains, ASLR bypass, heap spraying for the memory-corruption
+         primitive itself
+
+DO NOT emit only T1190 + TA0001 for memory-corruption CVEs. Multi-tactic
+kill chain (TA0001 → TA0002 → TA0040) is the correct representation.

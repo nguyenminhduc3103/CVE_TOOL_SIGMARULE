@@ -231,3 +231,24 @@ class BaseAIClient:
         raise AIServiceError(
             f"AI Call failed after {total_attempts} attempts: {last_exc}"
         )
+
+    def make_phase1_client_kwargs(self) -> dict[str, Any]:
+        """Build kwargs (api_key, base_url) for a separate Phase 1 AsyncOpenAI.
+
+        Two-phase refactor: Phase 1 may use a different provider (e.g. OpenRouter
+        free model) than Phase 2 (e.g. Groq llama-3.3-70b). This helper returns
+        the right credentials so a separate AsyncOpenAI client can be built on
+        the fly for Phase 1 calls without touching the primary round-robin state.
+
+        Priority: PHASE1_AI_KEYS > PHASE1_AI_API_KEY > main API keys (fallback).
+        """
+        phase1_keys = settings.get_phase1_api_keys()
+        if not phase1_keys:
+            raise AIServiceError(
+                "Phase 1 AI enabled but no API key configured "
+                "(set PHASE1_AI_API_KEY or PHASE1_AI_KEYS in .env)."
+            )
+        return {
+            "api_key": phase1_keys[0],
+            "base_url": settings.get_phase1_base_url(),
+        }

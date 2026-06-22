@@ -1,5 +1,6 @@
 from pydantic import BaseModel
 
+from app.shared.types.execution_surface import DeliveryVector, ExecutionSurface
 from app.shared.types.vulnerability_class import VulnerabilityClass
 
 
@@ -36,6 +37,13 @@ class TechnicalAnalysis(BaseModel):
     analysis_confidence: float | None = None
     classification_reason: list[str] | None = None
     behavior_reason: list[str] | None = None
+    # === NEW: two-phase refactor (Phase 1 output) ===
+    # Optional fields - backward compat: Step 3 Sigma can ignore them.
+    # Phase 2 AI anchors on these to avoid AV:N→T1190 bias.
+    execution_surface: ExecutionSurface | None = None
+    delivery_vector: DeliveryVector | None = None
+    user_interaction_required: bool | None = None
+    # === End two-phase fields ===
     ai_used: bool | None = None
     ai_retry_count: int = 0
     ai_model: str | None = None

@@ -6,6 +6,7 @@ from app.core.logging import get_logger
 from app.shared.providers.base import BaseProvider
 from app.shared.providers.otx.client import OTXClientWrapper
 from app.shared.providers.otx.parser import OTXParser
+from app.shared.clients.otx_client import OTXFetchError
 
 
 class OTXProvider(BaseProvider):
@@ -28,13 +29,22 @@ class OTXProvider(BaseProvider):
 
         Returns:
             Dict chứa trường 'threat_actors' (list) và 'raw' (dữ liệu thô từ OTX).
+
+        Raises:
+            OTXFetchError: khi OTX API/parse fail (bubble up để orchestrator mark failed).
         """
         self.logger.info("[OTX] Đang thu thập thông tin tình báo đe dọa", cve_id=cve_id)
         self.last_error_message = None
-        raw = await self.client.fetch_raw(cve_id)
+        try:
+            raw = await self.client.fetch_raw(cve_id)
+        except OTXFetchError as exc:
+            self.last_error_message = str(exc)
+            self.logger.warning("[OTX] Thất bại khi thu thập dữ liệu", cve_id=cve_id, error=str(exc))
+            raise  # Bubble up - orchestrator sẽ mark provider_status="failed"
+
         if not raw:
-            self.last_error_message = "Không tải được dữ liệu từ OTX"
-            self.logger.warning("[OTX] Thất bại khi thu thập dữ liệu", cve_id=cve_id)
+            # 404 path: OTX trả empty dict, không có threat intel nhưng cũng không phải lỗi
+            self.logger.info("[OTX] Không có threat intel cho CVE này", cve_id=cve_id)
             return {"threat_actors": [], "raw": None}
 
         actors = self.parser.extract_threat_actors(raw)

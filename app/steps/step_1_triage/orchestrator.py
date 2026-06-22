@@ -329,6 +329,11 @@ class TriageOrchestrator:
                         if context.core.modified_at
                         else ""
                     ),
+                    # Phase 6: pass PoC refs + threat actors from Step 1 triage
+                    # context. AI uses these as INSPIRATION (not ground truth)
+                    # to narrow down exploit mechanism for vague CVEs.
+                    poc_references=getattr(context.triage, "poc_references", None) or [],
+                    threat_actors=getattr(context.triage, "threat_actors", None) or [],
                 )
 
                 # Nếu AI fail hoàn toàn → fall through
@@ -356,14 +361,22 @@ class TriageOrchestrator:
                     coverage=coverage.get("overall_coverage", 0),
                     verdict=coverage.get("verdict", "?"),
                 )
-                # Record AI usage so the test/CLI can report it.
-                model_name = (
-                    tech_analysis.ai_model
-                    or attack_mapping.ai_model
-                    or "unknown"
-                )
-                if model_name not in self._ai_steps_used:
-                    self._ai_steps_used.append(model_name)
+                # Record AI usage so the test/CLI can report it. Two-phase
+                # flow exposes `ai_models_used` (list) covering both Phase 1
+                # (e.g. OpenRouter) + Phase 2 (e.g. Groq). Legacy 1-shot flow
+                # only has `ai_model` (single string). Aggregate both shapes.
+                used_models: list[str] = []
+                if tech_analysis.ai_models_used:
+                    used_models.extend(tech_analysis.ai_models_used)
+                if attack_mapping.ai_models_used:
+                    used_models.extend(attack_mapping.ai_models_used)
+                if not used_models:
+                    fallback = tech_analysis.ai_model or attack_mapping.ai_model
+                    if fallback:
+                        used_models = [fallback]
+                for m in used_models:
+                    if m and m not in self._ai_steps_used:
+                        self._ai_steps_used.append(m)
                 return tech_analysis, attack_mapping, False
             except AIServiceError as exc:
                 self.logger.warning(
@@ -433,6 +446,15 @@ error=_err_line(exc),
             if data is None:
                 provider_status[provider_name] = "failed"
                 error_message = getattr(provider, "last_error_message", None) or "provider returned no data"
+                provider_errors[provider_name] = error_message
+                self.logger.warning("[ORCHESTRATOR] provider_failed", provider=provider_name, cve_id=cve_id, duration_ms=duration_ms, error=error_message)
+                return None
+            # Defensive: client layer trả empty dict {} (vd OTX bug cũ) cũng
+            # được coi là failure thay vì success. Catch client-layer regressions
+            # mà không cần đợi từng provider sửa từng behavior.
+            if isinstance(data, dict) and not data:
+                provider_status[provider_name] = "failed"
+                error_message = getattr(provider, "last_error_message", None) or "provider returned empty data"
                 provider_errors[provider_name] = error_message
                 self.logger.warning("[ORCHESTRATOR] provider_failed", provider=provider_name, cve_id=cve_id, duration_ms=duration_ms, error=error_message)
                 return None

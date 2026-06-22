@@ -248,13 +248,66 @@ async def run_step2_tech_analysis(
     references: list[str],
     published_at: str,
     modified_at: str,
+    poc_references: list[str] | None = None,
+    threat_actors: list[str] | None = None,
 ) -> tuple[TechnicalAnalysis | None, AttackMapping | None, dict[str, Any]]:
     """Run Step 2 với field-level validation + partial-fill retry + rule-based fallback.
+
+    TWO-PHASE REFACTOR (CVE_TI_STEP2_TWO_PHASE env):
+      Default = False (1-shot, backward compat)
+      True = Phase 1 (behavior) → Phase 2 (ATT&CK), with execution_surface
+             as canonical anchor to avoid the AV:N→T1190 bias.
+
+    Args:
+        ... (giữ nguyên 9 field gốc cho backward compat) ...
+        poc_references: Optional list of public PoC URLs (from Step 1 PoC
+            provider). Helps AI see actual exploit mechanism, especially for
+            CVEs with vague descriptions.
+        threat_actors: Optional list of threat actor names (from Step 1 OTX
+            provider). Helps AI identify adversary profile and likely scale.
 
     Returns:
         (TechnicalAnalysis | None, AttackMapping | None, validation_dict)
         None nếu cả AI và rule-based đều fail.
     """
+    # Read two-phase flag from Settings (pydantic-settings) — NOT os.getenv,
+    # because pydantic-settings does not auto-inject env vars into os.environ.
+    from app.core.config import settings
+    two_phase = settings.get_two_phase_enabled()
+
+    if two_phase:
+        return await _run_step2_two_phase(
+            ai_service=ai_service,
+            base_client=base_client,
+            cve_id=cve_id,
+            description=description,
+            cvss_score=cvss_score,
+            cvss_vector=cvss_vector,
+            cwe_ids=cwe_ids,
+            cpes=cpes,
+            references=references,
+            published_at=published_at,
+            modified_at=modified_at,
+            poc_references=poc_references,
+            threat_actors=threat_actors,
+        )
+
+    # === LEGACY 1-SHOT FLOW (backward compat) ===
+    # Query CAPEC hints per CWE (INSPIRATION ONLY, not ground truth).
+    # Local import để tránh load CAPEC bundle (~4.3MB) khi import orchestrator.
+    capec_hints_by_cwe: dict[str, list[dict]] = {}
+    if cwe_ids:
+        try:
+            from app.shared.mitre.capec_hint import query_capec_for_cwe
+            for cwe_id in cwe_ids:
+                if not cwe_id or cwe_id.startswith("NVD-CWE"):
+                    continue
+                hints = query_capec_for_cwe(cwe_id, max_results=3)
+                if hints:
+                    capec_hints_by_cwe[cwe_id] = hints
+        except Exception as exc:
+            logger.debug("[Step 2] CAPEC hint query skipped: %s", exc)
+
     # Bước 1: AI attempt 1 → dict
     try:
         ai_dict = await ai_service.fetch_raw_response(
@@ -267,6 +320,9 @@ async def run_step2_tech_analysis(
             references=references,
             published_at=published_at,
             modified_at=modified_at,
+            poc_references=poc_references,
+            threat_actors=threat_actors,
+            capec_hints_by_cwe=capec_hints_by_cwe,
         )
     except AIServiceError as exc:
         logger.warning("AI attempt 1 failed for %s: %s", cve_id, exc)
@@ -374,16 +430,20 @@ async def run_step2_tech_analysis(
     if validation["valid"]:
         # HAPPY PATH: AI OK → build Pydantic từ dict
         ai_model = ai_service._MODEL
+        # ai_models_used includes analyze + retry (if fired) for visibility.
+        ai_models_used = ai_service.get_models_used() or ([ai_model] if ai_model else [])
         base_tech = TechnicalAnalysis(
             confidence=0.85,
             ai_used=True,
             ai_retry_count=retries_used,
             ai_model=ai_model,
+            ai_models_used=ai_models_used,
         )
         base_attack = AttackMapping(
             ai_used=True,
             ai_retry_count=retries_used,
             ai_model=ai_model,
+            ai_models_used=ai_models_used,
         )
         final_tech, final_attack = _ai_dict_to_pydantic(
             current_output, base_tech, base_attack
@@ -417,3 +477,295 @@ async def run_step2_tech_analysis(
         "verdict": "RULE_BASED_FALLBACK",
         "reason": "ai_exhausted_retries",
     }
+
+
+async def _run_step2_two_phase(
+    ai_service: AIBehaviorService,
+    base_client: BaseAIClient,
+    cve_id: str,
+    description: str,
+    cvss_score: float,
+    cvss_vector: str,
+    cwe_ids: list[str],
+    cpes: list[str],
+    references: list[str],
+    published_at: str,
+    modified_at: str,
+    poc_references: list[str] | None = None,
+    threat_actors: list[str] | None = None,
+) -> tuple[TechnicalAnalysis | None, AttackMapping | None, dict[str, Any]]:
+    """Two-phase flow: Phase 1 behavior → Phase 2 ATT&CK.
+
+    See run_step2_tech_analysis() docstring for two-phase motivation.
+    Key change: Phase 1 output (execution_surface, delivery_vector,
+    user_interaction_required) is passed to Phase 2 as canonical anchor,
+    preventing the AV:N→T1190 bias that affected single-shot prompts.
+
+    Backward compat: returns same tuple shape as legacy flow.
+    """
+    from app.steps.step_2_tech_analysis.services.phase1_service import AIPhase1Service
+    from app.shared.types.execution_surface import DeliveryVector, ExecutionSurface
+
+    # Query CAPEC hints (chi can cho Phase 2)
+    capec_hints_by_cwe: dict[str, list[dict]] = {}
+    if cwe_ids:
+        try:
+            from app.shared.mitre.capec_hint import query_capec_for_cwe
+            for cwe_id in cwe_ids:
+                if not cwe_id or cwe_id.startswith("NVD-CWE"):
+                    continue
+                hints = query_capec_for_cwe(cwe_id, max_results=3)
+                if hints:
+                    capec_hints_by_cwe[cwe_id] = hints
+        except Exception as exc:
+            logger.debug("[Step 2 - Two-Phase] CAPEC hint query skipped: %s", exc)
+
+    # ===== PHASE 1: Behavior Analysis (FACTS only) =====
+    phase1_service = AIPhase1Service(base_client)
+    try:
+        phase1_dict = await phase1_service.fetch_behavior(
+            cve_id=cve_id,
+            description=description,
+            cvss_score=cvss_score,
+            cvss_vector=cvss_vector,
+            cwe_ids=cwe_ids,
+            cpes=cpes,
+            references=references,
+            published_at=published_at,
+            modified_at=modified_at,
+            poc_references=poc_references,
+            threat_actors=threat_actors,
+        )
+    except AIServiceError as exc:
+        logger.warning(
+            "[Step 2 - Two-Phase] Phase 1 failed for %s: %s → rule-based fallback",
+            cve_id, exc,
+        )
+        # Phase 1 fail → fallback rule-based cho toàn bo (cung cap execution_surface
+        # qua classify_execution_surface de Phase 2 downstream consumer có data).
+        tech, attack = _build_rule_based_pydantic(
+            cve_id=cve_id,
+            description=description,
+            references=references,
+            cpes=cpes,
+            cvss_vector=cvss_vector,
+            cwe_ids=cwe_ids,
+            ai_model=None,
+            ai_retry_count=0,
+        )
+        return tech, attack, {
+            "overall_coverage": 0.0,
+            "verdict": "RULE_BASED_FALLBACK",
+            "reason": "phase1_ai_service_error",
+        }
+
+    # Phase 1 SUCCESS - chuan hoa dict + apply rule-based fallback cho 3 field moi
+    phase1_dict = _normalize_phase1_dict(phase1_dict, cve_id, cwe_ids)
+    phase1_dict = _normalize_none_placeholders(phase1_dict)
+
+    # ===== PHASE 2: ATT&CK Mapping (using Phase 1 anchor) =====
+    retries_used: int = 0
+    try:
+        phase2_dict = await ai_service.fetch_attack_mapping(
+            cve_id=cve_id,
+            description=description,
+            cvss_score=cvss_score,
+            cvss_vector=cvss_vector,
+            cwe_ids=cwe_ids,
+            cpes=cpes,
+            references=references,
+            published_at=published_at,
+            modified_at=modified_at,
+            poc_references=poc_references,
+            threat_actors=threat_actors,
+            capec_hints_by_cwe=capec_hints_by_cwe,
+            phase1_output=phase1_dict,
+        )
+    except AIServiceError as exc:
+        logger.warning(
+            "[Step 2 - Two-Phase] Phase 2 attempt 1 failed for %s: %s",
+            cve_id, exc,
+        )
+        # Retry Phase 2 only (Phase 1 da OK)
+        retries_used = 1
+        try:
+            phase2_dict = await ai_service.fetch_attack_mapping(
+                cve_id=cve_id,
+                description=description,
+                cvss_score=cvss_score,
+                cvss_vector=cvss_vector,
+                cwe_ids=cwe_ids,
+                cpes=cpes,
+                references=references,
+                published_at=published_at,
+                modified_at=modified_at,
+                poc_references=poc_references,
+                threat_actors=threat_actors,
+                capec_hints_by_cwe=capec_hints_by_cwe,
+                phase1_output=phase1_dict,
+            )
+        except AIServiceError as exc2:
+            logger.warning(
+                "[Step 2 - Two-Phase] Phase 2 retry %d failed for %s: %s → rule-based fallback",
+                1, cve_id, exc2,
+            )
+            tech, attack = _build_rule_based_pydantic(
+                cve_id=cve_id,
+                description=description,
+                references=references,
+                cpes=cpes,
+                cvss_vector=cvss_vector,
+                cwe_ids=cwe_ids,
+                ai_model=ai_service._MODEL,
+                ai_retry_count=retries_used,
+            )
+            return tech, attack, {
+                "validation": {},
+                "retries_used": retries_used,
+                "verdict": "RULE_BASED_FALLBACK",
+                "reason": "phase2_ai_service_error",
+            }
+
+    phase2_dict = _normalize_phase2_dict(phase2_dict, cve_id)
+
+    # ===== Combine Phase 1 + Phase 2 =====
+    combined_dict = _combine_phase_outputs(phase1_dict, phase2_dict)
+
+    # Track BOTH Phase 1 + Phase 2 models so reports surface which provider
+    # ran each phase (e.g. Phase 1 = OpenRouter, Phase 2 = Groq). Dedup
+    # preserves order: Phase 1 first, Phase 2 second.
+    phase1_model = phase1_service._MODEL
+    phase2_model = ai_service._MODEL
+    models_used: list[str] = []
+    for m in (phase1_model, phase2_model):
+        if m and m not in models_used:
+            models_used.append(m)
+    ai_model = phase2_model  # legacy field = Phase 2 (primary analyze call)
+    base_tech = TechnicalAnalysis(
+        confidence=phase1_dict.get("confidence") or 0.85,
+        ai_used=True,
+        ai_retry_count=retries_used,
+        ai_model=ai_model,
+        ai_models_used=models_used,
+    )
+    base_attack = AttackMapping(
+        ai_used=True,
+        ai_retry_count=retries_used,
+        ai_model=ai_model,
+        ai_models_used=models_used,
+    )
+    final_tech, final_attack = _ai_dict_to_pydantic(
+        combined_dict, base_tech, base_attack
+    )
+    return final_tech, final_attack, {
+        "validation": {"valid": True},
+        "retries_used": retries_used,
+        "verdict": "PASS_TWO_PHASE" if retries_used == 0 else "PASS_TWO_PHASE_AFTER_RETRY",
+        "phase1_execution_surface": phase1_dict.get("execution_surface"),
+        "phase1_delivery_vector": phase1_dict.get("delivery_vector"),
+        "phase1_user_interaction_required": phase1_dict.get("user_interaction_required"),
+    }
+
+
+def _normalize_phase1_dict(
+    data: dict[str, Any], cve_id: str, cwe_ids: list[str]
+) -> dict[str, Any]:
+    """Normalize Phase 1 dict: clean key names, fill rule-based fallback cho
+    execution_surface/delivery_vector neu AI de unknown.
+
+    Phase 1 dict structure khac Phase 2 (flat, khong co technical_analysis/attack_mapping
+    wrapper). Phase 1 la "behavior only" nen dict shape giong cu, nhung them 3
+    field moi o top level.
+    """
+    if not isinstance(data, dict):
+        data = {}
+
+    # Rule-based fallback cho execution_surface / delivery_vector / user_interaction
+    desc = data.get("attack_flow", {}).get("entry_vector", "") if isinstance(data.get("attack_flow"), dict) else ""
+    # Lay description goc tu data neu co, neu khong lay tu attack_flow
+    rule_explanation_desc = data.get("description") or desc
+    cvss_vector = data.get("cvss_vector")
+
+    # Neu AI khong set execution_surface, su dung rule-based fallback
+    from app.steps.step_2_tech_analysis.rule_based.exploit_classifier import (
+        classify_delivery_vector,
+        classify_execution_surface,
+    )
+    if not data.get("execution_surface") or data.get("execution_surface") == "unknown":
+        rule_surface = classify_execution_surface(cvss_vector, rule_explanation_desc, cwe_ids)
+        if rule_surface.value != "unknown":
+            data["execution_surface"] = rule_surface.value
+            logger.debug(
+                "[Step 2 - Two-Phase] %s execution_surface filled by rule-based: %s",
+                cve_id, rule_surface.value,
+            )
+
+    # Tuong tu cho delivery_vector (can execution_surface da co)
+    if data.get("execution_surface"):
+        from app.shared.types.execution_surface import ExecutionSurface
+        if not data.get("delivery_vector") or data.get("delivery_vector") == "unknown":
+            rule_delivery = classify_delivery_vector(
+                cvss_vector, rule_explanation_desc, ExecutionSurface(data["execution_surface"])
+            )
+            if rule_delivery.value != "unknown":
+                data["delivery_vector"] = rule_delivery.value
+                logger.debug(
+                    "[Step 2 - Two-Phase] %s delivery_vector filled by rule-based: %s",
+                    cve_id, rule_delivery.value,
+                )
+
+    return data
+
+
+def _normalize_phase2_dict(
+    data: dict[str, Any], cve_id: str
+) -> dict[str, Any]:
+    """Normalize Phase 2 dict: wrap trong attack_mapping cho _ai_dict_to_pydantic.
+
+    Phase 2 output tu AI la flat dict {tactics, techniques, subtechniques,
+    mapping_reasons, attack_confidence}. _ai_dict_to_pydantic expect shape:
+    {"attack_mapping": {tactics, techniques, ...}}. Wrap no lai.
+    """
+    if not isinstance(data, dict):
+        data = {}
+
+    # Phase 2 chi chua ATT&CK fields
+    attack_mapping_block = {
+        "tactics": data.get("tactics") or [],
+        "techniques": data.get("techniques") or [],
+        "subtechniques": data.get("subtechniques") or [],
+        "mapping_reasons": data.get("mapping_reasons") or [],
+        "confidence": data.get("attack_confidence"),
+    }
+    return {"attack_mapping": attack_mapping_block}
+
+
+def _combine_phase_outputs(
+    phase1: dict[str, Any], phase2: dict[str, Any]
+) -> dict[str, Any]:
+    """Combine Phase 1 (behavior) + Phase 2 (attack_mapping) thanh dict giong
+    legacy 1-shot output, de _ai_dict_to_pydantic parse duoc.
+
+    Phase 1 dict hien o top level (family, vulnerability_type, attack_flow, ...).
+    Phase 2 dict da duoc wrap trong `attack_mapping` boi _normalize_phase2_dict.
+    """
+    combined = {**phase1, **phase2}
+    # Move Phase 1 fields vao technical_analysis wrapper neu can
+    # (existing _ai_dict_to_pydantic expects {technical_analysis: {...},
+    # attack_mapping: {...}}). Phase 1 fields co the o top level hoac
+    # trong technical_analysis - tuy vao implementation. Kiem tra va chuan hoa.
+    if "technical_analysis" not in combined:
+        # Phase 1 dict co the o flat shape (khong co technical_analysis wrapper)
+        # Extract va wrap
+        tech_fields = {
+            k: combined.pop(k) for k in [
+                "family", "vulnerability_type", "vulnerability_class",
+                "exploit_vector", "pre_auth", "remote_exploitable",
+                "exploit_complexity", "confidence", "execution_surface",
+                "delivery_vector", "user_interaction_required",
+                "attack_flow", "mandatory_behaviors", "evasive_indicators",
+                "exploit_requirements", "cwe_metadata", "reasoning",
+            ] if k in combined
+        }
+        combined["technical_analysis"] = tech_fields
+    return combined

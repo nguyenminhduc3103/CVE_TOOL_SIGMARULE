@@ -177,6 +177,11 @@ def _ai_dict_to_pydantic(
         reasoning=tech_dict.get("reasoning") or None,
         cwe_metadata=cwe_meta,
         attack_flow=attack_flow,
+        # === NEW: two-phase fields (Phase 1 output) ===
+        execution_surface=tech_dict.get("execution_surface"),
+        delivery_vector=tech_dict.get("delivery_vector"),
+        user_interaction_required=tech_dict.get("user_interaction_required"),
+        # === End two-phase fields ===
         ai_used=True,
         ai_retry_count=getattr(base_tech, "ai_retry_count", 0),  # PASS THROUGH
         ai_model=ai_model,
@@ -291,6 +296,12 @@ def _normalize_none_placeholders(ai_data: dict[str, Any]) -> dict[str, Any]:
         elif raw and str(raw).lower().strip() in ("none", "n/a", "unknown"):
             tech[key] = []
 
+    # Backfill evasive_indicators cho memory-corruption CWE khi AI trống.
+    cwe_meta = tech.get("cwe_metadata") or {}
+    cwe_ids = cwe_meta.get("cwe_ids") or []
+    if not tech.get("evasive_indicators"):
+        tech["evasive_indicators"] = _default_evasive_indicators_for_cwe(cwe_ids)
+
     for key in ("mapping_reasons",):
         raw = atk.get(key) or []
         if isinstance(raw, list):
@@ -310,6 +321,85 @@ def _normalize_none_placeholders(ai_data: dict[str, Any]) -> dict[str, Any]:
         flow["observable_side_effects"] = []
 
     return ai_data
+
+
+# ==============================================================
+# Backfill evasive_indicators cho memory-corruption CVEs
+# ==============================================================
+# Khi AI trả [] hoặc ["none"] (bị filter ở trên), backfill theo CWE category
+# để đảm bảo output không empty cho memory-corruption CVEs.
+
+_EVASIVE_DEFAULTS_BY_CWE: dict[str, list[str]] = {
+    "CWE-787": ["ROP chains to bypass DEP", "ASLR bypass via info leak",
+                "heap spraying for shellcode placement"],
+    "CWE-125": ["ROP chains", "ASLR bypass", "info leak via OOB read"],
+    "CWE-416": ["heap grooming / feng shui", "UAF race condition timing"],
+    "CWE-119": ["ROP chains", "stack pivoting", "shellcode encoding"],
+    "CWE-190": ["integer overflow edge case probing"],
+    # Code-injection family (generalizable for CWE-94/95/96/917/1336).
+    # Strings use semantic description of evasion technique, not CVE-specific payload.
+    "CWE-94": [
+        "string obfuscation (e.g. eval(StrReverse(...)))",
+        "base64/URL encoding of payload bytes",
+        "comment insertion to break regex WAF signatures",
+    ],
+    "CWE-917": [
+        "Unicode escape encoding (\\u00XX) of special chars to bypass string-based WAF",
+        "OGNL/SpEL sandbox bypass via context manipulation (e.g. allowStaticMethodAccess=true)",
+        "nested expression expansion to evade parser-differential detection",
+    ],
+    "CWE-1336": [
+        "template syntax variations (${...}, {{...}}, <%...%>) to bypass WAF signatures",
+        "comment/sandbox escape via #{...} or {% raw %} tricks",
+        "encoding/obfuscation of template directives to evade static analysis",
+    ],
+    "_web_default": [
+        "HTTP chunked transfer encoding to bypass length-based WAF",
+        "URL/hex encoding of payload bytes",
+        "header obfuscation / parser differential",
+    ],
+    # Shared code-injection defaults (applied when ANY code-injection CWE present).
+    "_code_injection_default": [
+        "HTTP parameter encoding to bypass WAF signature",
+        "case manipulation of keywords (e.g. oGnL vs OGNL)",
+        "string concatenation / char-code obfuscation of payload",
+    ],
+}
+
+# Canonical CWE family sets. Imported by _validation.py + exploit_classifier.py
+# to enforce mandatory `evasive_indicators` and execution_surface classification.
+_MEMORY_CORRUPTION_CWES = frozenset({"CWE-787", "CWE-125", "CWE-416", "CWE-119", "CWE-190"})
+
+# Code-injection family: generic code injection (CWE-94/95/96),
+# expression language injection (CWE-917 — OGNL/SpEL/MVEL),
+# server-side template injection (CWE-1336).
+_CODE_INJECTION_CWES = frozenset({
+    "CWE-94",   # Improper Control of Generation of Code ('Code Injection')
+    "CWE-95",   # Improper Neutralization of Directives in Dynamically Evaluated Code ('Eval Injection')
+    "CWE-96",   # Improper Neutralization of Directives in Statically Saved Code ('Static Code Injection')
+    "CWE-917",  # Expression Language Injection
+    "CWE-1336", # Template Injection
+})
+
+
+def _default_evasive_indicators_for_cwe(cwe_ids: list[str] | None) -> list[str]:
+    """Backfill evasive_indicators theo CWE category (memory-corruption HOẶC code-injection).
+
+    Áp dụng cho cả server-side và client-side variants của từng family:
+    - Memory-corruption CVEs: ROP/ASLR defaults + WAF-bypass layer (network-facing).
+    - Code-injection CVEs: encoding/sandbox-bypass defaults + WAF-bypass layer (network-facing).
+    """
+    if not cwe_ids:
+        return []
+    cwe_set = set(cwe_ids)
+    out: list[str] = []
+    for cwe in cwe_ids:
+        out.extend(_EVASIVE_DEFAULTS_BY_CWE.get(cwe, []))
+    if cwe_set & _MEMORY_CORRUPTION_CWES:
+        out.extend(_EVASIVE_DEFAULTS_BY_CWE["_web_default"])
+    if cwe_set & _CODE_INJECTION_CWES:
+        out.extend(_EVASIVE_DEFAULTS_BY_CWE["_code_injection_default"])
+    return out
 
 
 # ==============================================================

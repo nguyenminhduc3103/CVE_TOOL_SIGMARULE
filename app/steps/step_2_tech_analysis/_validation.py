@@ -21,6 +21,10 @@ from app.steps.step_2_tech_analysis.rule_based.attack_validator import (
     validate_against_cve_context,
     validate_ttp_list,
 )
+from app.steps.step_2_tech_analysis.data_flow import (
+    _CODE_INJECTION_CWES,
+    _MEMORY_CORRUPTION_CWES,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -233,9 +237,22 @@ def validate_field_level(
     if not mb["valid"]:
         invalid_fields["technical_analysis.mandatory_behaviors"] = mb["reason"]
 
-    # --- evasive_indicators (optional: empty list OK) ---
+    # --- evasive_indicators ---
+    # Mặc định: empty list OK (validator cũ cho phép).
+    # Memory-corruption CVEs (CWE-787/125/416/119/190) HOẶC code-injection CVEs
+    # (CWE-94/95/96/917/1336): yêu cầu AI populate evasion techniques
+    # (encoding bypass, sandbox bypass, WAF bypass) vì mọi code-injection /
+    # memory-corruption exploit qua HTTP/web đều có evasion vector.
+    # Empty list → invalid → trigger partial-fill retry.
+    cwe_meta = data.get("cwe_metadata") or {}
+    cwe_ids = cwe_meta.get("cwe_ids") or []
+    cwe_set = set(cwe_ids)
+    mandatory_evasive = bool(
+        (cwe_set & _MEMORY_CORRUPTION_CWES) or (cwe_set & _CODE_INJECTION_CWES)
+    )
     ei = _validate_list_field(
-        tech.get("evasive_indicators"), "evasive_indicators", allow_empty=True
+        tech.get("evasive_indicators"), "evasive_indicators",
+        allow_empty=not mandatory_evasive,
     )
     if not ei["valid"]:
         invalid_fields["technical_analysis.evasive_indicators"] = ei["reason"]

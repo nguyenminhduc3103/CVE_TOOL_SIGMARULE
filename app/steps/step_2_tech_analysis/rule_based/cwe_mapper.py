@@ -40,6 +40,66 @@ CWE_BEHAVIOR_MAP: dict[str, CWEProfile] = {
         likely_outcome="remote_code_execution",
         family=VulnerabilityFamily.CODE_INJECTION,
     ),
+    # CWE-94: generic code injection (eval, exec, dynamic code generation).
+    # Distinct from CWE-78 (OS command) and CWE-917 (expression language):
+    # CWE-94 covers eval()-style sinks in interpreted languages where the
+    # attacker controls a string passed to eval/exec/Function constructor.
+    "CWE-94": CWEProfile(
+        cwe_id="CWE-94",
+        cwe_name="Improper Control of Generation of Code ('Code Injection')",
+        vulnerability_type="code_injection",
+        vulnerability_class=VulnerabilityClass.CODE_INJECTION,
+        mapping_confidence=0.95,
+        mandatory_behaviors=("process_creation", "shell_spawn"),
+        evasive_indicators=("string_obfuscation", "encoding_bypass"),
+        exploit_requirements=("attacker_controlled_input", "eval_or_exec_sink"),
+        likely_outcome="remote_code_execution",
+        family=VulnerabilityFamily.CODE_INJECTION,
+    ),
+    # CWE-917: Expression Language Injection (OGNL, SpEL, MVEL).
+    # Coverage: Confluence OGNL (CVE-2021-26084), Apache Struts OGNL
+    # (CVE-2017-9805, CVE-2018-11776), Spring SpEL (CVE-2022-22963),
+    # Mvel eval injection. The vulnerable sink is the framework's
+    # expression evaluator, not eval() directly.
+    "CWE-917": CWEProfile(
+        cwe_id="CWE-917",
+        cwe_name=(
+            "Improper Neutralization of Special Elements used in an "
+            "Expression Language Statement ('Expression Language Injection')"
+        ),
+        vulnerability_type="expression_language_injection",
+        vulnerability_class=VulnerabilityClass.CODE_INJECTION,
+        mapping_confidence=0.95,
+        mandatory_behaviors=("process_creation", "expression_evaluation"),
+        evasive_indicators=("unicode_escape_encoding", "sandbox_bypass"),
+        exploit_requirements=(
+            "expression_language_sink",
+            "attacker_controlled_template_input",
+        ),
+        likely_outcome="remote_code_execution",
+        family=VulnerabilityFamily.EXPRESSION_LANGUAGE_INJECTION,
+    ),
+    # CWE-1336: Server-Side Template Injection (SSTI).
+    # Coverage: Jinja2 (Python), Twig (PHP), Freemarker (Java), Smarty,
+    # Velocity. The vulnerable sink is the template engine renderer.
+    "CWE-1336": CWEProfile(
+        cwe_id="CWE-1336",
+        cwe_name=(
+            "Improper Neutralization of Special Elements Used in a "
+            "Template Engine ('Template Injection')"
+        ),
+        vulnerability_type="template_injection",
+        vulnerability_class=VulnerabilityClass.CODE_INJECTION,
+        mapping_confidence=0.95,
+        mandatory_behaviors=("template_rendering", "process_creation"),
+        evasive_indicators=("template_syntax_obfuscation", "sandbox_escape"),
+        exploit_requirements=(
+            "user_controlled_template_input",
+            "server_side_template_engine",
+        ),
+        likely_outcome="remote_code_execution",
+        family=VulnerabilityFamily.CODE_INJECTION,
+    ),
     "CWE-89": CWEProfile(
         cwe_id="CWE-89",
         cwe_name="Improper Neutralization of Special Elements used in an SQL Command",

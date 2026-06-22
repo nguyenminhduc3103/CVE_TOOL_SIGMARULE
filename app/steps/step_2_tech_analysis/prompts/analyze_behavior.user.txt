@@ -7,5 +7,5 @@ CPEs: {cpes}
 References: {references}
 Published: {published_at}
 Modified: {modified_at}
-
+{poc_block}{threat_actors_block}{capec_hints_block}{phase1_block}
 Produce the JSON object per the schema in the system message.
