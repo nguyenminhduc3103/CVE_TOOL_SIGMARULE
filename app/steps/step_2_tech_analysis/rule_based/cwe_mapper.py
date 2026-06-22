@@ -28,8 +28,7 @@ CWE_BEHAVIOR_MAP: dict[str, CWEProfile] = {
         vulnerability_class=VulnerabilityClass.COMMAND_INJECTION,
         mapping_confidence=0.95,
         # process_creation: real CMDi RCE leads to subprocess spawn (sh -c, cmd.exe /c).
-        # Without this, MITRE T1059 mapping is missed because process_execution
-        # behavior is internal-only and has no BEHAVIOR_ATTACK_GRAPH entry.
+        # Without this, T1059 mapping missed because process_execution is internal-only.
         mandatory_behaviors=(
             "process_execution",
             "shell_spawn",
@@ -41,9 +40,8 @@ CWE_BEHAVIOR_MAP: dict[str, CWEProfile] = {
         family=VulnerabilityFamily.CODE_INJECTION,
     ),
     # CWE-94: generic code injection (eval, exec, dynamic code generation).
-    # Distinct from CWE-78 (OS command) and CWE-917 (expression language):
-    # CWE-94 covers eval()-style sinks in interpreted languages where the
-    # attacker controls a string passed to eval/exec/Function constructor.
+    # Distinct from CWE-78 (OS command) và CWE-917 (expression language):
+    # covers eval()-style sinks in interpreted languages.
     "CWE-94": CWEProfile(
         cwe_id="CWE-94",
         cwe_name="Improper Control of Generation of Code ('Code Injection')",
@@ -57,10 +55,7 @@ CWE_BEHAVIOR_MAP: dict[str, CWEProfile] = {
         family=VulnerabilityFamily.CODE_INJECTION,
     ),
     # CWE-917: Expression Language Injection (OGNL, SpEL, MVEL).
-    # Coverage: Confluence OGNL (CVE-2021-26084), Apache Struts OGNL
-    # (CVE-2017-9805, CVE-2018-11776), Spring SpEL (CVE-2022-22963),
-    # Mvel eval injection. The vulnerable sink is the framework's
-    # expression evaluator, not eval() directly.
+    # Sink = framework's expression evaluator (không phải eval() trực tiếp).
     "CWE-917": CWEProfile(
         cwe_id="CWE-917",
         cwe_name=(
@@ -80,8 +75,7 @@ CWE_BEHAVIOR_MAP: dict[str, CWEProfile] = {
         family=VulnerabilityFamily.EXPRESSION_LANGUAGE_INJECTION,
     ),
     # CWE-1336: Server-Side Template Injection (SSTI).
-    # Coverage: Jinja2 (Python), Twig (PHP), Freemarker (Java), Smarty,
-    # Velocity. The vulnerable sink is the template engine renderer.
+    # Sink = template engine renderer (Jinja2, Twig, Freemarker, Smarty, Velocity).
     "CWE-1336": CWEProfile(
         cwe_id="CWE-1336",
         cwe_name=(
@@ -106,9 +100,9 @@ CWE_BEHAVIOR_MAP: dict[str, CWEProfile] = {
         vulnerability_type="sql_injection",
         vulnerability_class=VulnerabilityClass.SQL_INJECTION,
         mapping_confidence=0.95,
-        # data_exfiltration: SQLi primary impact IS data theft. Move from
-        # likely_outcome (informational) to mandatory_behaviors (actionable
-        # MITRE mapping → T1020/T1114 via BEHAVIOR_ATTACK_GRAPH).
+        # data_exfiltration: SQLi primary impact IS data theft → move from
+        # likely_outcome (informational) sang mandatory_behaviors (actionable
+        # MITRE mapping T1020/T1114 qua BEHAVIOR_ATTACK_GRAPH).
         mandatory_behaviors=(
             "database_query",
             "http_request",
@@ -149,15 +143,11 @@ CWE_BEHAVIOR_MAP: dict[str, CWEProfile] = {
         vulnerability_type="deserialization",
         vulnerability_class=VulnerabilityClass.DESERIALIZATION,
         mapping_confidence=0.97,
-        # public_facing_exploit: CWE-502 thường exploit qua HTTP/API
-        # endpoint công khai (Log4Shell, JSON deserialization attacks, etc.)
-        # mà chỉ network_connection/process_creation không phản ánh
-        # attack surface đầu vào.
-        #
-        # tool_download: Deserialization exploits typically fetch malicious
-        # class files (Log4Shell: .class via LDAP/HTTP, Java deserialization
-        # gadget chains). T1105 (Ingress Tool Transfer) là kỹ thuật MITRE
-        # chuẩn cho hành vi này.
+        # public_facing_exploit: CWE-502 exploit qua HTTP/API endpoint công khai
+        # (Log4Shell, JSON deserialization). Chỉ network_connection/process_creation
+        # không phản ánh attack surface đầu vào.
+        # tool_download: deserialization thường fetch malicious class files
+        # (Log4Shell .class via LDAP/HTTP, gadget chains) → T1105.
         mandatory_behaviors=(
             "network_connection",
             "process_creation",

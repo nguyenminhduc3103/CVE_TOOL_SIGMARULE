@@ -1,12 +1,12 @@
-"""MITRE ATT&CK Validator - Safety Net cho Bước 2.
+"""MITRE ATT&CK Validator - Safety Net cho Step 2.
 
-Validate TTP IDs (Tactics & Techniques) do AI sinh ra hoặc rule-based sinh ra
-theo danh sách chuẩn MITRE ATT&CK Enterprise.
+Validate TTP IDs (Tactics & Techniques) do AI hoặc rule-based sinh ra theo
+danh sách chuẩn MITRE ATT&CK Enterprise.
 
-Sau refactor Phase 2: Whitelist KHONG con hardcode tinh (50% matrix) ma
-chuyen sang doc tu MITRE STIX qua `MitreAttackWhitelist.get()` (~95%+ matrix,
-auto-update 7 ngay). Hardcode constants chi con lai lam BASELINE FALLBACK
-khi STIX load fail (network down, env CVE_TI_MITRE_OFFLINE=1, file corrupt).
+Sau refactor Phase 2: whitelist không còn hardcode tĩnh (50% matrix) mà
+đọc từ MITRE STIX qua `MitreAttackWhitelist.get()` (~95%+ matrix, auto-update
+7 ngày). Hardcode chỉ còn làm baseline fallback khi STIX load fail (network
+down, env CVE_TI_MITRE_OFFLINE=1, file corrupt).
 
 Ràng buộc theo tài liệu (dòng 24): "Mã TTP do AI sinh ra phải được đối chiếu
 và xác thực với danh sách chuẩn của MITRE. Mã không hợp lệ sẽ bị loại bỏ."
@@ -21,29 +21,23 @@ _TACTIC_PATTERN = re.compile(r"^TA\d{4}$")
 
 
 def _get_whitelist():
-    """Lazy import + accessor. Avoid forcing the 30MB STIX parse to happen
-    just because someone imported this module for a single helper function.
+    """Lazy import + accessor. Tránh forcing 30MB STIX parse chỉ vì import
+    module này cho 1 helper function.
     """
     from app.shared.mitre.loader import MitreAttackWhitelist
     return MitreAttackWhitelist.get()
 
 
-# ----------------------------------------------------------------------
-# Dynamic accessors (replacement for hardcoded VALID_* frozensets)
-# ----------------------------------------------------------------------
-# These properties return frozenset on every call. Backward-compat: old
-# callers that did `value in VALID_TECHNIQUES` (rare, internal only) still
-# work because frozenset supports `in`. New callers should use
-# `_get_whitelist().is_known(value)` directly for clarity.
-# ----------------------------------------------------------------------
+# Dynamic accessors (replacement cho hardcoded VALID_* frozensets).
+# Backward-compat: caller cũ `value in VALID_TECHNIQUES` vẫn work vì frozenset
+# supports `in`. Caller mới nên dùng `_get_whitelist().is_known(value)`.
 
 
 def __getattr__(name: str):
-    """Module-level __getattr__ for backward-compat lazy access.
+    """Module-level __getattr__ cho backward-compat lazy access.
 
-    Allows `from attack_validator import VALID_TECHNIQUES` and
-    `value in VALID_TECHNIQUES` to keep working — but each access goes
-    through the live MitreAttackWhitelist singleton.
+    Cho phép `from attack_validator import VALID_TECHNIQUES` giữ working —
+    mỗi access đi qua live MitreAttackWhitelist singleton.
     """
     if name in ("VALID_TACTICS", "VALID_TECHNIQUES", "VALID_SUBTECHNIQUES"):
         wl = _get_whitelist()
@@ -64,27 +58,24 @@ def _normalize_id(value: object) -> str | None:
     text = value.strip().upper()
     if not text:
         return None
-    # Map từ format dài 'attack.t1059' về ngắn 'T1059'
+    # Map từ format dài 'attack.t1059' về ngắn 'T1059'.
     if text.startswith("ATTACK."):
         text = text[len("ATTACK."):]
     return text
 
 
 def is_known_ttp(value: str) -> str | None:
-    """Phân loại một TTP ID (đã được normalize) theo dynamic STIX whitelist.
-
-    Trả về category string để giúp debug/giảm duplication giữa
-    validate_tactic và validate_technique:
+    """Phân loại một TTP ID (đã normalize) theo dynamic STIX whitelist.
 
     Returns:
         - "tactic" : ID khớp _TACTIC_PATTERN và có trong whitelist.
         - "parent" : base technique (T1059) có trong whitelist.
-        - "sub"    : subtechnique (T1059.001) có trong whitelist
-                     HOẶC có parent technique hợp lệ (parent-child fallback).
-        - None     : ID không hợp lệ về format hoặc không nằm trong whitelist.
+        - "sub"    : subtechnique (T1059.001) có trong whitelist HOẶC có parent
+                     technique hợp lệ (parent-child fallback).
+        - None     : ID không hợp lệ về format hoặc không có trong whitelist.
 
-    Lưu ý: "sub" trả về ngay cả khi match qua parent-child fallback, vì
-    validate_technique() vẫn pass trong trường hợp đó.
+    Lưu ý: "sub" trả về ngay cả khi match qua parent-child fallback vì
+    validate_technique() vẫn pass.
     """
     if not value:
         return None
@@ -94,19 +85,16 @@ def is_known_ttp(value: str) -> str | None:
     if not _TECHNIQUE_PATTERN.match(value):
         return None
     if "." in value:
-        # Subtechnique - ưu tiên whitelist
+        # Subtechnique - ưu tiên whitelist.
         if value in wl.subtechniques:
             return "sub"
-        # Fallback: parent technique hợp lệ → coi như sub-technique hợp lý
-        # theo convention. Tránh phải maintain ~600 subtechnique IDs thủ công.
-        # STIX dynamic whitelist (~475 subtechniques) đã cover gần hết các
-        # subtechnique phổ biến, nên fallback chỉ trigger khi AI propose
-        # subtechnique cực mới.
+        # Fallback: parent technique hợp lệ → coi như sub-technique hợp lý.
+        # STIX dynamic whitelist (~475 subtechniques) cover gần hết phổ biến,
+        # fallback chỉ trigger khi AI propose subtechnique cực mới.
         parent = value.split(".", 1)[0]
         if parent in wl.techniques:
             return "sub"
         return None
-    # Base technique
     if value in wl.techniques:
         return "parent"
     return None
@@ -125,10 +113,10 @@ def validate_technique(value: object) -> bool:
 
     Quy tắc:
     - Technique (T1059): phải có trong whitelist (STIX dynamic).
-    - Subtechnique (T1059.001): ưu tiên check trong whitelist.
-      Nếu không có trong whitelist, fallback: chấp nhận nếu parent technique
-      hợp lệ (vd AI trả T1021.003 dù chưa list trong whitelist nhưng T1021
-      hợp lệ → pass). Vẫn reject T9999.001 (parent invalid).
+    - Subtechnique (T1059.001): ưu tiên check whitelist. Nếu không có,
+      fallback: chấp nhận nếu parent technique hợp lệ (vd AI trả T1021.003
+      dù chưa list trong whitelist nhưng T1021 hợp lệ → pass). Vẫn reject
+      T9999.001 (parent invalid).
     """
     normalized = _normalize_id(value)
     if normalized is None:
@@ -145,12 +133,8 @@ def validate_ttp_list(
 
     Returns:
         {
-            "valid_tactics": [...],
-            "valid_techniques": [...],
-            "valid_subtechniques": [...],
-            "invalid_tactics": [...],
-            "invalid_techniques": [...],
-            "invalid_subtechniques": [...],
+            "valid_tactics": [...], "valid_techniques": [...], "valid_subtechniques": [...],
+            "invalid_tactics": [...], "invalid_techniques": [...], "invalid_subtechniques": [...],
             "warnings": ["invalid_technique_dropped:T9999", ...],
             "passed": bool (True nếu không có invalid nào),
         }
@@ -177,11 +161,11 @@ def validate_ttp_list(
         normalized = _normalize_id(raw)
         if normalized and validate_technique(normalized):
             if "." in normalized:
-                # Là subtechnique
+                # Subtechnique.
                 if normalized not in valid_subtechniques_seen:
                     valid_subtechniques_seen.add(normalized)
                     valid_subtechniques.append(normalized)
-                # Đồng thời thêm base vào techniques nếu chưa có
+                # Đồng thời thêm base vào techniques nếu chưa có.
                 base = normalized.split(".", 1)[0]
                 if base not in valid_techniques:
                     valid_techniques.append(base)
@@ -303,16 +287,14 @@ def normalize_family(value: object) -> str | None:
     return "unknown"
 
 
-# =============================================================================
-# Semantic validation - filter techniques MÂU THUẪN context CVE
-# =============================================================================
+# Semantic validation - filter techniques MÂU THUẪN context CVE.
 # Mục đích: bắt hallucination AI obvious - technique không hợp với CVSS vector
-# hoặc description của CVE. KHÔNG dùng ground truth CAPEC (quá rộng).
+# hoặc description. KHÔNG dùng ground truth CAPEC (quá rộng).
 #
-# Theo spec (CVE-2-Sigma.md): Step 2 phải phân tích đúng thì Step 3 mới có ý nghĩa.
+# Theo spec (CVE-2-Sigma.md): Step 2 phân tích đúng thì Step 3 mới có ý nghĩa.
 # Validation này giúp Step 2 loại bỏ techniques sai trước khi pass cho Step 3.
 
-# Network-only techniques - chỉ hợp lý khi CVE exploit được từ xa
+# Network-only techniques - chỉ hợp lý khi CVE exploit được từ xa.
 # Dùng frozenset constants (không query STIX) vì đây là semantic, không phải format.
 _NETWORK_ONLY_TECHNIQUES: frozenset[str] = frozenset({
     "T1190",  # Exploit Public-Facing Application
@@ -323,7 +305,7 @@ _NETWORK_ONLY_TECHNIQUES: frozenset[str] = frozenset({
     "T1071",  # Application Layer Protocol (C2 network)
 })
 
-# Phishing-specific techniques - chỉ hợp với social engineering context
+# Phishing-specific techniques - chỉ hợp với social engineering context.
 _PHISHING_TECHNIQUES: frozenset[str] = frozenset({
     "T1566", "T1566.001", "T1566.002", "T1566.003",
     "T1598", "T1598.001", "T1598.002", "T1598.003",
@@ -357,13 +339,10 @@ def validate_against_cve_context(
 ) -> dict[str, list[str]]:
     """Filter techniques MÂU THUẪN context CVE (semantic validation).
 
-    3 rule hiện tại (mở rộng được nếu cần):
-      Rule 1: Network-only techniques (T1190, T1133, ...) MÂU THUẪN với
-              CVSS AV:L (local-only CVE).
-      Rule 2: Phishing techniques (T1566, ...) MÂU THUẪN với description
-              nhắc tới local/hardware/physical access.
-      Rule 3: T1190 vs explicit local context (redundant với rule 1+2 nhưng
-              explicit để dễ debug).
+    3 rule (mở rộng được):
+      Rule 1: Network-only (T1190, T1133, ...) MÂU THUẪN với AV:L.
+      Rule 2: Phishing (T1566, ...) MÂU THUẪN với description local/hardware/physical.
+      Rule 3: T1190 vs explicit local context (explicit cho debug).
 
     Args:
         techniques: List technique IDs AI trả (vd ['T1190', 'T1059']).
@@ -372,8 +351,8 @@ def validate_against_cve_context(
 
     Returns:
         {
-            "kept": [...],         # techniques qua validation
-            "dropped": [...],      # techniques bị loại
+            "kept": [...],
+            "dropped": [...],
             "dropped_reasons": {tech: reason, ...},
         }
     """

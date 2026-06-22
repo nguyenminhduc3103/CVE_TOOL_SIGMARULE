@@ -1,9 +1,7 @@
 """AI Service cho Step 2 - Technical & ATT&CK Analyzer.
 
-CHỈ làm 1 việc: gọi AI Groq/LLM + parse JSON response thành DICT thuần.
-
-KHÔNG tạo Pydantic model ở đây. KHÔNG có fallback logic ở đây.
-Tất cả Pydantic conversion + fallback sẽ làm ở orchestrator.py.
+Chỉ làm 1 việc: gọi LLM + parse JSON thành dict thuần. KHÔNG tạo Pydantic,
+KHÔNG có fallback logic (orchestrator lo phần đó).
 
 Returns:
     dict (raw AI JSON đã clean) hoặc raises AIServiceError nếu fail.
@@ -31,11 +29,9 @@ class AIBehaviorService:
     Single Responsibility: gọi LLM + parse JSON. Output là dict thuần (Pydantic
     conversion làm ở orchestrator).
 
-    Model selection (env-driven, no hardcode):
-      - ANALYZE_AI_MODEL  → model for the primary analyze call.
-      - RETRY_AI_MODEL    → model for the partial-fill retry call.
-    Both fall back to legacy defaults if env vars are unset, so existing
-    deployments keep working without changes.
+    Model selection (env-driven): ANALYZE_AI_MODEL cho analyze call,
+    RETRY_AI_MODEL cho partial-fill retry. Cả 2 fallback về default nếu
+    env unset → backward compat.
     """
 
     _SYSTEM_FILE = "analyze_behavior.system.txt"
@@ -45,46 +41,36 @@ class AIBehaviorService:
     # Default analyze model — Groq llama-3.3-70b-versatile, 6K TPM free tier.
     # Override via env ANALYZE_AI_MODEL.
     _DEFAULT_MODEL = "llama-3.3-70b-versatile"
-    # Default retry model — Google Gemini 2.5 Flash, 1M TPM (dodge Groq 6K TPM
-    # ceiling on large retry payloads). Override via env RETRY_AI_MODEL.
+    # Default retry model — Google Gemini 2.5 Flash, 1M TPM (tránh Groq 6K TPM
+    # ceiling trên retry payloads lớn). Override via env RETRY_AI_MODEL.
     _DEFAULT_RETRY_MODEL = "gemini-2.5-flash"
 
     def __init__(self, base_client: BaseAIClient) -> None:
         self.client = base_client
         # Resolve model names from settings (env > legacy field > default).
-        # Using getters so empty-string env values still fall through.
+        # Getter trả về None nếu env empty string → fallback default.
         self._MODEL: str = settings.get_analyze_model() or self._DEFAULT_MODEL
         self._RETRY_MODEL: str = settings.get_retry_model() or self._DEFAULT_RETRY_MODEL
-        # Load shared MITRE rules once; both analyze + retry templates reference them.
-        # Phase 1 (1-shot analyze) dùng full shared rules.
-        # Phase 2 chỉ dùng anchor-based condensed rules (~30% size) để tránh
-        # vượt Groq 12K TPM (vd CVE-2021-3156: 25 refs + 32 CPEs + full rules = 12K).
+        # Load shared MITRE rules 1 lần. Phase 1 (1-shot) dùng full rules.
+        # Phase 2 dùng condensed rules (~30% size) để tránh vượt Groq 12K TPM
+        # (vd CVE-2021-3156: 25 refs + 32 CPEs + full rules = 12K).
         shared_rules_full = (_PROMPTS_DIR / self._SHARED_FILE).read_text(encoding="utf-8")
         shared_rules_phase2 = self._condense_shared_rules_for_phase2(shared_rules_full)
-        analyze_template = (
-            _PROMPTS_DIR / self._SYSTEM_FILE
-        ).read_text(encoding="utf-8")
-        # Replace placeholder with shared rules content at construction time so
-        # call_llm receives the full prompt (byte-identical to pre-split version).
+        analyze_template = (_PROMPTS_DIR / self._SYSTEM_FILE).read_text(encoding="utf-8")
+        # Replace placeholder tại construction time → call_llm nhận full prompt
+        # (byte-identical với pre-split version).
         self.system_prompt_template = analyze_template.replace(
             "{{SHARED_MITRE_RULES}}", shared_rules_full
         )
-        # Phase 2 (two-phase refactor): separate system prompt focused only
-        # on ATT&CK mapping. Also embeds shared rules since ATT&CK IDs are
-        # the focus of Phase 2.
-        phase2_template = (
-            _PROMPTS_DIR / self._PHASE2_SYSTEM_FILE
-        ).read_text(encoding="utf-8")
+        # Phase 2: riêng system prompt focused chỉ ATT&CK mapping.
+        phase2_template = (_PROMPTS_DIR / self._PHASE2_SYSTEM_FILE).read_text(encoding="utf-8")
         self._phase2_system_prompt = phase2_template.replace(
             "{{SHARED_MITRE_RULES}}", shared_rules_phase2
         )
-        self.user_prompt_template = (
-            _PROMPTS_DIR / self._USER_FILE
-        ).read_text(encoding="utf-8")
-        # Track BOTH analyze + retry models used in this run (instance-scoped
-        # so each CVE call starts fresh). Order-preserving + deduplicated:
-        # analyze model always first; retry model appended only if a retry
-        # actually fired via `record_retry_model()`.
+        self.user_prompt_template = (_PROMPTS_DIR / self._USER_FILE).read_text(encoding="utf-8")
+        # Track cả analyze + retry models dùng trong run (instance-scoped, mỗi
+        # CVE call fresh). Order-preserving + dedup: analyze luôn trước, retry
+        # chỉ append nếu `record_retry_model()` được gọi.
         self._models_used: list[str] = []
         logger.debug(
             "AIBehaviorService initialized: analyze=%s retry=%s",
@@ -92,20 +78,16 @@ class AIBehaviorService:
         )
 
     def _record_model(self, model: str) -> None:
-        """Append `model` to `_models_used` if not already present."""
+        """Append `model` to `_models_used` nếu chưa có."""
         if model and model not in self._models_used:
             self._models_used.append(model)
 
     def record_retry_model(self) -> None:
-        """Mark that the retry model was used. Call BEFORE the retry call so
-        it shows up even if the retry itself fails (e.g. rate-limit)."""
+        """Mark retry model đã dùng. Call TRƯỚC retry call để hiển thị dù retry fail."""
         self._record_model(self._RETRY_MODEL)
 
     def get_models_used(self) -> list[str]:
-        """Return deduplicated, order-preserved list of models actually used
-        for this CVE. analyze model first; retry model appended only if a
-        retry was attempted.
-        """
+        """Deduplicated + order-preserved list models đã dùng cho CVE này."""
         return list(self._models_used)
 
     async def fetch_raw_response(
@@ -124,33 +106,26 @@ class AIBehaviorService:
         capec_hints_by_cwe: dict[str, list[dict]] | None = None,
         phase1_output: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """Gọi AI + parse JSON. Return dict thuần (không phải Pydantic).
+        """Gọi AI + parse JSON. Return dict thuần.
 
         Args:
-            ... (giữ nguyên 9 field gốc cho backward compat) ...
-            poc_references: Optional list of public PoC URLs (max 3 in prompt).
-                Helps AI narrow down exploit mechanism when description is
-                vague (e.g. Log4Shell "untrusted deserialization" → PoC shows
-                JNDI lookup chain).
-            threat_actors: Optional list of threat actor names from OTX. Helps
-                AI identify likely target/scale (e.g. APT29 vs script kiddie).
+            poc_references: Optional PoC URLs (max 3 in prompt). Giúp AI narrow
+                down exploit mechanism khi description vague (vd Log4Shell →
+                PoC shows JNDI lookup chain).
+            threat_actors: Optional threat actor names từ OTX.
             capec_hints_by_cwe: Optional dict {CWE-id: [CAPEC hint dicts]}.
-                INSPIRATION ONLY (not ground truth). Helps AI see common attack
-                patterns for the CWE category. Empty dict / None = no hints.
-            phase1_output: Optional Phase 1 behavior dict (NEW, two-phase refactor).
-                When provided, AI uses `execution_surface` / `delivery_vector` /
-                `user_interaction_required` from Phase 1 as canonical anchors to
-                avoid the AV:N→T1190 bias. None → backward compat (single-shot mode).
+                INSPIRATION ONLY (không phải ground truth).
+            phase1_output: Optional Phase 1 behavior dict (two-phase refactor).
+                Khi có, AI dùng `execution_surface` / `delivery_vector` /
+                `user_interaction_required` làm canonical anchor tránh AV:N→T1190 bias.
 
         Raises:
-            AIServiceError: nếu AI fail (rate-limit, timeout, JSON parse fail, etc.)
+            AIServiceError: nếu AI fail (rate-limit, timeout, JSON parse fail).
         """
-        # Build 3 optional blocks for user prompt. Empty string = block omitted
-        # from prompt entirely (graceful fallback when no data).
+        # Build optional prompt blocks. Empty string = block omitted (graceful fallback).
         poc_block = self._format_poc_block(poc_references or [])
         threat_actors_block = self._format_threat_actors_block(threat_actors or [])
         capec_hints_block = self._format_capec_hints_block(capec_hints_by_cwe or {})
-        # NEW: Phase 1 anchor block (two-phase refactor)
         phase1_block = self._format_phase1_block(phase1_output or {})
 
         formatted_user = self.user_prompt_template.format(
@@ -175,9 +150,8 @@ class AIBehaviorService:
                 user_prompt=formatted_user,
                 model=self._MODEL,
             )
-            # Record analyze model ONLY after a successful dispatch (the call
-            # itself didn't raise). Retry model is recorded separately by
-            # the orchestrator via record_retry_model() before its call.
+            # Record analyze model CHỈ sau khi dispatch thành công (call không raise).
+            # Retry model được record riêng bởi orchestrator qua record_retry_model().
             self._record_model(self._MODEL)
             cleaned_text = self._clean_json(response_text)
             data = json.loads(cleaned_text)
@@ -204,12 +178,10 @@ class AIBehaviorService:
     ) -> dict[str, Any]:
         """Phase 2 AI call - return ATT&CK mapping dict only.
 
-        Two-phase refactor: this method is invoked AFTER Phase 1 (behavior
-        analysis). The Phase 1 output is embedded in the user prompt as
-        canonical anchor to prevent the AV:N→T1190 bias that affected the
-        single-shot prompt.
+        Invoked AFTER Phase 1. Phase 1 output được embed làm canonical anchor
+        tránh AV:N→T1190 bias. No behavior fields (Phase 1 lo phần đó).
 
-        Output dict shape (Phase 2 schema):
+        Output dict shape:
           {
             "tactics": list[str],
             "techniques": list[str],
@@ -217,27 +189,20 @@ class AIBehaviorService:
             "attack_confidence": float,
             "mapping_reasons": list[str]
           }
-        No behavior fields (those come from Phase 1).
 
         Raises:
-            AIServiceError: neu AI fail
+            AIServiceError: nếu AI fail
         """
-        # Phase 2 co rieng system prompt (analyze_attack_mapping.system.txt)
-        # Load lazily trong __init__ roi cache
         phase2_system = self._phase2_system_prompt
 
-        # Build prompt blocks. Phase 1 block LA BAT BUOC cho Phase 2
-        # (no Phase 1 → fall back to single-shot behavior trong orchestrator).
         poc_block = self._format_poc_block(poc_references or [])
         threat_actors_block = self._format_threat_actors_block(threat_actors or [])
         capec_hints_block = self._format_capec_hints_block(capec_hints_by_cwe or {})
         phase1_block = self._format_phase1_block(phase1_output or {})
 
-        # Phase 2 user prompt khac Phase 1 - can ca NVD description (chua
-        # product/keyword triggers nhu "OGNL", "WebWork", "Jinja2" giup LLM
-        # chon sub-technique T1059.xxx dung) LAN Phase 1 summary (anchor de
-        # tranh AV:N→T1190 bias). KHONG can references/CPEs (chi can cho
-        # Sigma rule generation o Step 3, KHONG can cho ATT&CK mapping).
+        # Phase 2 cần CẢ NVD description (chứa keyword "OGNL"/"WebWork"/"Jinja2"
+        # giúp LLM chọn sub-technique T1059.xxx đúng) LẪN Phase 1 summary (anchor
+        # tránh AV:N→T1190 bias). Bỏ references/CPEs — chỉ cần cho Sigma ở Step 3.
         description_block = self._build_phase2_description(
             phase1_output or {}, description or ""
         )
@@ -283,9 +248,7 @@ class AIBehaviorService:
             return text[first : last + 1].strip()
         return text.strip()
 
-    # ------------------------------------------------------------------
-    # Optional prompt blocks (PoC refs, threat actors, CAPEC hints)
-    # ------------------------------------------------------------------
+    # Optional prompt blocks (PoC refs, threat actors, CAPEC hints).
     # Cap length để giữ user prompt < 4K tokens (Groq 6K TPM ceiling).
     _MAX_POC_REFS = 3
     _MAX_THREAT_ACTORS = 5
@@ -295,11 +258,7 @@ class AIBehaviorService:
 
     @classmethod
     def _format_poc_block(cls, poc_references: list[str]) -> str:
-        """Build the 'Public PoC References' block for the user prompt.
-
-        Empty string when no PoCs (block omitted from prompt entirely).
-        Caps at _MAX_POC_REFS to keep prompt size bounded.
-        """
+        """Build 'Public PoC References' block. Empty khi không có PoC (block omitted)."""
         if not poc_references:
             return ""
         refs = poc_references[:cls._MAX_POC_REFS]
@@ -313,11 +272,10 @@ class AIBehaviorService:
 
     @classmethod
     def _format_references(cls, references: list[str]) -> str:
-        """Cap references list để tránh vượt Groq TPM (12K tokens).
+        """Cap references list tránh vượt Groq TPM.
 
-        CVE thực tế có thể có 25+ URLs (vd CVE-2021-3156 có 25 URLs);
-        cap 10 URLs đầu + ghi chú số còn lại. Không ảnh hưởng chất lượng
-        mapping vì AI chỉ cần vài URLs để hiểu context, không cần đọc hết.
+        CVE thực tế có thể 25+ URLs (vd CVE-2021-3156); cap 10 URLs đầu + ghi
+        chú số còn lại. AI chỉ cần vài URLs để hiểu context.
         """
         if not references:
             return "None"
@@ -329,10 +287,7 @@ class AIBehaviorService:
 
     @classmethod
     def _format_threat_actors_block(cls, threat_actors: list[str]) -> str:
-        """Build the 'Threat Actors' block for the user prompt.
-
-        Empty string when no actors observed (OTX returned nothing).
-        """
+        """Build 'Threat Actors' block. Empty khi OTX không trả actor nào."""
         if not threat_actors:
             return ""
         actors = threat_actors[:cls._MAX_THREAT_ACTORS]
@@ -346,10 +301,7 @@ class AIBehaviorService:
 
     @classmethod
     def _format_capec_hints_block(cls, capec_hints_by_cwe: dict[str, list[dict]]) -> str:
-        """Build the 'CAPEC hints' block for the user prompt.
-
-        INSPIRATION ONLY (not ground truth). Empty string when no hints.
-        """
+        """Build 'CAPEC hints' block. INSPIRATION ONLY (không phải ground truth)."""
         if not capec_hints_by_cwe:
             return ""
         lines = [
@@ -371,22 +323,16 @@ class AIBehaviorService:
         lines.append("")
         return "\n".join(lines)
 
-    # ------------------------------------------------------------------
     # Phase 1 anchor (two-phase refactor)
-    # ------------------------------------------------------------------
+
     @classmethod
     def _format_phase1_block(cls, phase1_output: dict[str, Any]) -> str:
-        """Build the 'Phase 1 canonical facts' block for Phase 2 prompt.
+        """Build 'Phase 1 canonical facts' block cho Phase 2 prompt.
 
-        Phase 2 (ATT&CK mapping) ANCHORS on these fields:
-          - execution_surface: WHERE code runs post-exploit
-          - delivery_vector: HOW payload reaches victim
-          - user_interaction_required: bool
+        Phase 2 ANCHOR trên: execution_surface, delivery_vector,
+        user_interaction_required, + entry_vector/execution_mechanism.
 
-        Plus entry_vector + execution_mechanism from Phase 1 attack_flow.
-
-        Empty string when phase1_output is empty (Phase 2 invoked without
-        Phase 1 - backward compat single-shot mode).
+        Empty string khi phase1_output rỗng (single-shot mode backward compat).
         """
         if not phase1_output:
             return ""
@@ -419,11 +365,10 @@ class AIBehaviorService:
 
     @staticmethod
     def _summarize_phase1(phase1_output: dict[str, Any]) -> str:
-        """Tom tat Phase 1 thanh description ngan cho Phase 2 user prompt.
+        """Tóm tắt Phase 1 thành description ngắn cho Phase 2 user prompt.
 
-        Phase 2 user prompt can description ngan de AI hieu CVE nhung KHONG
-        can full description (Phase 2 tap trung vao ATT&CK mapping). Tom
-        tat gom: vulnerability_type + family + entry_vector + execution_mechanism.
+        Gồm: vulnerability_type + family + entry_vector + execution_mechanism.
+        Phase 2 chỉ cần ngắn gọn (focus vào ATT&CK mapping, không cần full).
         """
         if not phase1_output:
             return "n/a"
@@ -445,18 +390,17 @@ class AIBehaviorService:
         phase1_output: dict[str, Any] | None,
         nvd_description: str,
     ) -> str:
-        """Build Phase 2 description: NVD description (primary) + Phase 1 summary (anchor).
+        """Build Phase 2 description: NVD (primary) + Phase 1 summary (anchor).
 
-        Why BOTH (generalizable, not code-injection specific):
-        - NVD description: contains product/keyword triggers (e.g. "OGNL",
-          "WebWork", "Jinja2", "eval") that help LLM pick correct sub-technique
-          (T1059.007 for JavaScript, T1059.006 for Python, etc.). Without these
-          keywords the LLM anchors on generic T1190 and misses T1059.xxx.
-        - Phase 1 summary: canonical facts (execution_surface, attack_flow) that
-          prevent AV:N→T1190 bias and lock the LLM into the right context.
+        Why BOTH (generalizable, không code-injection specific):
+        - NVD description: chứa product/keyword triggers (vd "OGNL",
+          "WebWork", "Jinja2", "eval") giúp LLM chọn sub-technique đúng
+          (T1059.007 JS, T1059.006 Python). Thiếu keywords → LLM anchor
+          vào T1190 generic, miss T1059.xxx.
+        - Phase 1 summary: canonical facts tránh AV:N→T1190 bias.
 
-        If NVD description is empty/short, return Phase 1 summary alone.
-        Truncate NVD portion to _MAX_DESCRIPTION_CHARS to avoid prompt bloat.
+        NVD rỗng/ngắn → return Phase 1 summary alone. Truncate NVD
+        portion to _MAX_DESCRIPTION_CHARS.
         """
         nvd_truncated = (nvd_description or "N/A")[: AIBehaviorService._MAX_DESCRIPTION_CHARS]
         phase1_summary = AIBehaviorService._summarize_phase1(phase1_output or {})
@@ -468,18 +412,11 @@ class AIBehaviorService:
     def _condense_shared_rules_for_phase2(full_rules: str) -> str:
         """Trích phần shared rules CẦN THIẾT cho Phase 2 (ATT&CK mapping).
 
-        Phase 2 đã có anchor-based mapping rules trong analyze_attack_mapping.system.txt
-        (sections ANCHOR-BASED TECHNIQUE SELECTION, INBOUND INTRUSION DISTINCTION).
-        KHÔNG cần:
-          - 5 soft principles (OS/SERVICE, PROTOCOL, TOOL, AUTH, NO-SIGNAL)
-            → Phase 1 đã chọn execution_surface nên không cần principles.
-          - Reference examples (CVE-2021-40444, CVE-2013-4365, CVE-2024-3094)
-            → Phase 2 prompt đã có reference examples riêng.
-          - CAPEC hints inspiration section.
-        GIỮ:
-          - MEMORY CORRUPTION rule (cho CVE-2021-3156, CVE-2013-4365)
-          - EVASIVE INDICATORS ENFORCEMENT (cho completeness)
-          - SUBTECHNIQUE DECISION (cho parent-only handling)
+        Phase 2 đã có anchor rules + reference examples riêng trong
+        analyze_attack_mapping.system.txt nên KHÔNG cần 5 soft principles,
+        reference examples, CAPEC hints inspiration. GIỮ MEMORY CORRUPTION
+        rule (cho CVE-2021-3156/2013-4365), EVASIVE INDICATORS ENFORCEMENT,
+        SUBTECHNIQUE DECISION.
         """
         keep_sections = [
             "MEMORY CORRUPTION → T1203 + T1499.004",
@@ -493,7 +430,6 @@ class AIBehaviorService:
         for line in lines:
             stripped = line.strip()
             if stripped.startswith("- "):
-                # Section header line
                 for sec in keep_sections:
                     if stripped.startswith(f"- {sec}"):
                         in_keep_section = True
@@ -503,7 +439,6 @@ class AIBehaviorService:
                 else:
                     in_keep_section = False
             elif in_keep_section:
-                # Continuation line of the kept section
                 if line.startswith(section_indent + "  ") or not stripped:
                     keep.append(line)
                 else:

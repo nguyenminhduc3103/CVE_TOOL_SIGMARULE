@@ -144,203 +144,173 @@
   concrete items. Your answer will be rejected by the coverage engine if this field is empty
   without justification.
 - MEMORY CORRUPTION → T1203 + T1499.004 (CRITICAL):
-  Memory-corruption CVEs (CWE-787 Out-of-bounds Write, CWE-125 Out-of-bounds
-  Read, CWE-416 Use-After-Free, CWE-119 Improper Buffer Restriction, CWE-190
-  Integer Overflow) require ADDITIONAL techniques beyond the initial-access
-  primitive. Three required additions:
+  Memory-corruption CVEs (CWE-787, CWE-125, CWE-416, CWE-119, CWE-190) require
+  ADDITIONAL techniques beyond initial-access primitive:
 
-    (a) T1203 (Exploitation for Client Execution) — Execution tactic:
-        The memory-corruption exploit IS the execution primitive. Emit
-        T1203 + TA0002 whenever cwe_ids contains any memory-corruption CWE.
-        This applies even for server-side exploits (Apache mod_fcgid,
-        OpenSSL heartbleed, IIS buffer overflow). Despite the "Client
-        Execution" name, MITRE ATT&CK lists server-side exploitation as
-        a valid use case.
+    (a) T1203 (Exploitation for Client Execution) — Execution tactic.
+        Memory-corruption exploit IS the execution primitive. Emit T1203 +
+        TA0002 whenever cwe_ids contains any memory-corruption CWE, kể cả
+        server-side (Apache mod_fcgid, OpenSSL heartbleed, IIS). Dù tên là
+        "Client Execution", MITRE liệt kê server-side exploitation hợp lệ.
 
-    (b) T1499.004 (Endpoint DoS: Application or System Exploitation) —
-        Impact tactic: Memory-corruption exploits frequently crash the
-        target process (segfault from corrupted metadata). When description
-        OR observable_side_effects mentions "crash", "segfault", "DoS",
-        "denial of service", "service unavailable", ADD T1499.004 to
-        subtechniques and TA0040 to tactics.
+    (b) T1499.004 (Endpoint DoS: Application or System Exploitation) — Impact.
+        Memory-corruption thường crash target process (segfault từ corrupted
+        metadata). Khi description/observable_side_effects có "crash", "segfault",
+        "DoS", "denial of service", "service unavailable" → ADD T1499.004 + TA0040.
 
-    (c) Evasive indicators MUST be populated for HTTP/web memory-corruption:
-        - HTTP chunked transfer encoding (split payload to bypass length-based
-          WAF signatures)
-        - URL/hex encoding of shellcode bytes (%XX form to evade text-pattern IDS)
-        - Header obfuscation / smuggling (parser differential attack between
-          WAF and mod_fcgid)
-        - For the memory-corruption primitive itself: ROP chains, ASLR bypass,
-          heap spraying, NOP sleds
+    (c) Evasive indicators MUST populate cho HTTP/web memory-corruption:
+        - HTTP chunked transfer encoding (split payload bypass length-based WAF)
+        - URL/hex encoding shellcode bytes (%XX evade text-pattern IDS)
+        - Header obfuscation / smuggling (parser differential giữa WAF và app)
+        - Memory-corruption primitive itself: ROP chains, ASLR bypass, heap
+          spraying, NOP sleds
 
-  Empty subtechniques + empty evasive_indicators for a CWE-787 CVE IS A
-  HALLUCINATION. The kill chain is multi-tactic by definition.
+  Empty subtechniques + empty evasive_indicators cho CWE-787 CVE IS A
+  HALLUCINATION. Kill chain là multi-tactic theo định nghĩa.
 - CODE INJECTION → T1059 + language-specific sub-technique (CRITICAL):
-  Code-injection CVEs (CWE-94 Code Injection, CWE-917 Expression Language
-  Injection [OGNL, SpEL, MVEL], CWE-1336 Template Injection [SSTI]) require
-  ADDITIONAL techniques beyond the initial-access primitive. Three required
-  additions:
+  Code-injection CVEs (CWE-94 Code Injection, CWE-917 EL Injection [OGNL/SpEL/MVEL],
+  CWE-1336 Template Injection [SSTI]) require ADDITIONAL techniques:
 
-    (a) T1059 (Command and Scripting Interpreter) — Execution tactic:
-        Code-injection exploits execute attacker-controlled code in an
-        interpreter context (Java/.NET runtime for CWE-917, Python/JS template
-        engine for CWE-1336, eval/exec for CWE-94). Emit T1059 + TA0002
-        whenever cwe_ids contains any code-injection CWE. Sub-technique
-        selection: pick based on the LANGUAGE of the injected expression
-        (T1059.007 JavaScript for Node.js, T1059.006 Python for Jinja2,
-        T1059.004 Unix Shell for shell-spawning payloads, T1059.001
-        PowerShell for .NET). If language is ambiguous, default to
-        T1059.004 (most code-injection exploits ultimately spawn a shell).
+    (a) T1059 (Command and Scripting Interpreter) — Execution tactic.
+        Code-injection exploit chạy attacker-controlled code trong interpreter
+        context (Java/.NET runtime cho CWE-917, Python/JS template engine cho
+        CWE-1336, eval/exec cho CWE-94). Emit T1059 + TA0002 khi cwe_ids có
+        bất kỳ code-injection CWE nào. Sub-technique theo LANGUAGE:
+          - T1059.007 JavaScript (Node.js)
+          - T1059.006 Python (Jinja2)
+          - T1059.004 Unix Shell (shell-spawning payloads)
+          - T1059.001 PowerShell (.NET)
+        Language ambiguous → default T1059.004 (most code-injection exploits
+        cuối cùng spawn shell).
 
-    (b) Sub-technique MUST be populated (not empty) for code-injection:
-        Unlike memory-corruption (where sub-techniques are optional),
-        code-injection CVEs ALWAYS have a specific interpreter
-        invocation. The sub-technique is the primary detection signal
-        for Blue Team (e.g. Sigma rule for `java.lang.Runtime` calls
-        → T1059.007). Empty subtechniques for CWE-94/917/1336 IS A
-        HALLUCINATION.
+    (b) Sub-technique MUST populate (không empty) cho code-injection.
+        Khác memory-corruption (sub-techniques optional), code-injection ALWAYS
+        có specific interpreter invocation. Sub-technique là primary detection
+        signal cho Blue Team (vd Sigma rule cho `java.lang.Runtime` calls
+        → T1059.007). Empty subtechniques cho CWE-94/917/1336 IS A HALLUCINATION.
 
-    (c) Evasive indicators MUST be populated for code-injection:
-        - Unicode escape encoding (\\u00XX) to bypass string-based WAF
-          signatures
-        - Base64/URL encoding of payload bytes
+    (c) Evasive indicators MUST populate cho code-injection:
+        - Unicode escape encoding (\\u00XX) bypass string-based WAF signatures
+        - Base64/URL encoding payload bytes
         - String concatenation / char-code obfuscation
-        - For CWE-917: OGNL/SpEL sandbox bypass via context manipulation
-          (e.g. allowStaticMethodAccess=true, member access through
-          reflection)
-        - For CWE-1336: Template syntax variations (${...}, {{...}},
-          <%...%>) to evade static WAF signatures
-        - Comment insertion to break regex WAF patterns
-        - Case manipulation of keywords (e.g. oGnL vs OGNL)
+        - CWE-917: OGNL/SpEL sandbox bypass via context manipulation
+          (allowStaticMethodAccess=true, member access qua reflection)
+        - CWE-1336: Template syntax variations (${...}, {{...}}, <%...%>)
+          evade static WAF signatures
+        - Comment insertion break regex WAF patterns
+        - Case manipulation keywords (oGnL vs OGNL)
 
-  Empty subtechniques + empty evasive_indicators for a CWE-94/917/1336
-  CVE IS A HALLUCINATION. The kill chain is execution-via-interpreter
-  by definition.
+  Empty subtechniques + empty evasive_indicators cho CWE-94/917/1336 CVE IS A
+  HALLUCINATION. Kill chain là execution-via-interpreter theo định nghĩa.
 - REASONING / MAPPING_REASONS ENFORCEMENT (CRITICAL):
-  The "mapping_reasons" field MUST NEVER be empty. You must provide a concise, technical
-  justification for WHY you selected the specific Mandatory Behaviors and ATT&CK
-  Techniques/Sub-techniques. Each reason must explicitly tie the CVE's context (description,
-  CWE, CVSS vector) to the MITRE definitions.
+  `mapping_reasons` MUST NEVER be empty. Provide concise, technical justification
+  cho WHY bạn chọn specific Mandatory Behaviors và ATT&CK Techniques/Sub-techniques.
+  Mỗi reason phải explicitly tie CVE context (description/CWE/CVSS) vào MITRE definitions.
+  Aim 2-3 reasons show analytical chain, không generic platitudes.
   Example good reasons:
-    - "T1059.004 was selected because the vulnerability leads to arbitrary shell command
-      execution on Unix/Linux systems (CVSS AV:N indicates remote network reachability)."
-    - "T1190 was selected because the CVE describes exploitation of a public-facing web
-      endpoint without authentication requirement (CVSS PR:N)."
-    - "mandatory_behavior 'network_callback' derived from CVE description mentioning
-      outbound LDAP connection to attacker-controlled server."
-  Aim for at least 2-3 mapping_reasons that show analytical chain, not generic platitudes.
+    - "T1059.004 selected vì vulnerability leads to arbitrary shell command execution
+      trên Unix/Linux systems (CVSS AV:N cho thấy remote network reachability)."
+    - "T1190 selected vì CVE describes exploitation of public-facing web endpoint
+      không authentication requirement (CVSS PR:N)."
 
 - "REASONING" ENFORCEMENT (CRITICAL):
-  The "reasoning" field is DISTINCT from "mapping_reasons". It captures the HIGHER-LEVEL
-  analytical narrative of how this vulnerability works end-to-end (2-4 bullet points).
-  This field MUST NEVER be empty for any software CVE. Each bullet should walk through
-  one step of the exploit chain, citing the relevant CVE description, CWE, and CVSS
-  vector components. Example for CVE-2021-44228 (Log4Shell):
-    - "Attacker injects JNDI lookup string (${jndi:ldap://...}) into a log message or HTTP
-      parameter that gets logged by vulnerable Log4j (CVE-2021-44228 affects log4j-core
-      2.0-beta9 to 2.14.1; CVSS AV:N indicates remote network reachability)."
-    - "Log4j processes the lookup and connects outbound to the attacker's LDAP/RMI server
-      (PR:N + UI:N means no authentication or user interaction required)."
-    - "Attacker-controlled LDAP server returns a malicious Java class which is loaded
-      and instantiated by the vulnerable JVM, leading to arbitrary code execution
-      (S:C scope - impact crosses the logging component boundary)."
-  DO NOT use ["none"] or [] for this field. Treat the empty list as a hard error.
+  `reasoning` field DISTINCT từ `mapping_reasons`. Capture HIGHER-LEVEL analytical
+  narrative của vulnerability works end-to-end (2-4 bullets). MUST NEVER empty cho
+  software CVE. Mỗi bullet walk through 1 step của exploit chain, citing CVE
+  description/CWE/CVSS components.
+  Ví dụ cho CVE-2021-44228 (Log4Shell):
+    - "Attacker injects JNDI lookup string (${jndi:ldap://...}) vào log message hoặc
+      HTTP parameter được log bởi vulnerable Log4j (affects log4j-core 2.0-beta9 to 2.14.1;
+      CVSS AV:N cho thấy remote network reachability)."
+    - "Log4j processes lookup và connects outbound tới attacker's LDAP/RMI server
+      (PR:N + UI:N means no authentication/user interaction required)."
+    - "Attacker-controlled LDAP server returns malicious Java class được load và
+      instantiated bởi vulnerable JVM, leading to arbitrary code execution."
+  KHÔNG dùng ["none"] hoặc []. Treat empty list as hard error.
 
 - INBOUND INTRUSION DISTINCTION (CRITICAL — principle-based, not bucket-based):
-  Misclassifying the attack surface is a top-1 source of false TTPs. Use
-  this 3-question test instead of pattern-matching against pre-listed
-  CVE categories:
+  Misclassifying attack surface là top-1 source of false TTPs. Dùng 3-question
+  test thay vì pattern-matching pre-listed CVE categories:
 
-    1. What service / protocol is on the wire that the attacker reaches?
-       (SMB / RDP / SSH / FTP / HTTP / DNS / SMTP / custom protocol / etc.)
+    1. Service/protocol nào trên wire mà attacker reach? (SMB/RDP/SSH/FTP/HTTP/DNS/SMTP/custom)
 
-    2. Is the vulnerability in the protocol's transport/auth layer, or in
-       an application layer that SITS ON TOP of that protocol?
-       - Transport/auth layer (e.g. SMBv3 compression bug, RDP virtual
-         channel, SSH auth handshake) → T1210 (Exploitation of Remote Services)
-       - Application layer on HTTP (e.g. web framework deserialization,
-         REST API auth bypass, GraphQL injection) → T1190 (Exploit Public-
-         Facing Application)
-       - Legitimate remote-access service with access-control vulnerability
+    2. Vulnerability nằm ở protocol's transport/auth layer, hay application
+       layer SITS ON TOP?
+       - Transport/auth layer (SMBv3 compression bug, RDP virtual channel,
+         SSH auth handshake) → T1210 (Exploitation of Remote Services)
+       - Application layer on HTTP (web framework deserialization, REST API
+         auth bypass, GraphQL injection) → T1190 (Exploit Public-Facing Application)
+       - Legitimate remote-access service với access-control vulnerability
          (VPN gateway, Citrix, TeamViewer) → T1133 (External Remote Services)
 
-    3. Is there a CONTEXT you may have missed? (container escape, CI/CD
-       pipeline exploit, hypervisor breakout, API gateway, OAuth/SAML flaw,
-       etc.) If yes, propose the appropriate technique (T1611 Escape to
-       Host, T1195 Supply Chain Compromise, etc.) and justify in
-       `mapping_reasons`. Do NOT force-fit into T1190/T1210/T1133 if the
-       context warrants a different primitive.
+    3. Có CONTEXT nào bị miss? (container escape, CI/CD pipeline exploit,
+       hypervisor breakout, API gateway, OAuth/SAML flaw). Nếu có → propose
+       appropriate technique (T1611 Escape to Host, T1195 Supply Chain Compromise)
+       và justify trong `mapping_reasons`. KHÔNG force-fit vào T1190/T1210/T1133
+       nếu context warrants different primitive.
 
-  Examples to illustrate (NOT exhaustive — do not stop at these):
+  Examples (NOT exhaustive — đừng dừng ở đây):
     - SMB/RDP/SSH wormable RCE (BlueKeep, EternalBlue, SMBGhost) → T1210
     - Web framework RCE (Log4Shell, Spring4Shell, Confluence OGNL) → T1190
     - VPN gateway auth bypass → T1133
     - Jenkins Script Console exploit → T1190 (web app on HTTP)
     - runc container escape → T1611 (Escape to Host) — NOT T1190
-    - XZ Utils supply chain backdoor → T1195.002 (Compromise Software
-      Supply Chain) — NOT T1190/T1210/T1133
+    - XZ Utils supply chain backdoor → T1195.002 — NOT T1190/T1210/T1133
 
 - FALLBACK MAPPING FOR CONFIRMED PRE-AUTH NETWORK RCE (CONSERVATIVE BASELINE):
-  Use ONLY when CVSS is AV:N + PR:N + impact C:H AND you cannot derive any
-  primitive from the CVE signals (description, CVSS, CPEs, references, CWE).
-  In that narrow situation, emit this baseline:
+  CHỈ dùng khi CVSS là AV:N + PR:N + impact C:H AND không derive được primitive
+  từ CVE signals (description/CVSS/CPEs/references/CWE). Baseline:
     - Tactics: ["TA0001", "TA0004", "TA0008"]
     - Techniques: ["T1210"] (Exploitation of Remote Services)
-                  + ["T1068"] if execution yields kernel/SYSTEM access
+                  + ["T1068"] nếu execution yields kernel/SYSTEM access
 
-  This is a LAST-RESORT FALLBACK. ALWAYS prefer the CVE-specific primitive:
+  LAST-RESORT FALLBACK. ALWAYS prefer CVE-specific primitive:
     - Web application RCE on HTTP (Apache/nginx/IIS/JVM) → T1190
-    - Kernel / driver exploit yielding SYSTEM → T1068 + T1210 (or T1068 only)
+    - Kernel/driver exploit yielding SYSTEM → T1068 + T1210 (hoặc T1068 only)
     - Container escape → T1611
     - Supply chain compromise → T1195.xxx
-    - VPN / remote-access auth bypass → T1133
-    - SMB/RDP/SSH wormable RCE → T1210 + (T1068 if SYSTEM escalation)
+    - VPN/remote-access auth bypass → T1133
+    - SMB/RDP/SSH wormable RCE → T1210 + (T1068 nếu SYSTEM escalation)
 
-  NEVER emit the fallback if any CVE-specific signal is present. The fallback
-  exists to prevent silent rejection of high-confidence remote RCE CVEs
-  where the description is too sparse to analyze, NOT to override signal-
-  based analysis.
+  NEVER emit fallback nếu có bất kỳ CVE-specific signal. Fallback tồn tại để
+  ngăn silent rejection của high-confidence remote RCE CVEs có description quá
+  sparse, KHÔNG phải để override signal-based analysis.
 
-  Tactics and techniques MAY legitimately be empty in the output ONLY when:
-    (a) the CVE is not exploitable (denial-of-service only, hardening-only),
-    (b) the CVE is a pure configuration issue with no code path, or
-    (c) the CVE is hardware/physical with no software telemetry.
+  Tactics/techniques MAY legitimately empty ONLY khi:
+    (a) CVE không exploitable (DoS-only, hardening-only),
+    (b) CVE pure configuration issue không có code path,
+    (c) CVE hardware/physical không có software telemetry.
 
-  In those cases, document the reasoning in `mapping_reasons` and
-  `reasoning` (e.g. "CVE is DoS-only via resource exhaustion; no code
-  execution primitive available"). Empty `mapping_reasons` is still
-  rejected — always explain.
+  Trong các case đó, document reasoning trong `mapping_reasons` + `reasoning`.
+  Empty `mapping_reasons` vẫn bị reject — luôn explain.
 
 - REVERSE REASONING ENFORCEMENT (CRITICAL):
-  Every technique/sub-technique you select MUST be justified with explicit reverse reasoning
-  in mapping_reasons. For each technique/sub-technique, your reason must explicitly state:
-    1. The vulnerable component (e.g., "SMBv3 driver srv2.sys", "Java JNDI parser")
-    2. Why the target OS/environment supports this technique (e.g., "Windows kernel-mode
-       driver, so T1210 + T1068 fit; bash not present, so T1059.004 ruled out")
-  Bad reasoning pattern to AVOID: "T1059.002 selected because use-after-free vulnerability"
-  → This violates Windows OS constraint (T1059.002 is AppleScript/macOS-only).
-  Good reasoning pattern: "T1210 selected because CVE affects SMBv3 protocol on Windows
-  network stack; T1068 selected because integer overflow occurs in srv2.sys kernel driver;
-  T1059 ruled out because no command interpreter is invoked post-exploitation."
+  Mỗi technique/sub-technique MUST justified với explicit reverse reasoning trong
+  mapping_reasons:
+    1. Vulnerable component (vd "SMBv3 driver srv2.sys", "Java JNDI parser")
+    2. Why target OS/environment supports technique (vd "Windows kernel-mode
+       driver → T1210 + T1068 fit; bash không có → T1059.004 ruled out")
+  Bad pattern: "T1059.002 selected because use-after-free vulnerability" →
+  violates Windows OS constraint (T1059.002 is AppleScript/macOS-only).
+  Good pattern: "T1210 selected because CVE affects SMBv3 protocol on Windows
+  network stack; T1068 selected because integer overflow occurs in srv2.sys
+  kernel driver; T1059 ruled out because no command interpreter invoked."
 
 - CAPEC HINTS AS INSPIRATION (NOT GROUND TRUTH):
-  The user prompt may include a "CAPEC hints" block listing common attack
-  patterns for the CVE's CWE category (e.g. "CWE-502 → CAPEC-586 Object Injection").
-  These are INSPIRATION ONLY — they help you see common attack patterns
-  associated with the CWE category, but they are NOT a checklist to satisfy.
+  User prompt có thể include "CAPEC hints" block listing common attack patterns
+  cho CVE's CWE category (vd "CWE-502 → CAPEC-586 Object Injection"). Đây là
+  INSPIRATION ONLY — giúp thấy common attack patterns, KHÔNG phải checklist.
 
-  Rules for using CAPEC hints:
-    1. Treat each hint as a hypothesis to verify against CVE signals, not a
-       default to confirm. If the hint suggests "command injection" but the
-       CVE description says "memory corruption", FOLLOW THE CVE DESCRIPTION.
-    2. Do NOT emit a CAPEC ID as an ATT&CK technique. CAPEC IDs (CAPEC-XXX)
-       and ATT&CK IDs (T-codes) are different namespaces. The hint may
-       include ATT&CK IDs in "ATT&CK hints=[...]" — those are the only
-       directly relevant IDs to consider.
-    3. If the CAPEC hint conflicts with the CVE description, follow the CVE
-       description. Justify in mapping_reasons: "CAPEC hint suggested X, but
-       CVE description specifies Y, therefore Y is selected."
-    4. If no CAPEC hints are provided (CWE not in MITRE CAPEC database, or
-       hints disabled by env), proceed with the 5 principles above as usual.
-       No penalty for missing hints.
+  Rules cho CAPEC hints:
+    1. Treat mỗi hint as hypothesis cần verify với CVE signals, không phải default
+       confirm. Hint nói "command injection" nhưng CVE description nói "memory
+       corruption" → FOLLOW CVE DESCRIPTION.
+    2. KHÔNG emit CAPEC ID as ATT&CK technique. CAPEC IDs (CAPEC-XXX) và ATT&CK
+       IDs (T-codes) là different namespaces. Hint có thể include ATT&CK IDs
+       trong "ATT&CK hints=[...]" — đó là IDs directly relevant duy nhất.
+    3. CAPEC hint conflicts với CVE description → follow CVE description.
+       Justify trong mapping_reasons: "CAPEC hint suggested X, but CVE description
+       specifies Y, therefore Y selected."
+    4. Không có CAPEC hints (CWE không có trong MITRE CAPEC DB, hoặc hints
+       disabled by env) → proceed với 5 principles trên. Không penalty.
 
