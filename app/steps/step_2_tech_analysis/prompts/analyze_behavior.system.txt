@@ -34,13 +34,15 @@ MANDATORY RULES (no exceptions):
   - observable_side_effects: post-exploitation traces (e.g. ["unusual network traffic", "new process creation", "file write to web root"]).
 - If unsure about OTHER fields, set to null or []. But attack_flow MUST be fully populated.
 - Use MITRE ATT&CK Enterprise v15 IDs.
-- For cwe_metadata.cwe_ids: list ALL relevant CWE IDs that apply to this CVE (e.g. for Log4Shell return ["CWE-20", "CWE-502", "CWE-917"]). Do not pick just one.
-{{SHARED_MITRE_RULES}}Reference Example (for CVE-2021-44228 Log4Shell):
+- For cwe_metadata.cwe_ids: list ALL relevant CWE IDs that apply to this CVE
+  (e.g. for a JNDI/deserialization-style RCE, return ["CWE-20", "CWE-502", "CWE-917"]).
+  Do not pick just one.
+{{SHARED_MITRE_RULES}}Reference Example (abstract — illustrative JSON SHAPE only):
 {{
   "attack_flow": {{
-    "entry_vector": "log message or parameter injection with JNDI lookup string",
-    "execution_mechanism": "JNDI lookup connecting to attacker-controlled LDAP server, then deserialization of malicious class",
-    "observable_side_effects": ["outbound network connection to LDAP/RMI server", "new Java process creation", "possible class file download"]
+    "entry_vector": "Network-delivered input that triggers an unsafe lookup or deserialization in the vulnerable component",
+    "execution_mechanism": "Untrusted input is fetched/processed by a server-side parser, leading to remote code execution via the vulnerable sink",
+    "observable_side_effects": ["outbound network connection to attacker-controlled server", "new process creation", "possible class file download"]
   }},
   "mandatory_behaviors": ["network_callback", "process_creation", "public_facing_exploit"],
   "tactics": ["TA0001", "TA0002", "TA0011"],
@@ -50,16 +52,16 @@ MANDATORY RULES (no exceptions):
 # MEMORY-CORRUPTION CVEs — REQUIRED ADDITIONS
 
 When the CVE's CWE IDs include ANY memory-corruption class (CWE-787, CWE-125,
-CWE-416, CWE-119, CWE-190), the kill chain MUST span THREE tactics — not just
+CWE-416, CWE-119, CWE-190), the kill chain SHOULD span THREE tactics — not just
 TA0001. Concretely:
 
-  1. Emit T1203 (Exploitation for Client Execution) + TA0002 (Execution).
+  1. Consider T1203 (Exploitation for Client Execution) + TA0002 (Execution).
      Despite the "Client" name, MITRE ATT&CK applies this to server-side
-     memory-corruption exploits as well (Apache mod_fcgid, OpenSSL heartbleed,
-     IIS buffer overflow). The memory-corruption primitive IS the execution
+     memory-corruption exploits (web framework buffer overflow, library parser
+     vulnerabilities). The memory-corruption primitive IS the execution
      technique that translates the attacker input into code execution.
 
-  2. Emit T1499.004 (Endpoint DoS: Application or System Exploitation) +
+  2. Consider T1499.004 (Endpoint DoS: Application or System Exploitation) +
      TA0040 (Impact) when the description or attack flow mentions "crash",
      "segfault", "service crash", "denial of service". Memory-corruption
      exploits frequently crash the target process due to corrupted metadata,
@@ -73,5 +75,5 @@ TA0001. Concretely:
        - ROP chains, ASLR bypass, heap spraying for the memory-corruption
          primitive itself
 
-DO NOT emit only T1190 + TA0001 for memory-corruption CVEs. Multi-tactic
-kill chain (TA0001 → TA0002 → TA0040) is the correct representation.
+The multi-tactic kill chain (TA0001 → TA0002 → TA0040) is the correct
+representation for memory-corruption CVEs. T1190 alone is typically insufficient.

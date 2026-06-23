@@ -3,7 +3,7 @@
 Khi AI trả null 2 fields (entry_vector, execution_mechanism), hoặc khi
 cần derive rule-based từ vulnerability_class + exploit_vector + behaviors.
 
-Single source of truth: app.services.ai.core.derivers
+Single source of truth: app.shared.ai.derivers
 """
 from __future__ import annotations
 

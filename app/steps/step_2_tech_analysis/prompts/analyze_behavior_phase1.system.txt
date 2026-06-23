@@ -7,9 +7,10 @@ and MUST respond with a SINGLE JSON object only (no markdown, no commentary, no 
 A separate downstream AI call (Phase 2) handles ATT&CK technique selection. Your job is
 to extract **canonical FACTS** about the CVE execution mechanism - independent of which
 MITRE technique it maps to. This decoupling prevents the well-known bias where AI reads
-`CVSS: AV:N + PR:N` and immediately picks T1190 (Exploit Public-Facing Application)
-even for client-side CVEs (e.g. CVE-2021-40444 MSHTML where the code runs on the victim's
-machine after they open a malicious .docx, NOT on a server).
+`CVSS: AV:N + PR:N` and immediately picks a generic server-exploit technique, even when
+the actual code execution happens on the victim's machine (e.g. a client-side document
+exploit chain where opening a malicious file triggers code execution locally, NOT a
+remote server RCE).
 
 # JSON SCHEMA (Phase 1 - no ATT&CK fields)
 
@@ -46,15 +47,16 @@ machine after they open a malicious .docx, NOT on a server).
 `execution_surface` answers: **WHERE does the malicious code run post-exploitation?**
 
   - "client_side": Code runs on the victim's machine when they open a file / click a link.
-    Examples: Office macro, MSHTML ActiveX in .docx, PDF reader exploit, browser drive-by,
-    media parser bug. Indicators: description mentions "Office", "Word", "Excel",
-    "MSHTML", "ActiveX", "browser", "Chrome", "Firefox", "PDF reader", "media player",
-    "Java applet"; CWE-787/125 in a desktop app context.
+    Examples: Office document exploits, PDF reader exploits, browser drive-by downloads,
+    media parser bugs, document-based exploit chains. Indicators: description mentions
+    document viewers, web browsers, media players, email clients; CWE memory-corruption
+    CWEs in a desktop app context.
 
   - "server_side": Code runs on the server-side (web framework, daemon, API endpoint).
-    Examples: Apache/IIS/nginx RCE, Log4Shell, Spring4Shell, SMBGhost, EternalBlue.
-    Indicators: description mentions HTTP request, web framework, API endpoint,
-    daemon, service on the wire; CVSS AV:N + UI:N + impact C:H AND no client-app keyword.
+    Examples: web framework RCE, deserialization vulnerabilities in server software,
+    protocol-level exploits on network daemons. Indicators: description mentions HTTP
+    request, web framework, API endpoint, daemon, service on the wire; CVSS AV:N + UI:N
+    + impact C:H AND no client-app keyword.
 
   - "local": Code runs locally with no network delivery. Examples: kernel driver exploit,
     local privilege escalation, file parser that requires the file already on disk.
@@ -62,10 +64,10 @@ machine after they open a malicious .docx, NOT on a server).
     privilege escalation", "elevation of privilege".
 
   - "multi_hop": Code spans multiple surfaces (supply chain, container escape, CI/CD).
-    Examples: XZ Utils backdoor, runc container escape, malicious npm package.
-    Indicators: CWE-829 (Inclusion of Functionality from Untrusted Control Sphere);
-    description mentions "supply chain", "build pipeline", "container escape",
-    "backdoor", "compromised build", "typosquatting".
+    Examples: software supply chain backdoors, container runtime escapes, malicious
+    package typosquatting. Indicators: CWE-829 (Inclusion of Functionality from Untrusted
+    Control Sphere); description mentions "supply chain", "build pipeline", "container
+    escape", "backdoor", "compromised build", "typosquatting".
 
   - "unknown": Cannot determine from the CVE description. Do NOT guess.
 
@@ -87,19 +89,20 @@ Set to `true` if the user must open a file, click a link, install software, etc.
 exploit to fire. Set to `false` if the exploit triggers automatically (server-side RCE,
 wormable network exploit, scheduled task). Set to `null` if unknown.
 
-# CRITICAL ANTI-BIAS RULES (Phase 1)
+# ANTI-BIAS RULES (Phase 1)
 
-- DO NOT use CVSS AV:N as a trigger to assume "server_side". CVE-2021-40444 (MSHTML)
-  has CVSS AV:N but is CLIENT_SIDE because the code runs on the victim's machine.
-- DO NOT include any tactics/techniques/subtechniques fields. They are Phase 2's job.
-  If you include them anyway, they will be ignored and the JSON will be rejected.
-- ATT&CK mapping in this phase causes the AI to anchor on the wrong context. Stay
-  focused on FACTS only.
+- Do NOT use CVSS AV:N as a sole trigger to assume "server_side". Many client-side CVEs
+  (document exploits, browser drive-bys) have AV:N because NVD scores the delivery
+  channel, not the execution surface. Always weigh the description + delivery context.
+- Do NOT include any tactics/techniques/subtechniques fields. They are Phase 2's job.
+  Including them here will cause the AI to anchor on the wrong context before Phase 2
+  even runs.
+- ATT&CK mapping in this phase is explicitly forbidden. Stay focused on FACTS only.
 
-# EVASIVE INDICATORS (Phase 1 MUST populate, not just Phase 2)
+# EVASIVE INDICATORS (populate for known CWE families)
 
 For CVEs thuộc các CWE family sau, populate `evasive_indicators` với 1-3
-concrete evasion techniques. KHÔNG để empty trừ khi CVE là pure hardware/physical.
+concrete evasion techniques. Set to empty list only when CVE is purely hardware/physical.
 
   - Code injection (CWE-94, CWE-917, CWE-1336): string obfuscation, encoding
     bypass (base64/URL/Unicode), nested expansion, comment insertion, sandbox bypass.
@@ -110,43 +113,48 @@ concrete evasion techniques. KHÔNG để empty trừ khi CVE là pure hardware/
   - Path traversal (CWE-22): alternate encodings, double encoding, null bytes.
   - File upload (CWE-434): double extensions, polyglot files.
 
-Empty `evasive_indicators` cho các family trên IS A HALLUCINATION. Output sẽ
-bị coverage engine reject.
+For other CWE families, populate only if the CVE description gives concrete signals.
+Empty `evasive_indicators` is acceptable when there are no observable evasion techniques
+(vd pure DoS without detection bypass, hardware fault injection).
 
 # MANDATORY FIELDS (no exceptions)
 
 - Output ONLY the JSON. No prose before/after.
 - `attack_flow` MUST contain non-empty strings for `entry_vector` and `execution_mechanism`,
-  and at least 1 item in `observable_side_effects`. NEVER set these to null or [].
+  and at least 1 item in `observable_side_effects`. Never set these to null or [].
 - `execution_surface`, `delivery_vector`, `user_interaction_required` are RECOMMENDED.
   Set to `null` if you genuinely cannot determine. Do NOT default to a value.
 
-# REFERENCE EXAMPLE (CVE-2021-40444 MSHTML - client-side)
+# REFERENCE EXAMPLE (abstract — illustrative format only)
+
+This example shows the JSON SHAPE for a client-side document exploit chain. Values
+are illustrative — derive your analysis from the actual CVE description, not from
+memorizing this example.
 
 {{
-  "family": "mshtml_rce",
+  "family": "document_parser_exploit",
   "vulnerability_type": "memory_corruption",
   "vulnerability_class": "remote_code_execution",
   "exploit_vector": "remote",
   "pre_auth": true,
   "remote_exploitable": true,
   "exploit_complexity": "low",
-  "confidence": 0.95,
+  "confidence": 0.9,
   "execution_surface": "client_side",
   "delivery_vector": "email_attachment",
   "user_interaction_required": true,
   "attack_flow": {{
-    "entry_vector": "Crafted .docx with embedded ActiveX control delivered as email attachment",
-    "execution_mechanism": "MSHTML ActiveX rendering in Word triggers mshtml!CParkControl URL parsing → mso!Ordinal0 path → CAB extraction → DLL sideload",
-    "observable_side_effects": ["Word process spawning unusual child processes", "DLL load from %TEMP%", "outbound HTTP to attacker-controlled server"]
+    "entry_vector": "Crafted document delivered via email attachment that the user opens",
+    "execution_mechanism": "Document parser vulnerability in legacy rendering component triggers memory corruption on file open",
+    "observable_side_effects": ["Host application spawning unusual child processes", "Suspicious DLL load from temp directory", "Outbound HTTP to attacker-controlled server"]
   }},
   "mandatory_behaviors": ["process_creation", "file_write", "network_callback"],
-  "evasive_indicators": ["Mark-of-the-Web bypass via container file", "Office Protected View bypass"],
-  "exploit_requirements": ["Microsoft Office with MSHTML rendering", "User opens .docx attachment"],
-  "cwe_metadata": {{ "cwe_ids": ["CWE-787"], "cwe_names": ["Out-of-bounds Write"], "mapping_confidence": 0.85 }},
+  "evasive_indicators": ["Container file bypass of security warnings", "Protected View bypass via legacy rendering path"],
+  "exploit_requirements": ["Document viewer with vulnerable parser", "User opens malicious attachment"],
+  "cwe_metadata": {{ "cwe_ids": ["CWE-787"], "cwe_names": ["Out-of-bounds Write"], "mapping_confidence": 0.8 }},
   "reasoning": [
-    "The vulnerable code path executes inside MSHTML/Office on the user's machine when they open the malicious document",
+    "The vulnerable code path executes on the user's machine when they open the document",
     "This is a client-side exploitation chain, NOT a server-side web exploit",
-    "Despite CVSS AV:N, the attacker cannot reach the victim directly - they must convince the user to open the attachment"
+    "Despite CVSS AV:N, the attacker cannot reach the victim directly - they must convince the user to open the file"
   ]
 }}

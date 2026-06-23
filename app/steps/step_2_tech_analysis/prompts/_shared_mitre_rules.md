@@ -123,7 +123,7 @@
     Format: when `subtechniques: []` is appropriate, write a
     `mapping_reason` that documents what you checked (e.g. "T1190 has no
     sub-techniques in MITRE ATT&CK; CVE describes HTTP endpoint RCE in
-    Apache mod_fcgid with no specific shell/interpreter invocation").
+    a web framework with no specific shell/interpreter invocation").
     This is GOOD output, not a failure mode.
 - EVASIVE INDICATORS ENFORCEMENT (CRITICAL):
   Do NOT default to "none" for evasive_indicators. The field MUST NOT BE EMPTY unless the CVE
@@ -150,15 +150,15 @@
     (a) T1203 (Exploitation for Client Execution) — Execution tactic.
         Memory-corruption exploit IS the execution primitive. Emit T1203 +
         TA0002 whenever cwe_ids contains any memory-corruption CWE, kể cả
-        server-side (Apache mod_fcgid, OpenSSL heartbleed, IIS). Dù tên là
-        "Client Execution", MITRE liệt kê server-side exploitation hợp lệ.
+        server-side (web framework buffer overflow, library parser vulnerabilities).
+        Dù tên là "Client Execution", MITRE liệt kê server-side exploitation hợp lệ.
 
     (b) T1499.004 (Endpoint DoS: Application or System Exploitation) — Impact.
         Memory-corruption thường crash target process (segfault từ corrupted
         metadata). Khi description/observable_side_effects có "crash", "segfault",
         "DoS", "denial of service", "service unavailable" → ADD T1499.004 + TA0040.
 
-    (c) Evasive indicators MUST populate cho HTTP/web memory-corruption:
+    (c) Evasive indicators SHOULD be populated cho HTTP/web memory-corruption:
         - HTTP chunked transfer encoding (split payload bypass length-based WAF)
         - URL/hex encoding shellcode bytes (%XX evade text-pattern IDS)
         - Header obfuscation / smuggling (parser differential giữa WAF và app)
@@ -167,29 +167,32 @@
 
   Empty subtechniques + empty evasive_indicators cho CWE-787 CVE IS A
   HALLUCINATION. Kill chain là multi-tactic theo định nghĩa.
-- CODE INJECTION → T1059 + language-specific sub-technique (CRITICAL):
+- CODE INJECTION → T1059 + language-specific sub-technique:
   Code-injection CVEs (CWE-94 Code Injection, CWE-917 EL Injection [OGNL/SpEL/MVEL],
-  CWE-1336 Template Injection [SSTI]) require ADDITIONAL techniques:
+  CWE-1336 Template Injection [SSTI]) typically require additional techniques:
 
     (a) T1059 (Command and Scripting Interpreter) — Execution tactic.
-        Code-injection exploit chạy attacker-controlled code trong interpreter
-        context (Java/.NET runtime cho CWE-917, Python/JS template engine cho
-        CWE-1336, eval/exec cho CWE-94). Emit T1059 + TA0002 khi cwe_ids có
-        bất kỳ code-injection CWE nào. Sub-technique theo LANGUAGE:
+        Code-injection exploits run attacker-controlled code in an interpreter
+        context (Java/.NET runtime for CWE-917, Python/JS template engine for
+        CWE-1336, eval/exec for CWE-94). Consider emitting T1059 + TA0002 when
+        cwe_ids contains any code-injection CWE. Sub-technique selection based
+        on the LANGUAGE of the injected expression:
           - T1059.007 JavaScript (Node.js)
           - T1059.006 Python (Jinja2)
           - T1059.004 Unix Shell (shell-spawning payloads)
           - T1059.001 PowerShell (.NET)
-        Language ambiguous → default T1059.004 (most code-injection exploits
-        cuối cùng spawn shell).
+        When language is ambiguous, T1059.004 is a reasonable default since most
+        code-injection exploits ultimately spawn a shell.
 
-    (b) Sub-technique MUST populate (không empty) cho code-injection.
-        Khác memory-corruption (sub-techniques optional), code-injection ALWAYS
-        có specific interpreter invocation. Sub-technique là primary detection
-        signal cho Blue Team (vd Sigma rule cho `java.lang.Runtime` calls
-        → T1059.007). Empty subtechniques cho CWE-94/917/1336 IS A HALLUCINATION.
+    (b) Sub-techniques SHOULD be populated for code-injection.
+        Unlike memory-corruption (where sub-techniques are optional), code-injection
+        CVEs typically have a specific interpreter invocation. The sub-technique
+        is a primary detection signal for Blue Team (e.g. Sigma rules for
+        `java.lang.Runtime` calls map to T1059.007). If you have no concrete
+        signal for a specific sub-technique, document this in `mapping_reasons`
+        rather than fabricating an ID.
 
-    (c) Evasive indicators MUST populate cho code-injection:
+    (c) Evasive indicators SHOULD be populated for code-injection:
         - Unicode escape encoding (\\u00XX) bypass string-based WAF signatures
         - Base64/URL encoding payload bytes
         - String concatenation / char-code obfuscation
@@ -200,8 +203,9 @@
         - Comment insertion break regex WAF patterns
         - Case manipulation keywords (oGnL vs OGNL)
 
-  Empty subtechniques + empty evasive_indicators cho CWE-94/917/1336 CVE IS A
-  HALLUCINATION. Kill chain là execution-via-interpreter theo định nghĩa.
+  Empty subtechniques + empty evasive_indicators for CWE-94/917/1336 are STRONG
+  indicators of incomplete analysis. The kill chain IS execution-via-interpreter by
+  definition; if you cannot identify either, document why in `mapping_reasons`.
 - REASONING / MAPPING_REASONS ENFORCEMENT (CRITICAL):
   `mapping_reasons` MUST NEVER be empty. Provide concise, technical justification
   cho WHY bạn chọn specific Mandatory Behaviors và ATT&CK Techniques/Sub-techniques.
@@ -218,7 +222,7 @@
   narrative của vulnerability works end-to-end (2-4 bullets). MUST NEVER empty cho
   software CVE. Mỗi bullet walk through 1 step của exploit chain, citing CVE
   description/CWE/CVSS components.
-  Ví dụ cho CVE-2021-44228 (Log4Shell):
+  Ví dụ cho một JNDI/log4j-style deserialization CVE:
     - "Attacker injects JNDI lookup string (${jndi:ldap://...}) vào log message hoặc
       HTTP parameter được log bởi vulnerable Log4j (affects log4j-core 2.0-beta9 to 2.14.1;
       CVSS AV:N cho thấy remote network reachability)."
@@ -250,12 +254,12 @@
        nếu context warrants different primitive.
 
   Examples (NOT exhaustive — đừng dừng ở đây):
-    - SMB/RDP/SSH wormable RCE (BlueKeep, EternalBlue, SMBGhost) → T1210
-    - Web framework RCE (Log4Shell, Spring4Shell, Confluence OGNL) → T1190
+    - SMB/RDP/SSH wormable RCE in network protocol daemons → T1210
+    - Web framework RCE on HTTP endpoint → T1190
     - VPN gateway auth bypass → T1133
-    - Jenkins Script Console exploit → T1190 (web app on HTTP)
-    - runc container escape → T1611 (Escape to Host) — NOT T1190
-    - XZ Utils supply chain backdoor → T1195.002 — NOT T1190/T1210/T1133
+    - Web app script console exploit on HTTP → T1190
+    - Container runtime escape (runc, containerd, etc.) → T1611 (Escape to Host) — NOT T1190
+    - Software supply chain backdoor in a build pipeline → T1195.002 — NOT T1190/T1210/T1133
 
 - FALLBACK MAPPING FOR CONFIRMED PRE-AUTH NETWORK RCE (CONSERVATIVE BASELINE):
   CHỈ dùng khi CVSS là AV:N + PR:N + impact C:H AND không derive được primitive

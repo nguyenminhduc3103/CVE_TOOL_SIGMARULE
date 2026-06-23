@@ -7,10 +7,9 @@ MITRE ATT&CK techniques. Respond with a SINGLE JSON object only (no markdown, no
 # WHY PHASE 2 SEPARATES FROM BEHAVIOR ANALYSIS
 
 In the previous single-shot design, AI would read `CVSS: AV:N + PR:N` and immediately pick
-T1190 (Exploit Public-Facing Application) for EVERY CVE - including client-side CVEs like
-CVE-2021-40444 (MSHTML) where code runs on the victim's machine after they open a .docx,
-NOT on a server. Phase 1 extracts `execution_surface` to disambiguate this; Phase 2 uses
-that fact as a hard anchor.
+a generic server-exploit technique for EVERY CVE - including client-side CVEs where code
+runs on the victim's machine after they open a malicious document, NOT on a server. Phase 1
+extracts `execution_surface` to disambiguate this; Phase 2 uses that fact as a hard anchor.
 
 # JSON SCHEMA (Phase 2 - ATT&CK only)
 
@@ -27,52 +26,54 @@ that fact as a hard anchor.
 Read the **Phase 1 Output** block in the user prompt FIRST. It contains 5 canonical facts:
 
   1. **execution_surface** (THE most important anchor):
-     - "client_side" → Primary: T1204 (User Execution: Malicious File) + T1566 (Phishing).
+     - "client_side" → CONSIDER T1204 (User Execution) + T1566 (Phishing) first.
        Sub-techniques based on delivery_vector:
          * delivery_vector="email_attachment" → T1204.002 + T1566.001
          * delivery_vector="email_link"      → T1204.001 + T1566.002
          * delivery_vector="web_download"    → T1189 (Drive-by Compromise) + T1204
-       DO NOT pick T1190 or T1210 for client-side CVEs. This is the bug the two-phase
-       refactor was created to fix.
+       AVOID T1190 or T1210 for client-side CVEs unless signals clearly warrant it;
+       document the deviation in `mapping_reasons`.
 
-     - "server_side" → Primary: T1190 (Exploit Public-Facing Application) for HTTP,
+     - "server_side" → CONSIDER T1190 (Exploit Public-Facing Application) for HTTP,
        T1210 (Exploitation of Remote Services) for SMB/RDP/SSH/FTP.
        Sub-techniques based on what specific protocol/service is named in entry_vector:
-         * HTTP/web framework → T1190 (no sub-tech) + T1059.xxx if a shell is named
-         * SMB/RDP/SSH wormable → T1210 (no sub-tech) + T1068 if SYSTEM escalation
-       DO NOT pick T1204/T1566/T1189 for server-side CVEs.
+         * HTTP/web framework → T1190 + T1059.xxx if a shell is named
+         * SMB/RDP/SSH wormable → T1210 + T1068 if SYSTEM escalation
+       AVOID T1204/T1566/T1189 for server-side CVEs.
 
-     - "local" → Primary: T1068 (Exploitation for Privilege Escalation) + T1548.xxx
+     - "local" → CONSIDER T1068 (Exploitation for Privilege Escalation) + T1548.xxx
        (Abuse Elevation Control Mechanism). Sub-techniques based on entry_vector:
          * Kernel driver exploit → T1068
          * Win32k/syscall abuse → T1548.002 (Bypass UAC)
-       DO NOT pick T1190/T1210/T1204 for local CVEs.
+       AVOID T1190/T1210/T1204 for local CVEs.
 
-     - "multi_hop" → Primary: T1195 (Supply Chain Compromise) + T1611 (Container Escape)
+     - "multi_hop" → CONSIDER T1195 (Supply Chain Compromise) + T1611 (Container Escape)
        depending on entry_vector:
          * Supply chain backdoor → T1195.002 (Compromise Software Supply Chain)
          * Container escape     → T1611
          * CI/CD pipeline       → T1195.001 or T1195.003
-       DO NOT pick T1190/T1210/T1204 for multi_hop CVEs.
+       AVOID T1190/T1210/T1204 for multi_hop CVEs.
 
-     - "unknown" → Use the legacy 5-principle analysis (OS/SERVICE, PROTOCOL, TOOL,
+     - "unknown" → Apply the 5-principle analysis (OS/SERVICE, PROTOCOL, TOOL,
        AUTH, NO-SIGNAL) without execution_surface bias.
 
   2. **delivery_vector** (secondary anchor):
-     - "email_attachment" + "client_side" → T1566.001 (Spearphishing Attachment) MANDATORY
-     - "email_link" + "client_side"      → T1566.002 (Spearphishing Link) MANDATORY
-     - "web_download" + "client_side"    → T1189 (Drive-by Compromise) MANDATORY
-     - "network_protocol" + "server_side" → T1190 or T1210 (no extra technique)
-     - "physical"  → T1200 (Hardware Additions)
+     - "email_attachment" + "client_side" → CONSIDER T1566.001 (Spearphishing Attachment)
+     - "email_link" + "client_side"      → CONSIDER T1566.002 (Spearphishing Link)
+     - "web_download" + "client_side"    → CONSIDER T1189 (Drive-by Compromise)
+     - "network_protocol" + "server_side" → T1190 or T1210
+     - "physical"  → CONSIDER T1200 (Hardware Additions)
      - "local_execution" → T1059.xxx if shell named, else T1068
 
   3. **user_interaction_required**:
-     - true → MUST include T1204 (User Execution) family in techniques
+     - true → CONSIDER including T1204 (User Execution) in techniques when the
+       execution_surface supports it. Skip if execution_surface is server_side or local
+       (the user is a victim of network exploitation, not a manual operator).
      - false → can skip T1204 (exploit fires automatically)
 
   4. **entry_vector** + **execution_mechanism** (from Phase 1):
-     Use these to derive specific sub-techniques (e.g. "bash command injection" →
-     T1059.004, "PowerShell" → T1059.001).
+     Use these to derive specific sub-techniques (e.g. command injection naming a
+     specific shell → matching T1059.xxx sub-technique, .ps1 payload → T1059.001).
 
 # SUB-TECHNIQUE DECISION
 
@@ -85,7 +86,7 @@ Read the **Phase 1 Output** block in the user prompt FIRST. It contains 5 canoni
     - A specific shell/interpreter is invoked post-exploitation → T1059.001/003/004/006/007
     - A specific OS-only primitive is the attack surface (e.g. Linux kernel → T1068)
     - A specific payload type is the delivery mechanism (.ps1, .jar, .war, ...)
-    - A specific execution primitive is named (command injection → T1059.004)
+    - A specific execution primitive is named (command injection → matching T1059.xxx)
 
   ANTI-HALLUCINATION GUARD:
     NEVER emit a sub-technique ID that is NOT in the current MITRE ATT&CK matrix.
@@ -97,15 +98,17 @@ Read the **Phase 1 Output** block in the user prompt FIRST. It contains 5 canoni
   documents what you checked (e.g. "T1190 has no sub-techniques in MITRE; CVE
   describes HTTP endpoint RCE with no specific shell/interpreter invocation").
 
-# CRITICAL ANTI-BIAS RULES (Phase 2)
+# ANTI-BIAS RULES (Phase 2)
 
-- DO NOT use CVSS AV:N as a trigger to default to T1190. AV:N + client_side =
-  email attachment, NOT a server-side web exploit. Phase 1 already disambiguated.
-- DO NOT emit T1190 for client_side CVEs even if the CVSS says AV:N.
-- DO NOT emit T1204/T1566/T1189 for server_side CVEs even if entry_vector mentions
-  "user" in some indirect way (e.g. "user input" in web app form = T1190, not T1204).
-- DO honor the Phase 1 anchor block. If `execution_surface=client_side`, the answer
-  is in T1204/T1566/T1189 territory, NOT T1190.
+- Do NOT use CVSS AV:N as a sole trigger to default to T1190. AV:N + client_side
+  indicates an email/web delivery vector, NOT a server-side web exploit. Phase 1
+  already disambiguated execution_surface.
+- AVOID T1190 for client_side CVEs unless signals clearly indicate otherwise (deviation
+  must be justified in `mapping_reasons`).
+- AVOID T1204/T1566/T1189 for server_side CVEs even if entry_vector mentions "user"
+  indirectly (e.g. "user input" in a web app form = T1190, not T1204).
+- Honor the Phase 1 anchor block. If `execution_surface=client_side`, the typical
+  territory is T1204/T1566/T1189; if server_side, T1190/T1210. Document deviations.
 
 # INBOUND INTRUSION DISTINCTION
 
@@ -114,42 +117,39 @@ only if execution_surface=server_side (otherwise the question is moot):
 
   1. What service / protocol is on the wire? (SMB / RDP / SSH / HTTP / DNS / SMTP)
   2. Vulnerability in transport/auth layer or application layer on top?
-     - Transport/auth (SMBv3 compression, RDP channel, SSH handshake) → T1210
+     - Transport/auth (compression bugs, channel handling, handshake flaws) → T1210
      - Application on HTTP (web framework, REST API, GraphQL) → T1190
-     - VPN/Citrix/TeamViewer → T1133
+     - VPN / remote-access gateway auth bypass → T1133
   3. Container escape / supply chain / CI/CD? → T1611 / T1195.xxx
 
-# REFERENCE EXAMPLES
+# REFERENCE EXAMPLE (abstract — illustrative only)
 
-  - CVE-2021-40444 (MSHTML in .docx):
+This example shows the JSON SHAPE for the three execution_surface categories.
+Values are illustrative — derive your analysis from the actual CVE signals.
+
+  - Client-side document exploit chain:
     Phase 1: execution_surface=client_side, delivery_vector=email_attachment,
              user_interaction_required=true
-    Phase 2: T1204.002 + T1566.001 + TA0001 (Initial Access via Phishing)
-    NOT T1190.
+    Phase 2: T1204.002 + T1566.001 + TA0001 (Initial Access via Phishing).
+    Server-side techniques like T1190 should NOT be selected for client-side CVE.
 
-  - CVE-2013-4365 (Apache mod_fcgid heap overflow):
+  - Server-side web framework RCE (network protocol, no user interaction):
     Phase 1: execution_surface=server_side, delivery_vector=network_protocol,
-             user_interaction_required=false, cwe=CWE-787
-    Phase 2 (CORRECTED - multi-tactic kill chain):
-      tactics=["TA0001", "TA0002", "TA0040"]
-      techniques=["T1190", "T1203", "T1499"]
-      subtechniques=["T1499.004"]
-    Justification: T1190 covers initial-access HTTP exploit; T1203 covers
-    execution-via-memory-corruption (heap overflow → shellcode); T1499.004
-    covers DoS-via-application-crash (PoC consistently crashes httpd).
-    Evasive indicators MUST include WAF-bypass techniques (chunked encoding,
-    URL/hex encoding, header smuggling).
+             user_interaction_required=false
+    Phase 2: T1190 + appropriate execution tactic if applicable (T1203 for memory
+    corruption, T1059.xxx for code injection, etc.). Add TA0040 + T1499.004 when
+    observable_side_effects indicates process crashes.
 
-  - CVE-2024-3094 (XZ Utils backdoor):
+  - Multi-hop supply chain backdoor:
     Phase 1: execution_surface=multi_hop, delivery_vector=local_execution
-    Phase 2: T1195.002 + TA0001 (Initial Access via Supply Chain Compromise)
-    NOT T1190/T1210.
+    Phase 2: T1195.002 + TA0001 (Initial Access via Supply Chain Compromise).
+    Server-side primitives like T1190/T1210 should NOT be selected.
 
 # MEMORY-CORRUPTION PRIMITIVES (CWE-787, CWE-125, CWE-416, CWE-119, CWE-190)
 
 When Phase 1 cwe_metadata.cwe_ids contains ANY memory-corruption CWE AND
-execution_surface=server_side OR multi_hop, you MUST add these techniques
-IN ADDITION TO T1190/T1210/T1204 (whichever is the initial-access primitive):
+execution_surface=server_side OR multi_hop, add these techniques IN ADDITION
+to the initial-access primitive (T1190/T1210/T1204):
 
   1. T1203 (Exploitation for Client Execution) — Execution tactic
      The memory corruption itself IS the execution primitive. Heap/stack
@@ -160,9 +160,9 @@ IN ADDITION TO T1190/T1210/T1204 (whichever is the initial-access primitive):
   2. T1499.004 (Endpoint DoS: Application or System Exploitation) — Impact
      When CVE description OR Phase 1 observable_side_effects mentions
      "process crash", "segfault", "service crash", "DoS", "denial of service":
-     ADD T1499.004 to subtechniques and TA0040 to tactics. This is NOT
-     optional — process crash IS the most common observable outcome of
-     memory-corruption exploits (stable RCE is rare due to ASLR/DEP).
+     ADD T1499.004 to subtechniques and TA0040 to tactics. This is the most
+     common observable outcome of memory-corruption exploits (stable RCE is
+     rare due to ASLR/DEP).
 
   3. Evasive indicators for HTTP/web memory-corruption CVEs:
      - HTTP chunked transfer encoding (split oversized header across chunks)
@@ -171,8 +171,8 @@ IN ADDITION TO T1190/T1210/T1204 (whichever is the initial-access primitive):
        parser and target parser)
      - ROP chains, ASLR bypass, heap spraying (for actual memory corruption)
 
-DO NOT emit T1190 ALONE for memory-corruption CVEs. The kill chain spans
-TA0001 → TA0002 → TA0040, not just TA0001.
+The kill chain for memory-corruption CVEs spans TA0001 → TA0002 → TA0040,
+not just TA0001. T1190 alone is typically insufficient.
 
 # EVASIVE INDICATORS / MANDATORY BEHAVIORS
 
@@ -183,12 +183,13 @@ the orchestrator will trigger a Phase 1 retry.
 # REVERSE REASONING
 
 Every technique/sub-technique MUST be justified in `mapping_reasons`:
-  1. The vulnerable component (e.g. "SMBv3 driver srv2.sys", "Java JNDI parser")
-  2. Why the target OS/environment supports this technique
+  1. The vulnerable component (the specific software/library/parser named in the CVE)
+  2. Why the target OS/environment supports this technique (OS constraint, kernel vs
+     userland, library presence, etc.)
 
 Example good reason:
   "T1204.002 selected because Phase 1 confirmed execution_surface=client_side
-   and delivery_vector=email_attachment; user must open the malicious .docx
-   for the MSHTML ActiveX to render."
+   and delivery_vector=email_attachment; user must open the malicious document
+   for the embedded exploit to render."
 
 {{SHARED_MITRE_RULES}}
