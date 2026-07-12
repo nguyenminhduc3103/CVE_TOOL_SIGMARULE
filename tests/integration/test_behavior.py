@@ -12,10 +12,10 @@ import asyncio
 import logging
 import sys
 
-from app.core.config import settings
-from app.shared.models.core import CoreCVEData
-from app.services.ai.base_client import BaseAIClient
-from app.services.ai.behavior import AIBehaviorAnalyzer
+from config.settings import settings
+from src.domain.models.cve import CoreCVEData
+from src.infrastructure.ai import BaseAIClient
+from src.infrastructure.ai.behavior import AIBehaviorAnalyzer
 
 
 def _print_config() -> bool:
@@ -27,7 +27,7 @@ def _print_config() -> bool:
 	logger = logging.getLogger("integration.test_behavior")
 
 	print("=" * 70)
-	print("AI CONFIG (from app.core.config.settings)")
+	print("AI CONFIG (from config.settings.settings)")
 	print(f" AI Enabled : {settings.ai_enabled}")
 	print(f" Base URL : {settings.ai_base_url}")
 	api_key = settings.ai_api_key or ""

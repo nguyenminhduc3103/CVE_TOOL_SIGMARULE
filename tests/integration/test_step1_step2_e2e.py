@@ -20,7 +20,7 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from app.steps.step_1_triage.orchestrator import TriageOrchestrator
+from src.usecases.step_1_triage.orchestrator import TriageOrchestrator
 
 
 def _print_list(items, indent: str = "    ") -> None:
@@ -48,14 +48,14 @@ async def run_interactive_pipeline(cve_id: str) -> bool:
     print(f" BẮT ĐẦU QUY TRÌNH KIỂM THỬ INTERACTIVE (STEP 1 + 2) — {cve_id}")
     print("=" * 80)
 
-    from app.steps.step_1_triage.stages.core_stage import run_core_stage
-    from app.steps.step_1_triage.stages.epss_stage import run_epss_stage
-    from app.steps.step_1_triage.stages.kev_stage import run_kev_stage
-    from app.steps.step_1_triage.stages.exposure_stage import run_exposure_stage
-    from app.shared.parsers.reference_parser import extract_urls
-    from app.shared.models.triage import TriageContext
-    from app.shared.models.enriched import EnrichedCVEContext
-    from app.steps.step_1_triage.orchestrator import _err_line
+    from src.usecases.step_1_triage.stages.core_stage import run_core_stage
+    from src.usecases.step_1_triage.stages.epss_stage import run_epss_stage
+    from src.usecases.step_1_triage.stages.kev_stage import run_kev_stage
+    from src.usecases.step_1_triage.stages.exposure_stage import run_exposure_stage
+    from src.shared.parsers.reference_parser import extract_urls
+    from src.domain.models.triage import TriageContext
+    from src.domain.models.enriched import EnrichedCVEContext
+    from src.usecases.step_1_triage.orchestrator import _err_line
     import httpx
 
     orch = TriageOrchestrator()
@@ -76,10 +76,11 @@ async def run_interactive_pipeline(cve_id: str) -> bool:
         "kev": orch._run_provider("kev", orch.kev, orch.kev.fetch, cve_id, provider_status, provider_errors, provider_durations),
         "epss": orch._run_provider("epss", orch.epss, orch.epss.fetch, cve_id, provider_status, provider_errors, provider_durations),
         "otx": orch._run_provider("otx", orch.otx, orch.otx.fetch, cve_id, provider_status, provider_errors, provider_durations),
+        "poc": orch._run_provider("poc", orch.poc, orch.poc.fetch, cve_id, provider_status, provider_errors, provider_durations),
     }
     provider_results = await asyncio.gather(*provider_tasks.values(), return_exceptions=True)
 
-    nvd_raw = kev_raw = epss_raw = otx_raw = None
+    nvd_raw = kev_raw = epss_raw = otx_raw = poc_raw = None
     for name, result in zip(provider_tasks.keys(), provider_results):
         if isinstance(result, Exception):
             provider_status[name] = "failed"
@@ -93,30 +94,25 @@ async def run_interactive_pipeline(cve_id: str) -> bool:
             epss_raw = result
         elif name == "otx":
             otx_raw = result
+        elif name == "poc":
+            poc_raw = result
 
     # Trích xuất các stage
+    from src.usecases.step_1_triage.stages.poc_stage import run_poc_stage
     nvd_core_raw, _ = await orch._run_stage("core_stage", run_core_stage, cve_id, nvd_raw or {}, {})
     epss_stage_raw, _ = await orch._run_stage("epss_stage", run_epss_stage, cve_id, epss_raw or {}, {})
     kev_stage_raw, _ = await orch._run_stage("kev_stage", run_kev_stage, cve_id, kev_raw or {}, {})
     exposure_raw, _ = await orch._run_stage("exposure_stage", run_exposure_stage, cve_id, nvd_core_raw, {"internet_exposure": None})
+    poc_stage_raw, _ = await orch._run_stage("poc_stage", run_poc_stage, cve_id, poc_raw or {}, {"poc_references": None, "public_poc": False})
 
     internet_exposure = exposure_raw.get("internet_exposure") if isinstance(exposure_raw, dict) else None
     threat_actors = otx_raw.get("threat_actors") or [] if isinstance(otx_raw, dict) else []
 
     core = orch._build_core_context(cve_id, nvd_core_raw, otx_raw)
 
-    # Lọc PoC
-    public_poc = False
-    poc_references = []
-    if core.references:
-        try:
-            enriched_refs = extract_urls(core.references)
-            for ref in enriched_refs:
-                if ref.get("is_exploit"):
-                    public_poc = True
-                    poc_references.append(ref.get("url"))
-        except Exception:
-            pass
+    # Gọi resolve_poc_context tập trung để trộn PoC từ cả references NVD và nomi-sec
+    from src.shared.parsers.reference_parser import resolve_poc_context
+    public_poc, poc_references = resolve_poc_context(core.references, poc_stage_raw)
 
     # Build TriageContext
     in_kev_val = orch._get_optional_bool(kev_stage_raw, "in_kev")
@@ -145,23 +141,8 @@ async def run_interactive_pipeline(cve_id: str) -> bool:
     triage.capability_assessment = capability
     capability_classification = orch.capability_checker.classify(core)
 
-    # Quyết định Triage tự động
-    if capability_classification.value != "in_scope":
-        triage.decision = "NO-GO"
-        triage.decision_reason = (
-            f"Capability assessment={capability_classification.value} (out of scope); "
-            f"reason={capability_classification.reasoning}."
-        )
-    else:
-        if triage.in_kev is True:
-            triage.decision = "GO"
-            triage.decision_reason = "Capability assessment=in_scope, with active exploitation confirmed in CISA KEV."
-        elif triage.public_poc is True:
-            triage.decision = "GO"
-            triage.decision_reason = "Capability assessment=in_scope, and while in_kev is False/None, a public PoC/exploit was detected in references."
-        else:
-            triage.decision = "NO-GO"
-            triage.decision_reason = "Capability assessment=in_scope, but no active threat or exploit detected."
+    # Đánh giá toàn bộ kết quả Triage theo 5 trường hợp cụ thể của ma trận ưu tiên để ra quyết định GO/NO-GO
+    orch.decision_engine.evaluate(core, triage, capability_classification)
 
     enriched = EnrichedCVEContext(
         core=core,
@@ -313,8 +294,8 @@ async def run_interactive_pipeline(cve_id: str) -> bool:
 
 
 async def main() -> None:
-    from app.core.config import settings
-    from app.shared.providers.opencti import OpenCTIProvider
+    from config.settings import settings
+    from src.infrastructure.providers.opencti import OpenCTIProvider
 
     if len(sys.argv) > 1:
         # Chạy phân tích đơn lẻ cho một CVE cụ thể được truyền vào qua tham số
@@ -338,7 +319,7 @@ async def main() -> None:
             print("[!] LỖI: OPENCTI_TAXII_COLLECTION_ID chưa được thiết lập trong file .env!")
             sys.exit(1)
 
-        wait_for_user("Tải 5 CVE mới nhất từ OpenCTI TAXII Collection")
+        wait_for_user("Tải 5 CVE từ OpenCTI TAXII Collection")
         provider = OpenCTIProvider()
         try:
             raw_bundle = await provider.client.fetch_raw_collection(limit=5)

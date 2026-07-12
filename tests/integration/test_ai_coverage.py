@@ -21,8 +21,8 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from app.steps.step_1_triage.orchestrator import TriageOrchestrator
-from app.steps.step_2_tech_analysis.rule_based.attack_validator import (
+from src.usecases.step_1_triage.orchestrator import TriageOrchestrator
+from src.usecases.step_2_analysis.rule_based.attack_validator import (
     validate_against_cve_context,
     filter_attack_mapping,
 )
@@ -76,7 +76,7 @@ async def evaluate_cve(cve_id: str) -> dict:
 
     # Lớp 3: Sigma rule - SKIPPED (repo không có SigmaHQ rules)
     # Nếu sau này add SigmaHQ, thêm:
-    #   from app.steps.step_3_coverage.sigma_searcher import FilesystemRuleInventory, SigmaRepositoryIndexer
+    #   from src.usecases.step_3_coverage.sigma_searcher import FilesystemRuleInventory, SigmaRepositoryIndexer
     #   indexer = SigmaRepositoryIndexer(FilesystemRuleInventory("rules/"))
     #   hits = indexer.find_rules_by_techniques(sem["kept"])
 

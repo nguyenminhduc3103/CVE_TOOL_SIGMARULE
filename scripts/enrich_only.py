@@ -20,19 +20,20 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from app.core.config import settings
-from app.shared.models.core import CoreCVEData
-from app.shared.models.triage import TriageContext
-from app.shared.providers.nvd.provider import NVDProvider
-from app.shared.providers.kev.provider import KEVProvider
-from app.shared.providers.epss.provider import EPSSProvider
-from app.shared.providers.otx.provider import OTXProvider
-from app.shared.providers.opencti import OpenCTIProvider
-from app.shared.providers.poc.provider import PoCProvider
-from app.steps.step_1_triage.priority_engine import PriorityEngine
-from app.steps.step_1_triage.capability_checker import CapabilityChecker
-from app.shared.parsers.cvss_parser import parse_cvss
-from app.shared.parsers.reference_parser import extract_urls
+from config.settings import settings
+from src.domain.models.cve import CoreCVEData
+from src.domain.models.triage import TriageContext
+from src.infrastructure.providers.nvd.provider import NVDProvider
+from src.infrastructure.providers.kev.provider import KEVProvider
+from src.infrastructure.providers.epss.provider import EPSSProvider
+from src.infrastructure.providers.otx.provider import OTXProvider
+from src.infrastructure.providers.opencti import OpenCTIProvider
+from src.infrastructure.providers.poc.provider import PoCProvider
+from src.domain.services.priority_score import PriorityEngine
+from src.usecases.step_1_triage.decision_engine import DecisionEngine
+from src.domain.services.capability import CapabilityChecker
+from src.shared.parsers.cvss_parser import parse_cvss
+from src.shared.parsers.reference_parser import extract_urls
 
 
 def _print_list(items, indent: str = "    ", none_label: str = "none") -> None:
@@ -143,24 +144,12 @@ async def enrich(cve_id: str) -> None:
     print(f"  cpes ({len(core.affected_products or [])}):")
     _print_list(core.affected_products or [])
 
-    # Extract public PoC references using the already enriched references
-    public_poc = False
-    poc_references = []
-    for ref in enriched_refs:
-        if ref.get("is_exploit"):
-            public_poc = True
-            poc_references.append(ref.get("url"))
-
     # ---- Build TriageContext ----
     in_kev_val = bool(kev_raw.get("in_kev")) if kev_raw else False
-    _poc_refs = poc_raw.get("poc_references") if poc_raw else None
-    if _poc_refs:
-        public_poc = True
-        # Merge unique poc references
-        existing_set = set(poc_references)
-        for ref in _poc_refs:
-            if ref not in existing_set:
-                poc_references.append(ref)
+
+    # Gọi resolve_poc_context tập trung để trộn PoC từ cả references NVD và nomi-sec
+    from src.shared.parsers.reference_parser import resolve_poc_context
+    public_poc, poc_references = resolve_poc_context(core.references, poc_raw)
     triage = TriageContext(
         in_kev=in_kev_val,
         kev_added_date=kev_raw.get("kev_added_date"),
@@ -175,49 +164,18 @@ async def enrich(cve_id: str) -> None:
 
     # ---- Priority + Capability (rule-based) ----
     priority_engine = PriorityEngine()
+    decision_engine = DecisionEngine()
     priority, score = await priority_engine.assess(core, triage)
     triage.priority = priority
     triage.priority_score = score
 
     capability_checker = CapabilityChecker()
-    capability = await capability_checker.assess(core, triage)
-    triage.capability_assessment = (
-        capability.capability_classification.value
-        if hasattr(capability, "capability_classification")
-        else str(capability)
-    )
+    capability_str = await capability_checker.assess(core, triage)
+    triage.capability_assessment = capability_str
     classification = capability_checker.classify(core)
 
-    if classification.value != "in_scope":
-        triage.decision = "NO-GO"
-        triage.decision_reason = (
-            f"Capability assessment={classification.value} (out of scope); "
-            f"reason={classification.reasoning}. Pipeline stops at triage; "
-            f"rule generation skipped (even with in_kev={triage.in_kev}, "
-            f"epss_percentile={f'{triage.epss_percentile*100:.3f}%' if triage.epss_percentile is not None else 'None'}, "
-            f"public_poc={triage.public_poc})."
-        )
-    else:
-        if triage.in_kev is True:
-            triage.decision = "GO"
-            triage.decision_reason = (
-                f"Capability assessment=in_scope, with active exploitation confirmed in CISA KEV. "
-                f"Proceed to technical analysis with high priority (epss_percentile={f'{triage.epss_percentile*100:.3f}%' if triage.epss_percentile is not None else 'None'})."
-            )
-        elif triage.public_poc is True:
-            triage.decision = "GO"
-            triage.decision_reason = (
-                f"Capability assessment=in_scope, and while in_kev is False/None, "
-                f"a public PoC/exploit was detected in references. Proceed to technical analysis "
-                f"(epss_percentile={f'{triage.epss_percentile*100:.3f}%' if triage.epss_percentile is not None else 'None'})."
-            )
-        else:
-            triage.decision = "NO-GO"
-            triage.decision_reason = (
-                f"Capability assessment=in_scope, but no active threat or exploit detected "
-                f"(in_kev={triage.in_kev}, epss_percentile={f'{triage.epss_percentile*100:.3f}%' if triage.epss_percentile is not None else 'None'}, "
-                f"public_poc={triage.public_poc}). Pipeline stops at triage to conserve resources."
-            )
+    # Đánh giá toàn bộ kết quả Triage theo 5 trường hợp cụ thể của ma trận ưu tiên để ra quyết định GO/NO-GO
+    decision_engine.evaluate(core, triage, classification)
 
     print("\n" + "=" * 80)
     print("[TRIAGE - TriageContext]")

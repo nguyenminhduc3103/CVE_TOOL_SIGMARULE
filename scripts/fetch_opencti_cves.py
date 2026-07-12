@@ -12,9 +12,9 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from app.core.config import settings
-from app.core.logging import get_logger
-from app.shared.providers.opencti import OpenCTIProvider
+from config.settings import settings
+from config.logging import get_logger
+from src.infrastructure.providers.opencti import OpenCTIProvider
 
 logger = get_logger(__name__)
 
