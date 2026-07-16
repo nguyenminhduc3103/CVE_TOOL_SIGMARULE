@@ -232,6 +232,34 @@ class TriageOrchestrator:
         enriched.analysis = analysis_context
         enriched.attack = attack_context
 
+        # Layer 3 External Ground Truth Validation — chạy SAU AI analysis.
+        # Kết quả gắn vào enriched.validation để Step 6 (rule writer) dùng
+        # verdict (PASS/PARTIAL/FAIL) quyết định có generate Sigma rule không.
+        if analysis_context is not None or attack_context is not None:
+            try:
+                from app.steps.step_2_tech_analysis.validation.validate_stage import run_validate_stage
+                validation_result = await run_validate_stage(
+                    tech_analysis=analysis_context,
+                    attack_mapping=attack_context,
+                    cve_id=cve_id,
+                    cwe_ids=enriched.core.cwe_ids or [],
+                    cvss_vector=enriched.core.cvss_vector,
+                    description=enriched.core.description,
+                )
+                enriched.validation = validation_result
+                self.logger.info(
+                    "[ORCHESTRATOR] validation_stage_done",
+                    cve_id=cve_id,
+                    verdict=validation_result.verdict,
+                    score=f"{validation_result.overall_confidence_score:.2f}" if validation_result.overall_confidence_score is not None else "N/A",
+                )
+            except Exception as exc:
+                self.logger.warning(
+                    "[ORCHESTRATOR] validation_stage_failed",
+                    cve_id=cve_id,
+                    error=_err_line(exc),
+                )
+
         coverage_context, stage_failed = await self._run_enriched_stage(
             stage_name="coverage_stage",
             stage_fn=run_coverage_stage,

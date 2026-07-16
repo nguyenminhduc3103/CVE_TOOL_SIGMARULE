@@ -1,0 +1,47 @@
+{
+  "technical_analysis": {
+    "vulnerability_type": "remote_code_execution",
+    "attack_flow": {
+      "entry_vector": "HTTP Headers (e.g., User-Agent) containing JNDI payload",
+      "execution_mechanism": "JNDI lookup triggering remote class loading (LDAP/RMI)",
+      "observable_side_effects": [
+        "network_connection",
+        "process_creation"
+      ]
+    },
+    "likely_outcome": "unauthenticated_remote_code_execution",
+    "mandatory_behaviors": [
+      "network_connection",
+      "process_creation",
+      "tool_download"
+    ],
+    "evasive_indicators": [
+      "jndi_lookup_obfuscation"
+    ],
+    "exploit_requirements": [
+      "vulnerable_log4j_version",
+      "outbound_network_allowed"
+    ],
+    "confidence": 0.98
+  },
+  "attack_mapping": {
+    "tactics": [
+      "TA0001",
+      "TA0002",
+      "TA0011"
+    ],
+    "techniques": [
+      "T1190",
+      "T1059",
+      "T1105"
+    ],
+    "subtechniques": [
+      "T1059.004"
+    ],
+    "mapping_reasons": [
+      "T1190: Khai thác qua ứng dụng web công khai.",
+      "T1059: Gọi shell để thực thi lệnh RCE.",
+      "T1105: Tải payload từ LDAP/RMI server bên ngoài."
+    ]
+  }
+}

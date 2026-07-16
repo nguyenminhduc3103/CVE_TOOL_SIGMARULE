@@ -1,4 +1,4 @@
-﻿CVE ID,Primary Impact,Secondary Impact,Exploitation Technique,Uncategorized,Phase
+CVE ID,Primary Impact,Secondary Impact,Exploitation Technique,Uncategorized,Phase
 CVE-2019-15243,T1059,,T1190; T1078,,Phase 2
 CVE-2019-15976,T1068,T1059,T1190,,Phase 2
 CVE-2019-15956,T1499; T1098,,T1190; T1078,,Phase 2
@@ -838,3 +838,4 @@ CVE-2018-19830,,,,T828; T1565; T1068,Phase 1
 CVE-2018-19833,,,,T828; T1565.001,Phase 1
 CVE-2019-13533,,,,T855; T842,Phase 1
 CVE-2019-10980,,,,T873; T1203,Phase 1
+CVE-2024-3400,T1059;T1068,,T1190,,Manual

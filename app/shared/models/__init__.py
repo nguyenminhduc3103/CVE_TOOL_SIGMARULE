@@ -6,11 +6,12 @@ from app.shared.models.enriched import EnrichedCVEContext, EnrichmentMetadata
 from app.shared.models.rule import RuleSkeleton
 from app.shared.models.telemetry import TelemetryAssessment
 from app.shared.models.triage import TriageContext
+from app.shared.models.validation import ValidationResult
 
 Rule = RuleSkeleton  # Backward compat alias
 
 __all__ = [
     'AttackFlow', 'AttackMapping', 'CWEMetadata', 'TechnicalAnalysis',
     'CoreCVEData', 'CoverageAssessment', 'EnrichedCVEContext', 'EnrichmentMetadata',
-    'Rule', 'RuleSkeleton', 'TelemetryAssessment', 'TriageContext',
+    'Rule', 'RuleSkeleton', 'TelemetryAssessment', 'TriageContext', 'ValidationResult',
 ]

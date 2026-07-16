@@ -10,6 +10,7 @@ from app.shared.models.coverage import CoverageAssessment
 from app.shared.models.core import CoreCVEData
 from app.shared.models.telemetry import TelemetryAssessment
 from app.shared.models.triage import TriageContext
+from app.shared.models.validation import ValidationResult
 
 
 class ThreatIntelligenceContext(BaseModel):
@@ -64,6 +65,10 @@ class EnrichedCVEContext(BaseModel):
     attack: AttackMapping | None = None
     coverage: CoverageAssessment | None = None
     telemetry: TelemetryAssessment | None = None
+    validation: ValidationResult | None = None
+    """Kết quả validate Layer 3 (External Ground Truth). Set bởi
+    TriageOrchestrator sau run_step2_tech_analysis(). Downstream có thể
+    dùng verdict (PASS/PARTIAL/FAIL/UNKNOWN) để quyết định generate rule."""
     threat_intelligence: ThreatIntelligenceContext | None = None
     attack_mapping: AttackMappingContext | None = None
     detections: DetectionContext | None = None
