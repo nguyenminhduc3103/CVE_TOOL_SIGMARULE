@@ -10,6 +10,7 @@ from src.domain.models.coverage import CoverageAssessment
 from src.domain.models.cve import CoreCVEData
 from src.domain.models.telemetry import TelemetryAssessment
 from src.domain.models.triage import TriageContext
+from src.domain.models.validation import ValidationResult
 
 
 class ThreatIntelligenceContext(BaseModel):
@@ -64,6 +65,7 @@ class EnrichedCVEContext(BaseModel):
     attack: AttackMapping | None = None
     coverage: CoverageAssessment | None = None
     telemetry: TelemetryAssessment | None = None
+    validation: ValidationResult | None = None
     threat_intelligence: ThreatIntelligenceContext | None = None
     attack_mapping: AttackMappingContext | None = None
     detections: DetectionContext | None = None

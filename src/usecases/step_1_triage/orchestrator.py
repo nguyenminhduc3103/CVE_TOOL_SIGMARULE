@@ -207,6 +207,18 @@ class TriageOrchestrator:
         enriched.analysis = analysis_context
         enriched.attack = attack_context
 
+        # Chạy Validation Lớp 3 (Ground Truth & Scoring)
+        from src.usecases.step_2_analysis.validation.validate_stage import run_validate_stage
+        validation_result = await run_validate_stage(
+            tech_analysis=analysis_context,
+            attack_mapping=attack_context,
+            cve_id=core.cve_id,
+            cwe_ids=core.cwe_ids or [],
+            cvss_vector=core.cvss_vector,
+            description=core.description,
+        )
+        enriched.validation = validation_result
+
         coverage_context, stage_failed = await self._run_enriched_stage(
             stage_name="coverage_stage",
             stage_fn=run_coverage_stage,
