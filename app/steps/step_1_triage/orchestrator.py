@@ -287,7 +287,7 @@ class TriageOrchestrator:
 
     async def _run_analysis_stage(self, context: EnrichedCVEContext, capability):
         from app.core.config import settings
-        from app.steps.step_2_tech_analysis.rule_based.attack_validator import filter_attack_mapping, normalize_family
+        from app.steps.step_2_tech_analysis.rule_based.attack_validator import normalize_family, validate_ttp_list
         # NEW: import từ clean architecture folder
         from app.shared.ai.core import AIServiceError, BaseAIClient
         from app.steps.step_2_tech_analysis.services.ai_service import AIBehaviorService
@@ -341,14 +341,18 @@ class TriageOrchestrator:
                     raise AIServiceError("AI returned None after retry")
 
                 # Apply MITRE ATT&CK validator (safety net 2.3) cho AI output
-                clean = filter_attack_mapping(
+                validation = validate_ttp_list(
                     attack_mapping.tactics,
                     attack_mapping.techniques,
                     attack_mapping.subtechniques,
                 )
-                attack_mapping.tactics = clean["tactics"]
-                attack_mapping.techniques = clean["techniques"]
-                attack_mapping.subtechniques = clean["subtechniques"]
+                attack_mapping.tactics = validation["valid_tactics"] or None
+                attack_mapping.techniques = validation["valid_techniques"] or None
+                attack_mapping.subtechniques = validation["valid_subtechniques"] or None
+                attack_mapping.validation_warnings = validation["warnings"] or None
+                attack_mapping.dropped_tactics = validation["invalid_tactics"] or None
+                attack_mapping.dropped_techniques = validation["invalid_techniques"] or None
+                attack_mapping.dropped_subtechniques = validation["invalid_subtechniques"] or None
 
                 # Normalize family name về enum chuẩn (e.g. "Apache Log4j2" -> "jndi_injection")
                 normalized_fam = normalize_family(tech_analysis.family)
@@ -397,8 +401,6 @@ error=_err_line(exc),
         try:
             analysis_context, attack_context = await run_analysis_stage(context, capability)
             # Apply MITRE ATT&CK validator cho rule-based output
-            from app.steps.step_2_tech_analysis.rule_based.attack_validator import validate_ttp_list
-
             validation = validate_ttp_list(
                 attack_context.tactics if attack_context else None,
                 attack_context.techniques if attack_context else None,
@@ -411,9 +413,14 @@ error=_err_line(exc),
                     dropped_tactics=len(validation["invalid_tactics"]),
                     dropped_techniques=len(validation["invalid_techniques"]),
                 )
+            if attack_context:
                 attack_context.tactics = validation["valid_tactics"] or None
                 attack_context.techniques = validation["valid_techniques"] or None
                 attack_context.subtechniques = validation["valid_subtechniques"] or None
+                attack_context.validation_warnings = validation["warnings"] or None
+                attack_context.dropped_tactics = validation["invalid_tactics"] or None
+                attack_context.dropped_techniques = validation["invalid_techniques"] or None
+                attack_context.dropped_subtechniques = validation["invalid_subtechniques"] or None
             return analysis_context, attack_context, False
         except Exception as exc:
             self.logger.warning("[ORCHESTRATOR] stage_failed", stage="analysis_stage", cve_id=context.core.cve_id, error=_err_line(exc))

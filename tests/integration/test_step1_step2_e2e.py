@@ -241,7 +241,9 @@ async def run_interactive_pipeline(cve_id: str) -> bool:
         print(f"  Remote exploitable: {a.remote_exploitable}")
         print(f"  Exploit complexity: {a.exploit_complexity}")
         print(f"  Confidence:         {a.confidence}")
+        print(f"  Analysis confidence:{a.analysis_confidence}")
         print(f"  Likely outcome:     {a.likely_outcome}")
+        print(f"  Extracted keywords: {a.extracted_keywords or []}")
 
         print(f"  CWE metadata:")
         if a.cwe_metadata:
@@ -268,11 +270,16 @@ async def run_interactive_pipeline(cve_id: str) -> bool:
         _print_list(a.exploit_requirements or [])
         print(f"  Reasoning ({len(a.reasoning or [])} items):")
         _print_list(a.reasoning or [])
+        print(f"  Classification reason ({len(a.classification_reason or [])}):")
+        _print_list(a.classification_reason or [])
+        print(f"  Behavior reason ({len(a.behavior_reason or [])}):")
+        _print_list(a.behavior_reason or [])
 
         # Two-phase fields (Phase 1 output).
         print(f"  Execution surface:   {a.execution_surface.value if a.execution_surface else 'n/a'}")
         print(f"  Delivery vector:     {a.delivery_vector.value if a.delivery_vector else 'n/a'}")
         print(f"  User interaction:    {a.user_interaction_required}")
+        print(f"  AI used/model(s):    {a.ai_used} / {a.ai_model} / {a.ai_models_used or []}")
 
     # =========================================================================
     # BƯỚC 3 — ATT&CK MAPPING
@@ -289,10 +296,20 @@ async def run_interactive_pipeline(cve_id: str) -> bool:
         print(f"  Techniques ({len(atk.techniques or [])}):")
         _print_list(atk.techniques or [])
         print(f"  Subtechniques ({len(atk.subtechniques or [])}):")
-        _print_list(atk.subtechniques or [])
+        if atk.subtechniques:
+            _print_list(atk.subtechniques)
+        else:
+            print("    []")
         print(f"  Confidence:         {atk.confidence}")
+        print(f"  Attack mapping confidence: {atk.attack_mapping_confidence}")
         print(f"  Mapping reasons ({len(atk.mapping_reasons or [])}):")
         _print_list(atk.mapping_reasons or [])
+        print(f"  Validation warnings ({len(atk.validation_warnings or [])}):")
+        _print_list(atk.validation_warnings or [])
+        print(f"  Dropped tactics:     {atk.dropped_tactics or []}")
+        print(f"  Dropped techniques:  {atk.dropped_techniques or []}")
+        print(f"  Dropped subtechniques:{atk.dropped_subtechniques or []}")
+        print(f"  AI used/model(s):    {atk.ai_used} / {atk.ai_model} / {atk.ai_models_used or []}")
 
     _section("STEP 2 — AI USAGE")
     ai_steps = orch._ai_steps_used or []

@@ -1,10 +1,10 @@
 """Data flow helpers - thao tác trên dict thuần (không Pydantic).
 
 Orchestrator dùng các helper này để:
-- Convert Pydantic ↔ dict (intermediate giữa các step)
-- Normalize AI dict (move attack_flow fields từ top-level xuống nested)
-- Apply 3-tier fallback cho attack_flow fields
-- Backfill `evasive_indicators` theo CWE family (memory-corruption, code-injection)
+- Convert dict (intermediate AI output) → Pydantic (chỗ duy nhất build
+  TechnicalAnalysis/AttackMapping từ dict).
+- Sanitize None / "none" placeholders trong AI output.
+- Backfill `evasive_indicators` theo CWE family (memory-corruption, code-injection).
 """
 from __future__ import annotations
 
@@ -17,75 +17,9 @@ from app.shared.models.attack import (
     TechnicalAnalysis,
 )
 from app.shared.types.vulnerability_class import VulnerabilityClass
-from app.steps.step_2_tech_analysis.fallbacks.attack_flow import (
-    apply_attack_flow_fallback,
-)
 
 
 # Pydantic <-> dict conversions
-
-def _vulnerability_class_to_str(vc) -> str | None:
-    """Convert Pydantic enum hoặc str sang string. Returns None nếu rỗng."""
-    if vc is None:
-        return None
-    if hasattr(vc, "value"):
-        return str(vc.value)
-    return str(vc).strip() or None
-
-
-def _ai_pydantic_to_dict(tech_analysis: TechnicalAnalysis, attack_mapping: AttackMapping, cve_id: str, cwe_ids: list[str] | None) -> dict[str, Any]:
-    """Convert Pydantic sang dict (intermediate data flow).
-
-    `entry_vector` + `execution_mechanism` được lưu ở CẢ top-level + nested
-    attack_flow (serializer format target đọc top-level, Pydantic AttackFlow
-    đọc nested).
-    """
-    af = tech_analysis.attack_flow
-    entry_vector = af.entry_vector if af else None
-    execution_mechanism = af.execution_mechanism if af else None
-    obs_effects = af.observable_side_effects if af else None
-
-    return {
-        "cve_id": cve_id,
-        "cwe_ids": cwe_ids or [],
-        "pre_auth": getattr(tech_analysis, "pre_auth", None),
-        "remote_exploitable": getattr(tech_analysis, "remote_exploitable", None),
-        "technical_analysis": {
-            "family": getattr(tech_analysis, "family", None),
-            "vulnerability_type": getattr(tech_analysis, "vulnerability_type", None),
-            "vulnerability_class": _vulnerability_class_to_str(
-                getattr(tech_analysis, "vulnerability_class", None)
-            ),
-            "exploit_vector": getattr(tech_analysis, "exploit_vector", None),
-            "exploit_complexity": getattr(tech_analysis, "exploit_complexity", None),
-            "entry_vector": entry_vector,                # TOP-LEVEL (cho serializer)
-            "execution_mechanism": execution_mechanism, # TOP-LEVEL
-            "cwe_metadata": (
-                tech_analysis.cwe_metadata.model_dump(exclude_none=True)
-                if getattr(tech_analysis, "cwe_metadata", None) is not None
-                else None
-            ),
-            "attack_flow": {
-                "entry_vector": entry_vector,            # NESTED (cho Pydantic)
-                "execution_mechanism": execution_mechanism,
-                "observable_side_effects": obs_effects or [],
-            },
-            "mandatory_behaviors": getattr(tech_analysis, "mandatory_behaviors", None) or [],
-            "exploit_requirements": getattr(tech_analysis, "exploit_requirements", None) or [],
-        },
-        "attack_mapping": {
-            "tactics": getattr(attack_mapping, "tactics", None) or [],
-            "techniques": getattr(attack_mapping, "techniques", None) or [],
-            "subtechniques": getattr(attack_mapping, "subtechniques", None) or [],
-            "confidence": getattr(attack_mapping, "confidence", None),
-            "mapping_reasons": getattr(attack_mapping, "mapping_reasons", None) or [],
-        },
-        "metadata": {
-            "ai_used": True,
-            "ai_model": getattr(tech_analysis, "ai_model", None),
-        },
-    }
-
 
 def _ai_dict_to_pydantic(
     data: dict[str, Any], base_tech: TechnicalAnalysis, base_attack: AttackMapping
@@ -152,11 +86,17 @@ def _ai_dict_to_pydantic(
     tech_analysis = TechnicalAnalysis(
         family=tech_dict.get("family") or getattr(base_tech, "family", None),
         signature=tech_dict.get("signature") or getattr(base_tech, "signature", None),
+        extracted_keywords=tech_dict.get("extracted_keywords")
+        or getattr(base_tech, "extracted_keywords", None),
         vulnerability_type=tech_dict.get("vulnerability_type"),
         vulnerability_class=vc,
         exploit_vector=tech_dict.get("exploit_vector"),
-        pre_auth=getattr(base_tech, "pre_auth", None),
-        remote_exploitable=getattr(base_tech, "remote_exploitable", None),
+        pre_auth=tech_dict.get("pre_auth")
+        if "pre_auth" in tech_dict
+        else getattr(base_tech, "pre_auth", None),
+        remote_exploitable=tech_dict.get("remote_exploitable")
+        if "remote_exploitable" in tech_dict
+        else getattr(base_tech, "remote_exploitable", None),
         exploit_complexity=tech_dict.get("exploit_complexity"),
         confidence=tech_dict.get("confidence") or getattr(base_tech, "confidence", None),
         likely_outcome=tech_dict.get("likely_outcome") or getattr(base_tech, "likely_outcome", None),
@@ -164,6 +104,12 @@ def _ai_dict_to_pydantic(
         evasive_indicators=tech_dict.get("evasive_indicators") or None,
         exploit_requirements=tech_dict.get("exploit_requirements") or None,
         reasoning=tech_dict.get("reasoning") or None,
+        analysis_confidence=tech_dict.get("analysis_confidence")
+        or getattr(base_tech, "analysis_confidence", None),
+        classification_reason=tech_dict.get("classification_reason")
+        or getattr(base_tech, "classification_reason", None),
+        behavior_reason=tech_dict.get("behavior_reason")
+        or getattr(base_tech, "behavior_reason", None),
         cwe_metadata=cwe_meta,
         attack_flow=attack_flow,
         # === NEW: two-phase fields (Phase 1 output) ===
@@ -177,69 +123,25 @@ def _ai_dict_to_pydantic(
         ai_models_used=ai_models_used,
     )
 
-    # subtechniques: empty/None → fill ["none"] sentinel để downstream phân biệt
-    # "không tìm được sub" với "chưa chạy pipeline". Match _validation.py:272.
-    _sub_val = atk_dict.get("subtechniques")
-    if not _sub_val:
-        _sub_val = ["none"]
-
     attack_mapping = AttackMapping(
         tactics=atk_dict.get("tactics") or None,
         techniques=atk_dict.get("techniques") or None,
-        subtechniques=_sub_val,
+        subtechniques=atk_dict.get("subtechniques") or None,
         confidence=atk_dict.get("confidence") or getattr(base_attack, "confidence", None),
         mapping_reasons=atk_dict.get("mapping_reasons") or None,
+        attack_mapping_confidence=atk_dict.get("attack_mapping_confidence")
+        or atk_dict.get("confidence")
+        or getattr(base_attack, "attack_mapping_confidence", None),
+        validation_warnings=atk_dict.get("validation_warnings") or None,
+        dropped_tactics=atk_dict.get("dropped_tactics") or None,
+        dropped_techniques=atk_dict.get("dropped_techniques") or None,
+        dropped_subtechniques=atk_dict.get("dropped_subtechniques") or None,
         ai_used=True,
         ai_retry_count=getattr(base_attack, "ai_retry_count", 0),  # PASS THROUGH
         ai_model=ai_model,
         ai_models_used=ai_models_used,
     )
     return tech_analysis, attack_mapping
-
-
-def _normalize_ai_dict(
-    ai_data: dict[str, Any], cve_id: str, cwe_ids: list[str] | None
-) -> dict[str, Any]:
-    """Normalize AI dict: copy attack_flow fields từ top-level vào nested nếu thiếu.
-
-    Cũng recover ATT&CK fields nếu AI trả thẳng ở root (Groq quirk) - tránh
-    wipeout bug CVE-2023-22515.
-    """
-    tech = ai_data.get("technical_analysis") or {}
-    if not tech and "family" in ai_data:
-        # AI trả thẳng ở root (không có wrapper technical_analysis).
-        # ATT&CK fields phải đi vào `attack_mapping`, không bị nuốt vào
-        # `technical_analysis` (wipeout bug CVE-2023-22515).
-        _ATTACK_ROOT_KEYS = {
-            "tactics", "techniques", "subtechniques", "mapping_reasons",
-            "attack_confidence",
-        }
-        existing_atk = dict(ai_data.get("attack_mapping") or {})
-        recovered_atk = {
-            k: ai_data[k] for k in _ATTACK_ROOT_KEYS if k in ai_data
-        }
-        tech = {
-            k: v for k, v in ai_data.items()
-            if k not in (
-                "attack_mapping", "metadata", "cve_id",
-                "pre_auth", "remote_exploitable",
-            ) and k not in _ATTACK_ROOT_KEYS
-        }
-        ai_data = {
-            "technical_analysis": tech,
-            "attack_mapping": {**existing_atk, **recovered_atk},
-            "metadata": ai_data.get("metadata", {}),
-        }
-
-    flow = tech.setdefault("attack_flow", {})
-    for field in ("entry_vector", "execution_mechanism"):
-        if not flow.get(field) and tech.get(field):
-            flow[field] = tech[field]
-
-    ai_data.setdefault("cve_id", cve_id)
-    ai_data.setdefault("cwe_ids", cwe_ids or [])
-
-    return ai_data
 
 
 # Sanitize None / "none" placeholders từ AI output
@@ -267,10 +169,18 @@ def _normalize_none_placeholders(ai_data: dict[str, Any]) -> dict[str, Any]:
             atk[key] = []
         if not isinstance(atk.get(key), list):
             atk[key] = [atk[key]] if atk.get(key) else []
+        atk[key] = [x for x in atk[key] if str(x).lower().strip() not in _PLACEHOLDER_TOKENS]
 
     # Filter "none" placeholder cho behavioral fields
     for key in ("evasive_indicators", "mandatory_behaviors", "exploit_requirements"):
         raw = tech.get(key) or []
+        if isinstance(raw, list):
+            tech[key] = [x for x in raw if str(x).lower().strip() not in _PLACEHOLDER_TOKENS]
+        elif raw and str(raw).lower().strip() in _PLACEHOLDER_TOKENS:
+            tech[key] = []
+
+    for key in ("reasoning", "classification_reason", "behavior_reason", "extracted_keywords"):
+        raw = tech.get(key)
         if isinstance(raw, list):
             tech[key] = [x for x in raw if str(x).lower().strip() not in _PLACEHOLDER_TOKENS]
         elif raw and str(raw).lower().strip() in _PLACEHOLDER_TOKENS:
@@ -287,12 +197,6 @@ def _normalize_none_placeholders(ai_data: dict[str, Any]) -> dict[str, Any]:
         atk["mapping_reasons"] = [x for x in raw if str(x).lower().strip() not in _PLACEHOLDER_TOKENS]
     elif raw and str(raw).lower().strip() in _PLACEHOLDER_TOKENS:
         atk["mapping_reasons"] = []
-
-    raw_reasoning = tech.get("reasoning")
-    if isinstance(raw_reasoning, list):
-        tech["reasoning"] = [x for x in raw_reasoning if str(x).lower().strip() not in _PLACEHOLDER_TOKENS]
-    elif raw_reasoning and str(raw_reasoning).lower().strip() in _PLACEHOLDER_TOKENS:
-        tech["reasoning"] = []
 
     # observable_side_effects: không filter "none" (có thể legitimate).
     if flow.get("observable_side_effects") is None:
@@ -338,8 +242,9 @@ _EVASIVE_DEFAULTS_BY_CWE: dict[str, list[str]] = {
     ],
 }
 
-# Canonical CWE family sets. Imported bởi _validation.py + exploit_classifier.py
-# để enforce mandatory `evasive_indicators` và execution_surface classification.
+# Canonical CWE family sets. Imported bởi exploit_classifier.py để enforce
+# mandatory `evasive_indicators` (memory-corruption / code-injection) và
+# execution_surface classification (server_side heuristics).
 _MEMORY_CORRUPTION_CWES = frozenset({"CWE-787", "CWE-125", "CWE-416", "CWE-119", "CWE-190"})
 
 # Code-injection family: generic (CWE-94/95/96), expression language (CWE-917),
@@ -368,42 +273,5 @@ def _default_evasive_indicators_for_cwe(cwe_ids: list[str] | None) -> list[str]:
     return out
 
 
-# 3-tier fallback cho 3 MANDATORY attack_flow fields
-
-def _apply_3_tier_fallback(
-    data: dict[str, Any],
-    exploit_vector: str | None,
-    vulnerability_class: str | None,
-    mandatory_behaviors: list[str],
-) -> dict[str, Any]:
-    """Apply 3-tier fallback cho 3 MANDATORY attack_flow fields trong dict.
-
-    Tier 1: dùng giá trị từ data hiện tại (top-level + nested).
-    Tier 2: derive rule-based từ exploit_vector + vulnerability_class + behaviors.
-    Set CẢ 2 chỗ (top-level + nested) để atomic.
-    """
-    tech = data.setdefault("technical_analysis", {})
-    flow = tech.setdefault("attack_flow", {})
-
-    current = {
-        "entry_vector": tech.get("entry_vector") or flow.get("entry_vector"),
-        "execution_mechanism": tech.get("execution_mechanism") or flow.get("execution_mechanism"),
-        "observable_side_effects": flow.get("observable_side_effects") or [],
-    }
-
-    filled = apply_attack_flow_fallback(
-        current=current,
-        exploit_vector=exploit_vector,
-        vulnerability_class=vulnerability_class,
-        mandatory_behaviors=mandatory_behaviors,
-    )
-
-    # Set cả top-level + nested atomic để Pydantic + serializer cùng đọc đúng.
-    tech["entry_vector"] = filled["entry_vector"]
-    tech["execution_mechanism"] = filled["execution_mechanism"]
-    flow["entry_vector"] = filled["entry_vector"]
-    flow["execution_mechanism"] = filled["execution_mechanism"]
-    flow["observable_side_effects"] = filled["observable_side_effects"]
-
-    return data
-
+# Backfill evasive_indicators khi AI trả [] / ["none"] (đã filter ở trên).
+# Áp dụng theo CWE family — memory-corruption HOẶC code-injection.

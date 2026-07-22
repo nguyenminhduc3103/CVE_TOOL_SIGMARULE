@@ -143,30 +143,78 @@
   injection, side-channel attack on silicon). For 95%+ of CVEs, evasive_indicators MUST have
   concrete items. Your answer will be rejected by the coverage engine if this field is empty
   without justification.
-- MEMORY CORRUPTION → T1203 + T1499.004 (CRITICAL):
-  Memory-corruption CVEs (CWE-787, CWE-125, CWE-416, CWE-119, CWE-190) require
-  ADDITIONAL techniques beyond initial-access primitive:
+- MEMORY CORRUPTION → execution-aware discriminator (not a hard mandate):
+ Memory-corruption CVEs (CWE-787/125/416/119/190) có nhiều cách map Execution
+ tactic. T1203 (Exploitation for Client Execution) named for CLIENT-SIDE
+ exploits where attacker code runs on victim's machine. CHO T1203 khi
+ `execution_surface == "server_side"` chỉ khi affirmative answer cho CẢ 3 câu hỏi:
 
-    (a) T1203 (Exploitation for Client Execution) — Execution tactic.
-        Memory-corruption exploit IS the execution primitive. Emit T1203 +
-        TA0002 whenever cwe_ids contains any memory-corruption CWE, kể cả
-        server-side (web framework buffer overflow, library parser vulnerabilities).
-        Dù tên là "Client Execution", MITRE liệt kê server-side exploitation hợp lệ.
+ (a) Does the vulnerable component run as a USERLAND PARSER PROCESS on the
+ target server (vd Apache mod_fcgid FCGI worker, nginx handler process,
+ REST framework parser)? If kernel-mode (srv.sys driver, network stack)
+ → T1203 DOES NOT FIT. Use T1068 for SYSTEM escalation.
 
-    (b) T1499.004 (Endpoint DoS: Application or System Exploitation) — Impact.
-        Memory-corruption thường crash target process (segfault từ corrupted
-        metadata). Khi description/observable_side_effects có "crash", "segfault",
-        "DoS", "denial of service", "service unavailable" → ADD T1499.004 + TA0040.
+ (b) Is the vulnerability exploited FROM a network protocol that reaches
+ this server (HTTP/HTTPS/SMB/RDP)? If no protocol — vd local kernel
+ driver exploit → T1203 DOES NOT FIT.
 
-    (c) Evasive indicators SHOULD be populated cho HTTP/web memory-corruption:
-        - HTTP chunked transfer encoding (split payload bypass length-based WAF)
-        - URL/hex encoding shellcode bytes (%XX evade text-pattern IDS)
-        - Header obfuscation / smuggling (parser differential giữa WAF và app)
-        - Memory-corruption primitive itself: ROP chains, ASLR bypass, heap
-          spraying, NOP sleds
+ (c) Does the exploit CHAIN require user interaction on the target
+ (e.g. user opens document, clicks link)? For pure server-side RCE
+ → T1203 DOES NOT FIT (no user action on target).
 
-  Empty subtechniques + empty evasive_indicators cho CWE-787 CVE IS A
-  HALLUCINATION. Kill chain là multi-tactic theo định nghĩa.
+ If CẢ 3 → "yes" → consider T1203 as SECONDARY Execution tactic (after
+ initial-access technique). Document decision in mapping_reasons: "T1203
+ applies because [vulnerable parser process] runs in userland on [target],
+ exploit chain [parses attacker input from network], no user interaction
+ required on target."
+
+ Nếu bất kỳ câu nào → "no" hoặc "unclear" → SKIP T1203, use initial-access
+ technique (T1190 for HTTP, T1210 for SMB/RDP/SSH) alone — these already
+ cover Execution tactic for remote exploitation.
+
+ Concrete examples:
+ - EternalBlue CVE-2017-0144 (SMBv1 buffer overflow in srv.sys kernel):
+ Câu (a) NO (kernel driver, not userland parser), (b) YES (SMB port 445),
+ (c) NO (no user action on target). Skip T1203 → emit T1210 + T1068
+ (kernel-mode code execution yields SYSTEM via token stealing).
+ - Apache mod_fcgid CVE-2013-4365 (heap overflow in FCGI parser process):
+ Câu (a) YES (mod_fcgid is a userland parser worker), (b) YES (HTTP),
+ (c) NO (pre-auth HTTP request). Both answers → MAYBE include T1203
+ as secondary Execution technique (in addition to T1190). Document
+ deviation in mapping_reasons.
+ - MSHTML CVE-2021-40444 (.docx ActiveX in Word on victim's machine):
+ Câu (a) N/A (client-side), (b) YES (email attachment delivery),
+ (c) YES (user must open document). T1203 IS the right Execution
+ technique — this is the classic "Client Execution" semantic.
+
+ Default mapping (when in doubt):
+ - HTTP memory corruption → T1190 (no T1203 unless parser-process rationale).
+ - SMB/RDP/SSH memory corruption → T1210 (+ T1068 IF SYSTEM).
+ - Kernel driver memory corruption → T1068.
+ - Client-side document/browser → T1203.
+
+ Document T1203 inclusion OR exclusion in `mapping_reasons` (NOT `reasoning`):
+ The `reasoning` field belongs to Phase 1 (canonical facts about the CVE).
+ Phase 2 writes technique justification into `mapping_reasons` — these
+ are two separate fields in two separate JSON outputs. Mixing them up
+ risks overwriting Phase 1's `reasoning` array or producing malformed JSON.
+
+ (b) T1499.004 (Endpoint DoS: Application or System Exploitation) — Impact.
+ Memory-corruption thường crash target process (segfault từ corrupted
+ metadata). Khi description/observable_side_effects có "crash", "segfault",
+ "DoS", "denial of service", "service unavailable" → ADD T1499.004 + TA0040.
+ This is a STRONG indicator regardless of `execution_surface`.
+
+ (c) Evasive indicators — analytical not prescriptive:
+ When CVE signals concrete evasion (WAF-bypass, parser-differential, ROP
+ chains), populate `evasive_indicators` with 1-3 specific techniques.
+ When description is sparse (vd "Buffer overflow in X allows remote code
+ execution" — single-line NVD entry), populate the `evasive_indicators`
+ array exactly with a single string element: ["unknown_due_to_sparse_description"]
+ (NOT empty list). Empty list triggers coverage engine rejection. Placeholder
+ value signals honest uncertainty to downstream consumers without fabricating
+ evidence. Use string array form (not "evasive_indicators: [...]" key-value
+ text) to keep JSON parsing safe.
 - CODE INJECTION → T1059 + language-specific sub-technique:
   Code-injection CVEs (CWE-94 Code Injection, CWE-917 EL Injection [OGNL/SpEL/MVEL],
   CWE-1336 Template Injection [SSTI]) typically require additional techniques:

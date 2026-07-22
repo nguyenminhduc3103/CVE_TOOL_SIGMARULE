@@ -284,65 +284,6 @@ class OntologyManager:
         )
 
     # =================================================================
-    # Contradiction detection (semantic penalty)
-    # =================================================================
-
-    # Network-only techniques - mâu thuẫn với local-only CVE (CVSS AV:L)
-    _NETWORK_ONLY_TECHNIQUES: frozenset[str] = frozenset({
-        "T1190",  # Exploit Public-Facing Application
-        "T1133",  # External Remote Services
-        "T1199",  # Trusted Relationship
-        "T1566",  # Phishing
-        "T1078",  # Valid Accounts (nếu remote)
-        "T1071",  # Application Layer Protocol (network C2)
-    })
-
-    # Phishing-specific techniques
-    _PHISHING_TECHNIQUES: frozenset[str] = frozenset({
-        "T1566", "T1566.001", "T1566.002", "T1566.003",
-        "T1598", "T1598.001", "T1598.002", "T1598.003",
-    })
-
-    def is_contradiction(self, technique: str, ctx: CveContext) -> bool:
-        """Kiểm tra 1 technique có mâu thuẫn với CVE context hay không.
-
-        Chỉ phạt extras thật sự vô lý với CVE - tránh Strict Penalty paradox
-        (AI đúng hơn whitelist vẫn bị phạt 5%/cái).
-
-        Rules (mở rộng được):
-          1. Network-only techniques (T1190, T1133, ...) mâu thuẫn với
-             CVSS AV:L (local-only)
-          2. Phishing techniques (T1566, ...) mâu thuẫn với description
-             nhắc tới local/hardware/physical access
-          3. Pre-auth + remote-only techniques mâu thuẫn với description
-             nhắc tới hardware/USB driver (không thể remote exploit)
-
-        Args:
-            technique: ATT&CK technique ID (e.g. 'T1190', 'T1566.001').
-            ctx: CveContext bundle với description + cvss_vector.
-
-        Returns:
-            True nếu technique mâu thuẫn với context, False nếu hợp lý.
-        """
-        t = technique.upper().strip()
-        if not t.startswith("T"):
-            return False  # Không phải technique ID hợp lệ
-
-        # Rule 1: Network-only technique vs local-only CVSS
-        if ctx.is_local_only() and t in self._NETWORK_ONLY_TECHNIQUES:
-            return True
-
-        # Rule 2: Phishing technique vs hardware/physical CVE
-        if ctx.has_local_hardware_context() and t in self._PHISHING_TECHNIQUES:
-            return True
-
-        # Rule 3: Remote exploit technique (T1190) vs explicit local context
-        if ctx.has_local_hardware_context() and t == "T1190":
-            return True
-
-        return False
-
-    # =================================================================
     # Helpers
     # =================================================================
 

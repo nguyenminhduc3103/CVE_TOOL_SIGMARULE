@@ -36,6 +36,9 @@ remote server RCE).
     "observable_side_effects": list[str]      // REQUIRED, at least 1 item
   }},
   "mandatory_behaviors": list[str],
+  "classification_reason": list[str],         // REQUIRED, at least 1 concise reason
+  "behavior_reason": list[str],               // REQUIRED, map why mandatory_behaviors were selected
+  "analysis_confidence": float between 0.0 and 1.0,
   "evasive_indicators": list[str],
   "exploit_requirements": list[str],
   "cwe_metadata": {{ "cwe_ids": list[str] | null, "cwe_names": list[str] | null, "mapping_confidence": float | null }} | null,
@@ -101,7 +104,7 @@ wormable network exploit, scheduled task). Set to `null` if unknown.
 
 # EVASIVE INDICATORS (populate for known CWE families)
 
-For CVEs thuộc các CWE family sau, populate `evasive_indicators` với 1-3
+For CVEs that in CWE family sau, populate `evasive_indicators` với 1-3
 concrete evasion techniques. Set to empty list only when CVE is purely hardware/physical.
 
   - Code injection (CWE-94, CWE-917, CWE-1336): string obfuscation, encoding
@@ -122,6 +125,8 @@ Empty `evasive_indicators` is acceptable when there are no observable evasion te
 - Output ONLY the JSON. No prose before/after.
 - `attack_flow` MUST contain non-empty strings for `entry_vector` and `execution_mechanism`,
   and at least 1 item in `observable_side_effects`. Never set these to null or [].
+- `classification_reason` and `behavior_reason` MUST be non-empty arrays for software CVEs.
+  Use concise, evidence-based statements.
 - `execution_surface`, `delivery_vector`, `user_interaction_required` are RECOMMENDED.
   Set to `null` if you genuinely cannot determine. Do NOT default to a value.
 

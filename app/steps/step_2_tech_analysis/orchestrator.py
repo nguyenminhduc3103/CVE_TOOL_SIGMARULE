@@ -1,34 +1,17 @@
 """Orchestrator cho Step 2 - Technical & ATT&CK Analyzer.
 
-SINGLE RESPONSIBILITY: Điều phối luồng (theo CVE-2-Sigma.md Bước 2):
+Step 2 chỉ chạy 2-phase flow:
+  - Phase 1 (behavior only): extract FACTS - execution_surface,
+    delivery_vector, user_interaction_required, attack_flow, behaviors.
+    KHÔNG có tactics/techniques → tránh AV:N→T1190 bias.
+  - Phase 2 (ATT&CK mapping): nhận Phase 1 output làm canonical anchor
+    → chọn technique đúng kể cả client-side CVE (MSHTML CVE-2021-40444).
 
-  HAPPY PATH (AI OK):
-    1. AI attempt 1 → dict
-    2. Normalize + sanitize None/"none" placeholders
-    3. Validate field-level (9 fields: ATT&CK techniques/tactics/
-       subtechniques/mapping_reasons, mandatory_behaviors, evasive_indicators,
-       entry_vector, execution_mechanism, observable_side_effects)
-    4. Nếu có field invalid → partial-fill retry (giữ field valid,
-       AI chỉ điền field invalid)
-    5. Rebuild Pydantic từ dict cuối → return
-
-  FALLBACK PATH (AI fail hoàn toàn - rule-based chỉ chạy khi AI fail):
-    - AIServiceError attempt 1, HOẶC
-    - Sau MAX_RETRIES vẫn còn field invalid
-    → Build Pydantic trực tiếp từ rule-based engines
-      (analyze_behavior + map_attack + classify_exploit_vector)
-
-2 LỚP VALIDATION (không có lớp 3):
-  - Lớp 1: format + whitelist (validate_ttp_list)
-  - Lớp 2: semantic (validate_against_cve_context - 3 rule)
-
-LƯU Ý: KHÔNG có lớp 3 "Sigma rule validation" ở step 2 - đó là việc step 3.
+Rule-based fallback chỉ chạy khi cả 2 phase AI fail.
 """
 from __future__ import annotations
 
-import json
 import logging
-from pathlib import Path
 from typing import Any
 
 from app.shared.models.attack import (
@@ -41,92 +24,10 @@ from app.steps.step_2_tech_analysis.services.ai_service import (
 )
 from app.steps.step_2_tech_analysis.data_flow import (
     _ai_dict_to_pydantic,
-    _apply_3_tier_fallback,
-    _normalize_ai_dict,
     _normalize_none_placeholders,
-)
-from app.steps.step_2_tech_analysis.retry import (
-    _build_retry_payload,
-)
-from app.steps.step_2_tech_analysis.constants import MAX_RETRIES
-from app.steps.step_2_tech_analysis._validation import (
-    _apply_partial_fill,
-    validate_field_level,
 )
 
 logger = logging.getLogger(__name__)
-
-
-_RETRY_SYSTEM_PROMPT = (
-    Path(__file__).parent / "prompts" / "retry_behavior.system.txt"
-).read_text(encoding="utf-8").replace(
-    "{{SHARED_MITRE_RULES}}",
-    (Path(__file__).parent / "prompts" / "_shared_mitre_rules.md").read_text(
-        encoding="utf-8"
-    ),
-)
-
-
-# ==============================================================
-# AI retry helpers
-# ==============================================================
-
-async def _call_ai_retry(
-    base_client: BaseAIClient,
-    ai_service: AIBehaviorService,
-    user_prompt: str,
-) -> dict[str, Any] | None:
-    """Gọi AI retry + parse JSON robust. Trả về None nếu fail hoàn toàn.
-
-    Robust JSON parse:
-      - Strip ```json ``` fences (đầu + cuối)
-      - Trim whitespace, BOM, smart quotes
-      - Nếu vẫn fail → trả None (không raise để caller fallback rule-based)
-    """
-    try:
-        ai_service.record_retry_model()
-        from app.core.config import settings as _settings
-        _retry_key = getattr(_settings, "retry_ai_api_key", None) or None
-        _retry_url = getattr(_settings, "retry_ai_base_url", None) or None
-        response_text = await base_client.call_llm(
-            system_prompt=_RETRY_SYSTEM_PROMPT,
-            user_prompt=user_prompt,
-            model=ai_service._RETRY_MODEL,
-            override_api_key=_retry_key,
-            override_base_url=_retry_url,
-        )
-    except Exception as exc:
-        logger.warning("[Step 2 - Retry] LLM call failed: %s", exc)
-        return None
-
-    # Robust JSON parse
-    text = (response_text or "").lstrip("﻿").strip()
-    # Strip markdown fences (any combo)
-    if text.startswith("```json"):
-        text = text[7:]
-    elif text.startswith("```"):
-        text = text[3:]
-    if text.endswith("```"):
-        text = text[:-3]
-    text = text.strip()
-
-    # Thử parse trực tiếp trước
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        pass
-
-    # Fallback: tìm JSON object đầu tiên (cho trường hợp LLM chèn text thừa)
-    start = text.find("{")
-    end = text.rfind("}")
-    if start != -1 and end != -1 and end > start:
-        try:
-            return json.loads(text[start:end + 1])
-        except json.JSONDecodeError:
-            pass
-
-    logger.warning("[Step 2 - Retry] Could not parse JSON: %r", response_text[:200])
-    return None
 
 
 # ==============================================================
@@ -211,18 +112,12 @@ def _build_rule_based_pydantic(
         ai_model=ai_model,
     )
 
-    # subtechniques: rule-based fallback cũng dùng ["none"] sentinel để
-    # đồng bộ với AI happy-path (_validation.py:272 + data_flow.py:189).
-    # Nếu attack_rb không trả subtechnique nào → fill ["none"] thay vì []/None
-    # để downstream consumer biết "không tìm được sub" (không phải lỗi).
-    _rb_sub = attack_rb.get("subtechniques") or []
-    attack_rb_sub: list[str] = _rb_sub if _rb_sub else ["none"]
-
     attack = AttackMapping(
         tactics=attack_rb.get("tactics"),
         techniques=attack_rb.get("techniques"),
-        subtechniques=attack_rb_sub,
+        subtechniques=attack_rb.get("subtechniques"),
         confidence=attack_rb.get("confidence"),
+        attack_mapping_confidence=attack_rb.get("confidence"),
         mapping_reasons=attack_rb.get("mapping_reasons"),
         ai_used=False,
         ai_retry_count=ai_retry_count,
@@ -251,232 +146,25 @@ async def run_step2_tech_analysis(
     poc_references: list[str] | None = None,
     threat_actors: list[str] | None = None,
 ) -> tuple[TechnicalAnalysis | None, AttackMapping | None, dict[str, Any]]:
-    """Run Step 2 với field-level validation + partial-fill retry + rule-based fallback.
-
-    TWO-PHASE REFACTOR (CVE_TI_STEP2_TWO_PHASE env):
-      Default = False (1-shot, backward compat)
-      True = Phase 1 (behavior) → Phase 2 (ATT&CK), with execution_surface
-             as canonical anchor to avoid the AV:N→T1190 bias.
-
-    Args:
-        ... (giữ nguyên 9 field gốc cho backward compat) ...
-        poc_references: Optional list of public PoC URLs (from Step 1 PoC
-            provider). Helps AI see actual exploit mechanism, especially for
-            CVEs with vague descriptions.
-        threat_actors: Optional list of threat actor names (from Step 1 OTX
-            provider). Helps AI identify adversary profile and likely scale.
-
-    Returns:
-        (TechnicalAnalysis | None, AttackMapping | None, validation_dict)
-        None nếu cả AI và rule-based đều fail.
+    """Run Step 2 bằng 2-phase AI flow.
+    Phase 1 (behavior only) → Phase 2 (ATT&CK mapping với Phase 1 làm anchor).
+    Rule-based fallback chỉ chạy khi Phase 1 hoặc cả 2 phase đều fail.
     """
-    # Read two-phase flag from Settings (pydantic-settings) — NOT os.getenv,
-    # because pydantic-settings does not auto-inject env vars into os.environ.
-    from app.core.config import settings
-    two_phase = settings.get_two_phase_enabled()
-
-    if two_phase:
-        return await _run_step2_two_phase(
-            ai_service=ai_service,
-            base_client=base_client,
-            cve_id=cve_id,
-            description=description,
-            cvss_score=cvss_score,
-            cvss_vector=cvss_vector,
-            cwe_ids=cwe_ids,
-            cpes=cpes,
-            references=references,
-            published_at=published_at,
-            modified_at=modified_at,
-            poc_references=poc_references,
-            threat_actors=threat_actors,
-        )
-
-    # === LEGACY 1-SHOT FLOW (backward compat) ===
-    # Query CAPEC hints per CWE (INSPIRATION ONLY, not ground truth).
-    # Local import để tránh load CAPEC bundle (~4.3MB) khi import orchestrator.
-    capec_hints_by_cwe: dict[str, list[dict]] = {}
-    if cwe_ids:
-        try:
-            from app.shared.mitre.capec_hint import query_capec_for_cwe
-            for cwe_id in cwe_ids:
-                if not cwe_id or cwe_id.startswith("NVD-CWE"):
-                    continue
-                hints = query_capec_for_cwe(cwe_id, max_results=3)
-                if hints:
-                    capec_hints_by_cwe[cwe_id] = hints
-        except Exception as exc:
-            logger.debug("[Step 2] CAPEC hint query skipped: %s", exc)
-
-    # Bước 1: AI attempt 1 → dict
-    try:
-        ai_dict = await ai_service.fetch_raw_response(
-            cve_id=cve_id,
-            description=description,
-            cvss_score=cvss_score,
-            cvss_vector=cvss_vector,
-            cwe_ids=cwe_ids,
-            cpes=cpes,
-            references=references,
-            published_at=published_at,
-            modified_at=modified_at,
-            poc_references=poc_references,
-            threat_actors=threat_actors,
-            capec_hints_by_cwe=capec_hints_by_cwe,
-        )
-    except AIServiceError as exc:
-        logger.warning("AI attempt 1 failed for %s: %s", cve_id, exc)
-        # FALLBACK PATH: rule-based (AI fail ngay từ attempt 1)
-        tech, attack = _build_rule_based_pydantic(
-            cve_id=cve_id,
-            description=description,
-            references=references,
-            cpes=cpes,
-            cvss_vector=cvss_vector,
-            cwe_ids=cwe_ids,
-            ai_model=None,
-            ai_retry_count=0,
-        )
-        return tech, attack, {
-            "overall_coverage": 0.0,
-            "verdict": "RULE_BASED_FALLBACK",
-            "reason": "ai_service_error",
-        }
-
-    # Bước 2: Normalize + sanitize
-    current_output = _normalize_ai_dict(ai_dict, cve_id, cwe_ids)
-    current_output = _normalize_none_placeholders(current_output)
-    attempt_1_output = current_output  # giữ snapshot cho partial-fill
-
-    # Bước 3: 3-tier fallback cho 3 MANDATORY attack_flow fields
-    current_output = _apply_3_tier_fallback(
-        data=current_output,
-        exploit_vector=current_output.get("technical_analysis", {}).get("exploit_vector"),
-        vulnerability_class=current_output.get("technical_analysis", {}).get("vulnerability_class"),
-        mandatory_behaviors=current_output.get("technical_analysis", {}).get("mandatory_behaviors", []),
-    )
-
-    # Bước 4: Validate field-level
-    validation = validate_field_level(
-        data=current_output,
-        cvss_vector=cvss_vector,
-        description=description,
-    )
-    logger.debug(
-        "[Step 2 - Validation] %s: valid=%s, invalid_fields=%s",
-        cve_id, validation["valid"], list(validation["invalid_fields"].keys()),
-    )
-
-    # Bước 5: Partial-fill retry loop
-    retries_used: int = 0
-    if not validation["valid"]:
-        logger.debug(
-            "[Step 2 - Retry] %s entering partial-fill loop (invalid=%d, max=%d)",
-            cve_id, len(validation["invalid_fields"]), MAX_RETRIES,
-        )
-        for retry_num in range(1, MAX_RETRIES + 1):
-            invalid_snapshot = dict(validation["invalid_fields"])
-            user_prompt = _build_retry_payload(
-                description=description,
-                cvss_vector=cvss_vector,
-                cwe_ids=cwe_ids,
-                attempt_1_output=attempt_1_output,
-                invalid_fields=invalid_snapshot,
-                retry_num=retry_num,
-                cve_id=cve_id,
-            )
-            retry_data = await _call_ai_retry(base_client, ai_service, user_prompt)
-            retries_used = retry_num
-
-            if retry_data is None:
-                logger.warning(
-                    "[Step 2 - Retry] %s retry %d returned None, aborting",
-                    cve_id, retry_num,
-                )
-                break
-
-            # Normalize + sanitize retry output
-            retry_normalized = _normalize_ai_dict(retry_data, cve_id, cwe_ids)
-            retry_normalized = _normalize_none_placeholders(retry_normalized)
-
-            # Partial-fill: giữ field valid, chỉ điền field invalid từ retry
-            current_output = _apply_partial_fill(
-                base=current_output,
-                fill=retry_normalized,
-                invalid_paths=invalid_snapshot,
-            )
-            current_output = _apply_3_tier_fallback(
-                data=current_output,
-                exploit_vector=current_output.get("technical_analysis", {}).get("exploit_vector"),
-                vulnerability_class=current_output.get("technical_analysis", {}).get("vulnerability_class"),
-                mandatory_behaviors=current_output.get("technical_analysis", {}).get("mandatory_behaviors", []),
-            )
-
-            new_validation = validate_field_level(
-                data=current_output,
-                cvss_vector=cvss_vector,
-                description=description,
-            )
-            validation = new_validation
-
-            if validation["valid"]:
-                logger.debug(
-                    "[Step 2 - Retry] %s all fields valid after retry %d",
-                    cve_id, retry_num,
-                )
-                break
-
-    # Bước 6: Quyết định path
-    if validation["valid"]:
-        # HAPPY PATH: AI OK → build Pydantic từ dict
-        ai_model = ai_service._MODEL
-        # ai_models_used includes analyze + retry (if fired) for visibility.
-        ai_models_used = ai_service.get_models_used() or ([ai_model] if ai_model else [])
-        base_tech = TechnicalAnalysis(
-            confidence=0.85,
-            ai_used=True,
-            ai_retry_count=retries_used,
-            ai_model=ai_model,
-            ai_models_used=ai_models_used,
-        )
-        base_attack = AttackMapping(
-            ai_used=True,
-            ai_retry_count=retries_used,
-            ai_model=ai_model,
-            ai_models_used=ai_models_used,
-        )
-        final_tech, final_attack = _ai_dict_to_pydantic(
-            current_output, base_tech, base_attack
-        )
-        coverage_dict = {
-            "validation": validation,
-            "retries_used": retries_used,
-            "verdict": "PASS" if retries_used == 0 else "PASS_AFTER_RETRY",
-        }
-        return final_tech, final_attack, coverage_dict
-
-    # FALLBACK PATH: AI fail hết retry → rule-based
-    logger.warning(
-        "[Step 2 - Fallback] %s AI exhausted (%d retries, still invalid=%s), "
-        "falling back to rule-based",
-        cve_id, retries_used, list(validation["invalid_fields"].keys()),
-    )
-    tech, attack = _build_rule_based_pydantic(
+    return await _run_step2_two_phase(
+        ai_service=ai_service,
+        base_client=base_client,
         cve_id=cve_id,
         description=description,
-        references=references,
-        cpes=cpes,
+        cvss_score=cvss_score,
         cvss_vector=cvss_vector,
         cwe_ids=cwe_ids,
-        ai_model=ai_service._MODEL,
-        ai_retry_count=retries_used,
+        cpes=cpes,
+        references=references,
+        published_at=published_at,
+        modified_at=modified_at,
+        poc_references=poc_references,
+        threat_actors=threat_actors,
     )
-    return tech, attack, {
-        "validation": validation,
-        "retries_used": retries_used,
-        "verdict": "RULE_BASED_FALLBACK",
-        "reason": "ai_exhausted_retries",
-    }
 
 
 async def _run_step2_two_phase(
@@ -495,12 +183,6 @@ async def _run_step2_two_phase(
     threat_actors: list[str] | None = None,
 ) -> tuple[TechnicalAnalysis | None, AttackMapping | None, dict[str, Any]]:
     """Two-phase flow: Phase 1 behavior → Phase 2 ATT&CK.
-
-    See run_step2_tech_analysis() docstring for two-phase motivation.
-    Key change: Phase 1 output (execution_surface, delivery_vector,
-    user_interaction_required) is passed to Phase 2 as canonical anchor,
-    preventing the AV:N→T1190 bias that affected single-shot prompts.
-
     Backward compat: returns same tuple shape as legacy flow.
     """
     from app.steps.step_2_tech_analysis.services.phase1_service import AIPhase1Service
@@ -627,6 +309,7 @@ async def _run_step2_two_phase(
             }
 
     phase2_dict = _normalize_phase2_dict(phase2_dict, cve_id)
+    phase2_dict = _enrich_phase2_with_protocol_context(phase2_dict, phase1_dict)
 
     # ===== Combine Phase 1 + Phase 2 =====
     combined_dict = _combine_phase_outputs(phase1_dict, phase2_dict)
@@ -643,6 +326,12 @@ async def _run_step2_two_phase(
     ai_model = phase2_model  # legacy field = Phase 2 (primary analyze call)
     base_tech = TechnicalAnalysis(
         confidence=phase1_dict.get("confidence") or 0.85,
+        pre_auth=phase1_dict.get("pre_auth"),
+        remote_exploitable=phase1_dict.get("remote_exploitable"),
+        extracted_keywords=phase1_dict.get("extracted_keywords"),
+        analysis_confidence=phase1_dict.get("analysis_confidence"),
+        classification_reason=phase1_dict.get("classification_reason"),
+        behavior_reason=phase1_dict.get("behavior_reason"),
         ai_used=True,
         ai_retry_count=retries_used,
         ai_model=ai_model,
@@ -714,6 +403,44 @@ def _normalize_phase1_dict(
                     cve_id, rule_delivery.value,
                 )
 
+    # Backfill reasoning fields when model omits them.
+    classification_reason = data.get("classification_reason")
+    if not isinstance(classification_reason, list) or not classification_reason:
+        fallback_classification: list[str] = []
+        if data.get("vulnerability_class"):
+            fallback_classification.append(
+                f"vulnerability_class:{data.get('vulnerability_class')}"
+            )
+        if data.get("vulnerability_type"):
+            fallback_classification.append(
+                f"vulnerability_type:{data.get('vulnerability_type')}"
+            )
+        if data.get("execution_surface"):
+            fallback_classification.append(
+                f"execution_surface:{data.get('execution_surface')}"
+            )
+        if data.get("delivery_vector"):
+            fallback_classification.append(
+                f"delivery_vector:{data.get('delivery_vector')}"
+            )
+        if data.get("pre_auth") is not None:
+            fallback_classification.append(f"pre_auth:{data.get('pre_auth')}")
+        if data.get("remote_exploitable") is not None:
+            fallback_classification.append(
+                f"remote_exploitable:{data.get('remote_exploitable')}"
+            )
+        data["classification_reason"] = fallback_classification
+
+    behavior_reason = data.get("behavior_reason")
+    if not isinstance(behavior_reason, list) or not behavior_reason:
+        fallback_behavior: list[str] = []
+        for behavior in data.get("mandatory_behaviors") or []:
+            fallback_behavior.append(f"mandatory_behavior:{behavior}")
+        data["behavior_reason"] = fallback_behavior
+
+    if data.get("analysis_confidence") is None and data.get("confidence") is not None:
+        data["analysis_confidence"] = data.get("confidence")
+
     return data
 
 
@@ -736,8 +463,66 @@ def _normalize_phase2_dict(
         "subtechniques": data.get("subtechniques") or [],
         "mapping_reasons": data.get("mapping_reasons") or [],
         "confidence": data.get("attack_confidence"),
+        "attack_mapping_confidence": data.get("attack_confidence"),
     }
     return {"attack_mapping": attack_mapping_block}
+
+
+def _enrich_phase2_with_protocol_context(
+    phase2: dict[str, Any], phase1: dict[str, Any]
+) -> dict[str, Any]:
+    """Add protocol-aware secondary ATT&CK sub-techniques when Phase 1 is explicit.
+
+    This keeps T1210/T1190 as primary choices while enriching report depth for
+    high-signal protocols (RDP/SMB/SSH/WinRM/FTP) across all CVEs.
+    """
+    attack = phase2.get("attack_mapping")
+    if not isinstance(attack, dict):
+        return phase2
+
+    flow = phase1.get("attack_flow") if isinstance(phase1, dict) else {}
+    if not isinstance(flow, dict):
+        flow = {}
+    evidence_text = " ".join(
+        [
+            str(flow.get("entry_vector") or ""),
+            str(flow.get("execution_mechanism") or ""),
+        ]
+    ).lower()
+    if not evidence_text:
+        return phase2
+
+    protocol_map: dict[str, tuple[str, str, str]] = {
+        "rdp": ("T1021", "T1021.001", "protocol_context:rdp_remote_service"),
+        "smb": ("T1021", "T1021.002", "protocol_context:smb_remote_service"),
+        "ssh": ("T1021", "T1021.004", "protocol_context:ssh_remote_service"),
+        "winrm": ("T1021", "T1021.006", "protocol_context:winrm_remote_service"),
+        "ftp": ("T1071", "T1071.002", "protocol_context:ftp_channel"),
+    }
+
+    techniques = list(attack.get("techniques") or [])
+    subtechniques = list(attack.get("subtechniques") or [])
+    reasons = list(attack.get("mapping_reasons") or [])
+    touched = False
+
+    for marker, (parent, sub, reason) in protocol_map.items():
+        if marker not in evidence_text:
+            continue
+        if parent not in techniques:
+            techniques.append(parent)
+            touched = True
+        if sub not in subtechniques:
+            subtechniques.append(sub)
+            touched = True
+        if reason not in reasons:
+            reasons.append(reason)
+            touched = True
+
+    if touched:
+        attack["techniques"] = techniques
+        attack["subtechniques"] = subtechniques
+        attack["mapping_reasons"] = reasons
+    return phase2
 
 
 def _combine_phase_outputs(
@@ -759,12 +544,15 @@ def _combine_phase_outputs(
         # Extract va wrap
         tech_fields = {
             k: combined.pop(k) for k in [
-                "family", "vulnerability_type", "vulnerability_class",
+                "family", "signature", "extracted_keywords",
+                "vulnerability_type", "vulnerability_class",
                 "exploit_vector", "pre_auth", "remote_exploitable",
                 "exploit_complexity", "confidence", "execution_surface",
                 "delivery_vector", "user_interaction_required",
                 "attack_flow", "mandatory_behaviors", "evasive_indicators",
                 "exploit_requirements", "cwe_metadata", "reasoning",
+                "likely_outcome", "analysis_confidence",
+                "classification_reason", "behavior_reason",
             ] if k in combined
         }
         combined["technical_analysis"] = tech_fields
