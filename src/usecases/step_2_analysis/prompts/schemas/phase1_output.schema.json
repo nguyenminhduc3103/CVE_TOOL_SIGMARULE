@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": [
+    "family",
+    "signature",
+    "vulnerability_type",
+    "vulnerability_class",
+    "exploit_vector",
+    "pre_auth",
+    "remote_exploitable",
+    "exploit_complexity",
+    "confidence",
+    "execution_surface",
+    "delivery_vector",
+    "user_interaction_required",
+    "attack_flow",
+    "mandatory_behaviors",
+    "evasive_indicators",
+    "exploit_requirements",
+    "cwe_metadata",
+    "reasoning"
+  ],
+  "properties": {
+    "family": { "type": ["string", "null"] },
+    "signature": { "type": ["string", "null"] },
+    "vulnerability_type": { "type": ["string", "null"] },
+    "vulnerability_class": { "type": ["string", "null"] },
+    "exploit_vector": { "type": ["string", "null"] },
+    "pre_auth": { "type": ["boolean", "null"] },
+    "remote_exploitable": { "type": ["boolean", "null"] },
+    "exploit_complexity": { "type": ["string", "null"] },
+    "confidence": { "type": "number" },
+    "execution_surface": { "type": ["string", "null"] },
+    "delivery_vector": { "type": ["string", "null"] },
+    "user_interaction_required": { "type": ["boolean", "null"] },
+    "attack_flow": {
+      "type": "object",
+      "required": ["entry_vector", "execution_mechanism", "observable_side_effects"],
+      "properties": {
+        "entry_vector": { "type": "string", "minLength": 1 },
+        "execution_mechanism": { "type": "string", "minLength": 1 },
+        "observable_side_effects": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "mandatory_behaviors": { "type": "array", "items": { "type": "string" } },
+    "evasive_indicators": { "type": "array", "items": { "type": "string" } },
+    "exploit_requirements": { "type": "array", "items": { "type": "string" } },
+    "cwe_metadata": { "type": ["object", "null"] },
+    "reasoning": { "type": "array", "items": { "type": "string" } }
+  }
+}

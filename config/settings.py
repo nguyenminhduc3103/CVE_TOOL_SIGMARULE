@@ -27,36 +27,25 @@ class Settings(BaseSettings):
     # If set (non-empty), takes precedence over ai_api_key. Falls back otherwise.
     ai_api_keys: str | None = None
     ai_base_url: str | None = None
-    # Retry path override: use a different provider (e.g. Gemini 1M TPM) to
-    # avoid Groq's 6K TPM ceiling. If RETRY_AI_API_KEY is empty, retries fall
-    # back to the primary ai_api_key/ai_base_url.
-    retry_ai_api_key: str | None = None
-    retry_ai_base_url: str | None = None
 
     # --- Response cache (NVD / KEV / EPSS, 24h TTL) ---
     # Stdlib-only file cache; can be disabled per-process via CVE_TI_CACHE=0.
     cache_enabled: bool = True
     cache_ttl_seconds: int = 86400  # 24h
     cache_dir: str = ".cache/cve_responses"
-    # Primary (analyze) model name. Backed by env ANALYZE_AI_MODEL. Falls back
-    # to the legacy `ai_model` field if a caller still sets the old key.
+    # Primary (Phase 2 analyze) model name. Backed by env ANALYZE_AI_MODEL.
+    # Falls back to the legacy `ai_model` field if a caller still sets the old key.
     ai_model: str = "llama-3.3-70b-versatile"
     analyze_ai_model: str | None = None
-    # Retry model name. Backed by env RETRY_AI_MODEL. Used for the partial-fill
-    # retry path; falls back to `analyze_ai_model` (or `ai_model`) if unset.
-    retry_ai_model: str | None = None
 
-    # --- Two-phase refactor (Step 2) ---
-    # Enable 2-phase flow: Phase 1 (behavior classification) → Phase 2
-    # (ATT&CK mapping) instead of legacy 1-shot. Default False (backward
-    # compat). Set CVE_TI_STEP2_TWO_PHASE=1 in .env to enable.
-    cve_ti_step2_two_phase: bool = False
-    # Phase 1 (behavior analysis) is a CLASSIFICATION task: extract
+    # --- Two-phase Step 2 (Phase 1 + Phase 2) ---
+    # Step 2 chạy 2-phase flow: Phase 1 (behavior classification) → Phase 2
+    # (ATT&CK mapping). Phase 1 là CLASSIFICATION task: extract
     # `execution_surface`, `delivery_vector`, `user_interaction_required`
-    # from CVE description. Reasoning vừa đủ - không cần model 70B.
-    # Dùng OpenRouter free model (nhiều lựa chọn: Llama 3.3 70B free, Qwen,
-    # DeepSeek, Mistral) hoặc Google AI Studio free tier.
-    # Falls back to analyze_ai_model nếu không set (backward compat).
+    # từ CVE description. Reasoning vừa đủ - không cần model 70B. Dùng
+    # OpenRouter free model (Llama 3.3 70B free, Qwen, DeepSeek, Mistral)
+    # hoặc Google AI Studio free tier để tiết kiệm cost. Falls back to
+    # analyze_ai_model nếu không set (backward compat).
     phase1_ai_model: str | None = None
     phase1_ai_base_url: str | None = None
     phase1_ai_api_key: str | None = None
@@ -90,15 +79,6 @@ class Settings(BaseSettings):
         if self.analyze_ai_model and self.analyze_ai_model.strip():
             return self.analyze_ai_model.strip()
         return self.ai_model
-
-    def get_retry_model(self) -> str:
-        """Resolve the model name used for the retry call.
-
-        Priority: RETRY_AI_MODEL > ANALYZE_AI_MODEL > legacy AI_MODEL field.
-        """
-        if self.retry_ai_model and self.retry_ai_model.strip():
-            return self.retry_ai_model.strip()
-        return self.get_analyze_model()
 
     def get_phase1_model(self) -> str:
         """Resolve model name for Phase 1 (behavior classification).
@@ -141,15 +121,6 @@ class Settings(BaseSettings):
         if self.phase1_ai_base_url and self.phase1_ai_base_url.strip():
             return self.phase1_ai_base_url.strip()
         return self.ai_base_url
-
-    def get_two_phase_enabled(self) -> bool:
-        """Whether the 2-phase Step 2 flow is enabled (CVE_TI_STEP2_TWO_PHASE).
-
-        Reads from the Settings field (pydantic-settings parses "1"/"true"/"yes"
-        as True automatically for bool). Use this instead of os.getenv() — env
-        vars are NOT auto-injected into os.environ by pydantic-settings.
-        """
-        return bool(self.cve_ti_step2_two_phase)
 
     model_config = SettingsConfigDict(
         env_file=".env",

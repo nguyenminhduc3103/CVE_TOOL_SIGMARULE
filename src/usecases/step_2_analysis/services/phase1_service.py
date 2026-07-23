@@ -39,8 +39,9 @@ import re
 from pathlib import Path
 from typing import Any
 
-from app.core.config import settings
-from app.shared.ai.core import AIServiceError, BaseAIClient
+from config.settings import settings
+from src.infrastructure.ai.core import AIServiceError, BaseAIClient
+from src.usecases.step_2_analysis.models.llm_contracts import Phase1LLMResponse
 
 logger = logging.getLogger(__name__)
 
@@ -147,24 +148,21 @@ class AIPhase1Service:
         Raises:
             AIServiceError: neu AI fail (rate-limit, timeout, JSON parse fail)
         """
-        poc_block = self._format_poc_block(poc_references or [])
-        threat_actors_block = self._format_threat_actors_block(threat_actors or [])
-        # Phase 1 KHONG can CAPEC hints (khong map ATT&CK)
-
+        input_payload = {
+            "cve_id": cve_id,
+            "description": description or "N/A",
+            "cvss_score": cvss_score,
+            "cvss_vector": cvss_vector or "N/A",
+            "cwe_ids": cwe_ids or [],
+            "cpes": cpes or [],
+            "references": references or [],
+            "published_at": published_at or "N/A",
+            "modified_at": modified_at or "N/A",
+            "poc_references": (poc_references or [])[: self._MAX_POC_REFS],
+            "threat_actors": (threat_actors or [])[: self._MAX_THREAT_ACTORS],
+        }
         formatted_user = self.user_prompt_template.format(
-            cve_id=cve_id,
-            description=description or "N/A",
-            cvss_score=cvss_score,
-            cvss_vector=cvss_vector or "N/A",
-            cwe_ids=", ".join(cwe_ids) if cwe_ids else "None",
-            cpes=", ".join(cpes) if cpes else "None",
-            references="\n".join(references) if references else "None",
-            published_at=published_at or "N/A",
-            modified_at=modified_at or "N/A",
-            poc_block=poc_block,
-            threat_actors_block=threat_actors_block,
-            capec_hints_block="",  # Phase 1 ignores CAPEC hints
-            phase1_block="",  # Phase 1 has no Phase 1 input (it IS Phase 1)
+            input_json=json.dumps(input_payload, ensure_ascii=False, indent=2)
         )
 
         try:
@@ -207,10 +205,14 @@ class AIPhase1Service:
             self._record_model(self._MODEL)
             cleaned_text = self._clean_json(response_text)
             data = json.loads(cleaned_text)
-            return data
+            validated = Phase1LLMResponse.model_validate(data)
+            return validated.model_dump(mode="python")
         except (json.JSONDecodeError, AIServiceError) as e:
             logger.error("AIPhase1Service failed for %s: %s", cve_id, e)
             raise AIServiceError(f"Phase 1 Behavior Analysis failed: {e}") from e
+        except Exception as e:
+            logger.error("AIPhase1Service validation failed for %s: %s", cve_id, e)
+            raise AIServiceError(f"Phase 1 Behavior Analysis validation failed: {e}") from e
 
     @staticmethod
     def _clean_json(text: str) -> str:
