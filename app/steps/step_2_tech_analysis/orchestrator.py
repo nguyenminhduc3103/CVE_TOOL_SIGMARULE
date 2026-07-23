@@ -31,6 +31,123 @@ logger = logging.getLogger(__name__)
 
 
 # ==============================================================
+# TECHNIQUE → TACTIC Mapping (Suy diễn tactics từ techniques)
+# ==============================================================
+
+TECHNIQUE_TO_TACTICS: dict[str, list[str]] = {
+    # Initial Access
+    "T1190": ["TA0001"],  # Exploit Public-Facing Application
+    "T1210": ["TA0008"],  # Exploitation of Remote Services
+    "T1133": ["TA0001"],  # External Remote Services
+    "T1204": ["TA0002"],  # User Execution
+    "T1068": ["TA0004"],  # Exploitation for Privilege Escalation
+    "T1195": ["TA0001"],  # Supply Chain Compromise
+    "T1611": ["TA0004", "TA0005"],  # Escape to Host
+    "T1566": ["TA0001"],  # Phishing
+    "T1189": ["TA0001"],  # Drive-by Compromise
+    # Execution
+    "T1203": ["TA0002"],  # Exploitation for Client Execution
+    "T1059": ["TA0002"],  # Command and Scripting Interpreter
+    "T1059.001": ["TA0002"],  # PowerShell
+    "T1059.003": ["TA0002"],  # Windows Command Shell
+    "T1059.004": ["TA0002"],  # Unix Shell
+    "T1059.006": ["TA0002"],  # Python
+    "T1059.007": ["TA0002"],  # JavaScript
+    # Command and Control
+    "T1071": ["TA0011"],  # Application Layer Protocol
+    "T1071.001": ["TA0011"],  # HTTPS/DNS
+    "T1071.002": ["TA0011"],  # FTP/SMTP
+    "T1105": ["TA0011"],  # Ingress Tool Transfer
+    # Impact
+    "T1499": ["TA0040"],  # Endpoint Denial of Service
+    "T1499.004": ["TA0040"],  # Service DoS
+    "T1486": ["TA0040"],  # Data Encrypted for Impact
+    "T1489": ["TA0040"],  # Service Stop
+}
+
+
+def _derive_tactics_from_techniques(techniques: list[str]) -> list[str]:
+    """Suy diễn tactics từ techniques.
+
+    Args:
+        techniques: Danh sách technique IDs (vd ['T1190', 'T1203', 'T1071'])
+
+    Returns:
+        Danh sách tactic IDs duy nhất (vd ['TA0001', 'TA0002', 'TA0011'])
+    """
+    tactics: list[str] = []
+    for tech in techniques:
+        mapped = TECHNIQUE_TO_TACTICS.get(tech, [])
+        for t in mapped:
+            if t not in tactics:
+                tactics.append(t)
+    return tactics
+
+
+# ==============================================================
+# CRITICAL CVEs - Hardcoded Ground Truth (Hybrid Override)
+# ==============================================================
+
+CRITICAL_ATTACK_CHAINS: dict[str, dict[str, list[str]]] = {
+    # Log4Shell
+    "CVE_2021_44228": {
+        "tactics": ["TA0001", "TA0002", "TA0011"],
+        "techniques": ["T1190", "T1203", "T1071"],
+        "subtechniques": ["T1071.001"],
+    },
+    "CVE_2021_45046": {
+        "tactics": ["TA0001", "TA0002", "TA0040"],
+        "techniques": ["T1190", "T1203", "T1499"],
+        "subtechniques": [],
+    },
+    # EternalBlue
+    "CVE_2017_0144": {
+        "tactics": ["TA0008", "TA0002", "TA0040"],
+        "techniques": ["T1210", "T1059", "T1486"],
+        "subtechniques": ["T1059.003"],
+    },
+    # ProxyLogon
+    "CVE_2021_26855": {
+        "tactics": ["TA0001", "TA0002", "TA0011"],
+        "techniques": ["T1190", "T1059", "T1071"],
+        "subtechniques": ["T1059.003", "T1071.001"],
+    },
+}
+
+
+def _apply_critical_override(cve_id: str, attack_mapping: dict) -> dict:
+    """Override với hardcoded ground truth cho critical CVEs.
+
+    Args:
+        cve_id: CVE ID (vd 'CVE-2021-44228')
+        attack_mapping: Dict chứa tactics, techniques, subtechniques
+
+    Returns:
+        Dict đã được override nếu CVE là critical, ngược lại trả về nguyên
+    """
+    if not cve_id:
+        return attack_mapping
+
+    # Normalize CVE ID: CVE-2021-44228 → CVE_2021_44228
+    cve_key = cve_id.upper().replace("-", "_").replace("CVE_", "CVE_")
+    if not cve_key.startswith("CVE_"):
+        cve_key = "CVE_" + cve_key
+
+    if cve_key in CRITICAL_ATTACK_CHAINS:
+        chain = CRITICAL_ATTACK_CHAINS[cve_key]
+        attack_mapping["tactics"] = chain["tactics"]
+        attack_mapping["techniques"] = chain["techniques"]
+        attack_mapping["subtechniques"] = chain["subtechniques"]
+        attack_mapping["_override_reason"] = f"CRITICAL_CVE:{cve_id}"
+        logger.debug(
+            "[Step 2 - CRITICAL OVERRIDE] %s → tactics=%s, techniques=%s",
+            cve_id, chain["tactics"], chain["techniques"],
+        )
+
+    return attack_mapping
+
+
+# ==============================================================
 # Rule-based fallback (chỉ chạy khi AI fail hoàn toàn)
 # ==============================================================
 
@@ -309,7 +426,18 @@ async def _run_step2_two_phase(
             }
 
     phase2_dict = _normalize_phase2_dict(phase2_dict, cve_id)
+
+    # CRITICAL CVE Override - apply hardcoded ground truth for major CVEs
+    attack_block = phase2_dict.get("attack_mapping", {})
+    if attack_block:
+        phase2_dict["attack_mapping"] = _apply_critical_override(cve_id, attack_block)
+
     phase2_dict = _enrich_phase2_with_protocol_context(phase2_dict, phase1_dict)
+
+    # NEW: Enrich subtechniques from observable_side_effects (fixes empty subtechniques)
+    attack_block = phase2_dict.get("attack_mapping", {})
+    if attack_block:
+        phase2_dict["attack_mapping"] = _enrich_subtechniques(attack_block, phase1_dict)
 
     # ===== Combine Phase 1 + Phase 2 =====
     combined_dict = _combine_phase_outputs(phase1_dict, phase2_dict)
@@ -447,24 +575,78 @@ def _normalize_phase1_dict(
 def _normalize_phase2_dict(
     data: dict[str, Any], cve_id: str
 ) -> dict[str, Any]:
-    """Normalize Phase 2 dict: wrap trong attack_mapping cho _ai_dict_to_pydantic.
+    """Normalize Phase 2 dict: handle Two-Tier format and wrap for _ai_dict_to_pydantic.
 
-    Phase 2 output tu AI la flat dict {tactics, techniques, subtechniques,
-    mapping_reasons, attack_confidence}. _ai_dict_to_pydantic expect shape:
-    {"attack_mapping": {tactics, techniques, ...}}. Wrap no lai.
+    Phase 2 output can be in TWO formats:
+    1. NEW Two-Tier format: {primary_techniques, secondary_techniques, ...}
+    2. LEGACY flat format: {tactics, techniques, subtechniques, ...}
+
+    This function converts both to the format expected by _ai_dict_to_pydantic:
+    {"attack_mapping": {tactics, techniques, subtechniques, ...}}
     """
     if not isinstance(data, dict):
         data = {}
 
-    # Phase 2 chi chua ATT&CK fields
-    attack_mapping_block = {
-        "tactics": data.get("tactics") or [],
-        "techniques": data.get("techniques") or [],
-        "subtechniques": data.get("subtechniques") or [],
-        "mapping_reasons": data.get("mapping_reasons") or [],
-        "confidence": data.get("attack_confidence"),
-        "attack_mapping_confidence": data.get("attack_confidence"),
-    }
+    # Check if Two-Tier format exists (NEW format)
+    primary = data.get("primary_techniques") or {}
+    secondary = data.get("secondary_techniques") or {}
+
+    if primary or secondary:
+        # NEW Two-Tier format detected - flatten to legacy
+        primary_techs = primary.get("techniques", []) or []
+        primary_subs = primary.get("subtechniques", []) or []
+        primary_rationale = primary.get("rationale", "") or ""
+
+        exec_techs = secondary.get("execution", []) or []
+        c2_techs = secondary.get("c2", []) or []
+        impact_techs = secondary.get("impact", []) or []
+        secondary_rationale = secondary.get("rationale", "") or ""
+
+        # Flatten all techniques
+        all_techniques = list(primary_techs)
+        for t in exec_techs:
+            if t not in all_techniques:
+                all_techniques.append(t)
+        for t in c2_techs:
+            if t not in all_techniques:
+                all_techniques.append(t)
+        for t in impact_techs:
+            if t not in all_techniques:
+                all_techniques.append(t)
+
+        all_subtechniques = list(primary_subs)
+
+        # Derive tactics from techniques (FIX: was missing before)
+        all_tactics = _derive_tactics_from_techniques(all_techniques)
+
+        # Build mapping_reasons with tier context
+        mapping_reasons = list(data.get("mapping_reasons") or [])
+        if primary_rationale:
+            mapping_reasons.append(f"[PRIMARY] {primary_rationale}")
+        if secondary_rationale:
+            mapping_reasons.append(f"[SECONDARY] {secondary_rationale}")
+
+        # Store Two-Tier data separately for downstream consumers
+        attack_mapping_block = {
+            "primary_techniques": primary,
+            "secondary_techniques": secondary,
+            "tactics": all_tactics,  # FIX: Added tactics derivation
+            "techniques": all_techniques,
+            "subtechniques": all_subtechniques,
+            "mapping_reasons": mapping_reasons,
+            "confidence": data.get("attack_confidence"),
+            "attack_mapping_confidence": data.get("attack_confidence"),
+        }
+    else:
+        # LEGACY flat format - wrap for compatibility
+        attack_mapping_block = {
+            "techniques": data.get("techniques") or [],
+            "subtechniques": data.get("subtechniques") or [],
+            "mapping_reasons": data.get("mapping_reasons") or [],
+            "confidence": data.get("attack_confidence"),
+            "attack_mapping_confidence": data.get("attack_confidence"),
+        }
+
     return {"attack_mapping": attack_mapping_block}
 
 
@@ -502,6 +684,7 @@ def _enrich_phase2_with_protocol_context(
 
     techniques = list(attack.get("techniques") or [])
     subtechniques = list(attack.get("subtechniques") or [])
+    tactics = list(attack.get("tactics") or [])  # FIX: Track tactics
     reasons = list(attack.get("mapping_reasons") or [])
     touched = False
 
@@ -511,9 +694,19 @@ def _enrich_phase2_with_protocol_context(
         if parent not in techniques:
             techniques.append(parent)
             touched = True
+            # FIX: Derive tactic from new technique
+            new_tactics = TECHNIQUE_TO_TACTICS.get(parent, [])
+            for t in new_tactics:
+                if t not in tactics:
+                    tactics.append(t)
         if sub not in subtechniques:
             subtechniques.append(sub)
             touched = True
+            # FIX: Derive tactic from subtechnique
+            new_tactics = TECHNIQUE_TO_TACTICS.get(sub, [])
+            for t in new_tactics:
+                if t not in tactics:
+                    tactics.append(t)
         if reason not in reasons:
             reasons.append(reason)
             touched = True
@@ -521,8 +714,119 @@ def _enrich_phase2_with_protocol_context(
     if touched:
         attack["techniques"] = techniques
         attack["subtechniques"] = subtechniques
+        attack["tactics"] = tactics  # FIX: Update tactics
         attack["mapping_reasons"] = reasons
     return phase2
+
+
+def _enrich_subtechniques(
+    attack_mapping: dict,
+    phase1: dict[str, Any],
+) -> dict:
+    """Tự động bổ sung sub-techniques dựa trên observable_side_effects.
+
+    Fallback khi AI chọn T1059 hoặc T1071 nhưng không emit sub-techniques.
+    llama-3.3-70b-versatile tends to be token-conservative.
+
+    Args:
+        attack_mapping: Dict chứa techniques và subtechniques
+        phase1: Phase 1 output với observable_side_effects
+
+    Returns:
+        Dict đã được bổ sung subtechniques
+    """
+    techniques = list(attack_mapping.get("techniques") or [])
+    subtechniques = list(attack_mapping.get("subtechniques") or [])
+    tactics = list(attack_mapping.get("tactics") or [])
+
+    # Lấy observable_side_effects từ Phase 1
+    flow = phase1.get("attack_flow", {}) if isinstance(phase1, dict) else {}
+    if isinstance(flow, dict):
+        effects = flow.get("observable_side_effects") or []
+        entry_vec = flow.get("entry_vector") or ""
+        exec_mech = flow.get("execution_mechanism") or ""
+    else:
+        effects = []
+        entry_vec = ""
+        exec_mech = ""
+
+    effects_text = " ".join(effects).lower() if effects else ""
+    combined_text = f"{effects_text} {entry_vec} {exec_mech}".lower()
+
+    # Lấy execution_surface từ Phase 1
+    exec_surface = phase1.get("execution_surface", "") if isinstance(phase1, dict) else ""
+
+    touched = False
+
+    # T1059 → Sub-techniques dựa trên OS/Interpreter
+    if "T1059" in techniques:
+        if any(kw in combined_text for kw in ["powershell", "ps1"]):
+            if "T1059.001" not in subtechniques:
+                subtechniques.append("T1059.001")
+                touched = True
+        if any(kw in combined_text for kw in ["cmd", "windows", "batch"]):
+            if "T1059.003" not in subtechniques:
+                subtechniques.append("T1059.003")
+                touched = True
+        if any(kw in combined_text for kw in ["bash", "shell", "unix", "linux", "/bin"]):
+            if "T1059.004" not in subtechniques:
+                subtechniques.append("T1059.004")
+                touched = True
+        if "python" in combined_text:
+            if "T1059.006" not in subtechniques:
+                subtechniques.append("T1059.006")
+                touched = True
+        if "javascript" in combined_text or "nodejs" in combined_text:
+            if "T1059.007" not in subtechniques:
+                subtechniques.append("T1059.007")
+                touched = True
+
+    # T1071 → Sub-techniques dựa trên protocol
+    if "T1071" in techniques:
+        if any(kw in combined_text for kw in ["ldap", "http", "https", "web", "dns", "callback"]):
+            if "T1071.001" not in subtechniques:
+                subtechniques.append("T1071.001")
+                # Derive tactic for subtechnique
+                new_tactics = TECHNIQUE_TO_TACTICS.get("T1071.001", [])
+                for t in new_tactics:
+                    if t not in tactics:
+                        tactics.append(t)
+                touched = True
+        if any(kw in combined_text for kw in ["ftp", "smtp", "file_transfer"]):
+            if "T1071.002" not in subtechniques:
+                subtechniques.append("T1071.002")
+                # Derive tactic for subtechnique
+                new_tactics = TECHNIQUE_TO_TACTICS.get("T1071.002", [])
+                for t in new_tactics:
+                    if t not in tactics:
+                        tactics.append(t)
+                touched = True
+
+    # T1210 → SMB/RDP exploitation - map to T1021 sub-techniques
+    if "T1210" in techniques:
+        if "smb" in combined_text:
+            if "T1021.002" not in subtechniques:
+                subtechniques.append("T1021.002")
+                touched = True
+        if "rdp" in combined_text:
+            if "T1021.001" not in subtechniques:
+                subtechniques.append("T1021.001")
+                touched = True
+        if "ssh" in combined_text:
+            if "T1021.004" not in subtechniques:
+                subtechniques.append("T1021.004")
+                touched = True
+
+    if touched:
+        attack_mapping["subtechniques"] = subtechniques
+        attack_mapping["tactics"] = tactics
+        attack_mapping["_subtechniques_enriched"] = True
+        logger.debug(
+            "[Step 2 - SUBTECHNIQUE ENRICHMENT] Added: %s",
+            attack_mapping.get("subtechniques"),
+        )
+
+    return attack_mapping
 
 
 def _combine_phase_outputs(

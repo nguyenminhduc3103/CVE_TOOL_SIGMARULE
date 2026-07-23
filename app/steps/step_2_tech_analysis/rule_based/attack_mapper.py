@@ -13,6 +13,9 @@ logger = logging.getLogger(__name__)
 
 
 BEHAVIOR_ATTACK_GRAPH: dict[str, dict[str, tuple[str, ...]]] = {
+    # =====================================
+    # Original behaviors (preserved)
+    # =====================================
     "process_creation": {
         "tactics": ("TA0002",),
         "techniques": ("T1059",),
@@ -59,18 +62,112 @@ BEHAVIOR_ATTACK_GRAPH: dict[str, dict[str, tuple[str, ...]]] = {
         "subtechniques": ("T1071.001",),
     },
     "shell_spawn": {
-        "tactics": ("TA0002",),  # Execution
-        "techniques": ("T1059",),  # Command and Scripting Interpreter
-        "subtechniques": ("T1059.004",),  # Unix Shell (most common CWE-78 target)
+        "tactics": ("TA0002",),
+        "techniques": ("T1059",),
+        "subtechniques": ("T1059.004",),
     },
     "file_read": {
-        "tactics": ("TA0007",),  # Discovery
-        "techniques": ("T1083",),  # File and Directory Discovery
+        "tactics": ("TA0007",),
+        "techniques": ("T1083",),
         "subtechniques": (),
     },
     "data_exfiltration": {
-        "tactics": ("TA0010",),  # Exfiltration
-        "techniques": ("T1020", "T1114"),  # Automated Exfiltration + Email Collection
+        "tactics": ("TA0010",),
+        "techniques": ("T1020", "T1114"),
+        "subtechniques": (),
+    },
+    # =====================================
+    # NEW: Exploit behaviors (→ PRIMARY)
+    # =====================================
+    "jndi_injection": {
+        "tactics": ("TA0001", "TA0002"),
+        "techniques": ("T1190", "T1203"),
+        "subtechniques": (),
+    },
+    "deserialization_trigger": {
+        "tactics": ("TA0001", "TA0002"),
+        "techniques": ("T1190", "T1203"),
+        "subtechniques": (),
+    },
+    "http_request_exploit": {
+        "tactics": ("TA0001",),
+        "techniques": ("T1190",),
+        "subtechniques": (),
+    },
+    "command_injection": {
+        "tactics": ("TA0001", "TA0002"),
+        "techniques": ("T1190", "T1059"),
+        "subtechniques": (),
+    },
+    "sql_injection": {
+        "tactics": ("TA0001",),
+        "techniques": ("T1190",),
+        "subtechniques": (),
+    },
+    "buffer_overflow": {
+        "tactics": ("TA0001", "TA0002"),
+        "techniques": ("T1190", "T1203"),
+        "subtechniques": (),
+    },
+    # =====================================
+    # NEW: Post-Exploit behaviors (→ SECONDARY)
+    # =====================================
+    "outbound_ldap_callback": {
+        "tactics": ("TA0011",),
+        "techniques": ("T1071", "T1105"),
+        "subtechniques": ("T1071.001",),
+    },
+    "remote_class_loading": {
+        "tactics": ("TA0002",),
+        "techniques": ("T1203",),
+        "subtechniques": (),
+    },
+    "http_callback": {
+        "tactics": ("TA0011",),
+        "techniques": ("T1071",),
+        "subtechniques": ("T1071.001",),
+    },
+    "dns_query_to_attacker": {
+        "tactics": ("TA0011",),
+        "techniques": ("T1071",),
+        "subtechniques": ("T1071.001",),
+    },
+    "file_downloaded": {
+        "tactics": ("TA0011",),
+        "techniques": ("T1105",),
+        "subtechniques": (),
+    },
+    "powershell_execution": {
+        "tactics": ("TA0002",),
+        "techniques": ("T1059",),
+        "subtechniques": ("T1059.001",),
+    },
+    "cmd_execution": {
+        "tactics": ("TA0002",),
+        "techniques": ("T1059",),
+        "subtechniques": ("T1059.003",),
+    },
+    "bash_execution": {
+        "tactics": ("TA0002",),
+        "techniques": ("T1059",),
+        "subtechniques": ("T1059.004",),
+    },
+    # =====================================
+    # NEW: Impact behaviors (→ SECONDARY.impact)
+    # =====================================
+    "dos_observed": {
+        "tactics": ("TA0040",),
+        "techniques": ("T1499",),
+        "subtechniques": ("T1499.004",),
+    },
+    "service_crash": {
+        "tactics": ("TA0040",),
+        "techniques": ("T1489",),
+        "subtechniques": (),
+    },
+    "ransomware_behavior": {
+        "tactics": ("TA0040",),
+        "techniques": ("T1486",),
         "subtechniques": (),
     },
 }

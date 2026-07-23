@@ -61,9 +61,33 @@ class Phase1LLMResponse(BaseModel):
     reasoning: list[str] = Field(default_factory=list)
 
 
+class Phase2PrimaryTechniques(BaseModel):
+    """Primary techniques - direct exploitation technique."""
+    techniques: list[str] = Field(default_factory=list)
+    subtechniques: list[str] = Field(default_factory=list)
+    rationale: str = Field(default="")
+
+
+class Phase2SecondaryTechniques(BaseModel):
+    """Secondary techniques - post-exploit behaviors."""
+    execution: list[str] = Field(default_factory=list)
+    c2: list[str] = Field(default_factory=list)
+    impact: list[str] = Field(default_factory=list)
+    rationale: str = Field(default="")
+
+
 class Phase2LLMResponse(BaseModel):
+    """Two-tier response for Phase 2 ATT&CK mapping.
+
+    - primary_techniques: Direct exploitation technique (Prevention/Detection)
+    - secondary_techniques: Post-exploit behaviors (Threat Hunting)
+    """
+    primary_techniques: Phase2PrimaryTechniques = Field(default_factory=Phase2PrimaryTechniques)
+    secondary_techniques: Phase2SecondaryTechniques = Field(default_factory=Phase2SecondaryTechniques)
+    attack_confidence: float = Field(ge=0.0, le=1.0)
+    mapping_reasons: list[str] = Field(default_factory=list)
+
+    # Legacy fields for backward compatibility during transition
     tactics: list[str] = Field(default_factory=list)
     techniques: list[str] = Field(default_factory=list)
     subtechniques: list[str] = Field(default_factory=list)
-    attack_confidence: float = Field(ge=0.0, le=1.0)
-    mapping_reasons: list[str] = Field(default_factory=list)

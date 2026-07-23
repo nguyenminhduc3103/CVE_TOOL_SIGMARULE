@@ -120,6 +120,37 @@ For other CWE families, populate only if the CVE description gives concrete sign
 Empty `evasive_indicators` is acceptable when there are no observable evasion techniques
 (vd pure DoS without detection bypass, hardware fault injection).
 
+# OBSERVABLE SIDE EFFECTS (MANDATORY FOR ATTACK CHAIN)
+
+observable_side_effects MUST include ALL observable behaviors categorized by timing:
+
+## Exploit Behaviors (REQUIRED - at least 1):
+- "http_request_exploit" - HTTP/Web request triggers vulnerability
+- "jndi_injection" - JNDI lookup/injection
+- "deserialization_trigger" - Deserialization of untrusted data
+- "memory_corruption" - Memory corruption exploitation
+- "sql_injection" - SQL injection
+- "command_injection" - OS command injection
+- "buffer_overflow" - Buffer overflow exploitation
+
+## Post-Exploit Behaviors (add when evidence exists):
+- "outbound_ldap_callback" - LDAP callback to attacker server
+- "remote_class_loading" - Remote class/JAR loading
+- "shell_spawned" - Shell interpreter spawned
+- "file_downloaded" - File downloaded from attacker
+- "http_callback" - HTTP callback to attacker
+- "dns_query_to_attacker" - DNS query to attacker domain
+- "process_creation" - New process created
+- "network_callback" - Network callback established
+- "data_exfiltration" - Data being exfiltrated
+
+## Impact Behaviors (add when explicit):
+- "dos_observed" - Denial of service observed
+- "service_crash" - Service/application crash
+- "ransomware_behavior" - File encryption/ransomware behavior
+
+---
+
 # MANDATORY FIELDS (no exceptions)
 
 - Output ONLY the JSON. No prose before/after.

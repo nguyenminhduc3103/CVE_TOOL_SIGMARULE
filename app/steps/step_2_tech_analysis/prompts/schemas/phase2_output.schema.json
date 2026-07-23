@@ -2,17 +2,67 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "required": [
-    "tactics",
-    "techniques",
-    "subtechniques",
+    "primary_techniques",
+    "secondary_techniques",
     "attack_confidence",
     "mapping_reasons"
   ],
   "properties": {
-    "tactics": { "type": "array", "items": { "type": "string" } },
-    "techniques": { "type": "array", "items": { "type": "string" } },
-    "subtechniques": { "type": "array", "items": { "type": "string" } },
-    "attack_confidence": { "type": "number" },
-    "mapping_reasons": { "type": "array", "items": { "type": "string" } }
+    "primary_techniques": {
+      "type": "object",
+      "required": ["techniques", "rationale"],
+      "properties": {
+        "techniques": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Primary MITRE ATT&CK technique(s) - direct exploitation technique"
+        },
+        "subtechniques": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Sub-techniques for primary technique"
+        },
+        "rationale": {
+          "type": "string",
+          "description": "Why this is the primary exploit technique"
+        }
+      }
+    },
+    "secondary_techniques": {
+      "type": "object",
+      "required": ["execution", "c2", "impact", "rationale"],
+      "properties": {
+        "execution": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Post-exploit execution techniques (T1203, T1059.xxx)"
+        },
+        "c2": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Command and Control techniques (T1105, T1071.xxx)"
+        },
+        "impact": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Impact techniques (T1486, T1499.xxx)"
+        },
+        "rationale": {
+          "type": "string",
+          "description": "Why secondary techniques are added based on evidence"
+        }
+      }
+    },
+    "attack_confidence": {
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "description": "Confidence level for the entire attack chain mapping"
+    },
+    "mapping_reasons": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Detailed mapping justifications for each technique"
+    }
   }
 }
