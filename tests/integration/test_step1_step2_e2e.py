@@ -304,12 +304,9 @@ async def run_interactive_pipeline(cve_id: str) -> bool:
         print(f"  Attack mapping confidence: {atk.attack_mapping_confidence}")
         print(f"  Mapping reasons ({len(atk.mapping_reasons or [])}):")
         _print_list(atk.mapping_reasons or [])
-        print(f"  Validation warnings ({len(atk.validation_warnings or [])}):")
-        _print_list(atk.validation_warnings or [])
-        print(f"  Dropped tactics:     {atk.dropped_tactics or []}")
-        print(f"  Dropped techniques:  {atk.dropped_techniques or []}")
-        print(f"  Dropped subtechniques:{atk.dropped_subtechniques or []}")
-        print(f"  AI used/model(s):    {atk.ai_used} / {atk.ai_model} / {atk.ai_models_used or []}")
+        # NOTE: Validation warnings, dropped fields, and AI model info are omitted
+        # - Validation/dropped only useful when there are errors (empty by default)
+        # - AI model info is already shown in "AI USAGE" section below
 
     _section("STEP 2 — AI USAGE")
     ai_steps = orch._ai_steps_used or []

@@ -288,7 +288,7 @@ class TriageOrchestrator:
     async def _run_analysis_stage(self, context: EnrichedCVEContext, capability):
         from app.core.config import settings
         from app.steps.step_2_tech_analysis.rule_based.attack_validator import normalize_family, validate_ttp_list
-        # NEW: import từ clean architecture folder
+        # Import từ clean architecture folder
         from app.shared.ai.core import AIServiceError, BaseAIClient
         from app.steps.step_2_tech_analysis.services.ai_service import AIBehaviorService
         from app.steps.step_2_tech_analysis import run_step2_tech_analysis
@@ -308,7 +308,6 @@ class TriageOrchestrator:
                 client = BaseAIClient()
                 ai_service = AIBehaviorService(client)
 
-                # NEW: dùng orchestrator mới (clean architecture)
                 tech_analysis, attack_mapping, coverage = await run_step2_tech_analysis(
                     ai_service=ai_service,
                     base_client=client,

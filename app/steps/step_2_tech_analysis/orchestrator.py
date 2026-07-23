@@ -31,6 +31,19 @@ logger = logging.getLogger(__name__)
 
 
 # ==============================================================
+# Helper Functions
+# ==============================================================
+
+def _ensure_tactics(tactics: list, technique: str) -> list:
+    """Đảm bảo tactic được thêm từ technique."""
+    new_tactics = TECHNIQUE_TO_TACTICS.get(technique, [])
+    for t in new_tactics:
+        if t not in tactics:
+            tactics.append(t)
+    return tactics
+
+
+# ==============================================================
 # TECHNIQUE → TACTIC Mapping (Suy diễn tactics từ techniques)
 # ==============================================================
 
@@ -40,10 +53,12 @@ TECHNIQUE_TO_TACTICS: dict[str, list[str]] = {
     "T1210": ["TA0008"],  # Exploitation of Remote Services
     "T1133": ["TA0001"],  # External Remote Services
     "T1204": ["TA0002"],  # User Execution
+    "T1204.002": ["TA0002"],  # Malicious File
     "T1068": ["TA0004"],  # Exploitation for Privilege Escalation
     "T1195": ["TA0001"],  # Supply Chain Compromise
     "T1611": ["TA0004", "TA0005"],  # Escape to Host
     "T1566": ["TA0001"],  # Phishing
+    "T1566.001": ["TA0001"],  # Spearphishing Attachment
     "T1189": ["TA0001"],  # Drive-by Compromise
     # Execution
     "T1203": ["TA0002"],  # Exploitation for Client Execution
@@ -716,6 +731,40 @@ def _enrich_phase2_with_protocol_context(
         attack["subtechniques"] = subtechniques
         attack["tactics"] = tactics  # FIX: Update tactics
         attack["mapping_reasons"] = reasons
+
+    # CLIENT-SIDE / EMAIL ATTACHMENT RULES (fix AI "goldfish brain")
+    # AI thường quên T1204.002 và T1566.001 - tự động bổ sung
+    phase1_exec_surface = str(phase1.get("execution_surface") or "").lower()
+    phase1_delivery = str(phase1.get("delivery_vector") or "").lower()
+    phase1_ui = phase1.get("user_interaction_required")
+    client_side_touched = False
+
+    # Luật 1: Client-side hoặc user_interaction → thêm T1204.002
+    if phase1_exec_surface == "client_side" or phase1_ui is True:
+        if "T1204" in techniques and "T1204.002" not in subtechniques:
+            subtechniques.append("T1204.002")
+            tactics = _ensure_tactics(tactics, "T1204.002")
+            reasons.append("auto:T1204.002 added for client-side/user-interaction exploit")
+            client_side_touched = True
+
+    # Luật 2: Email attachment → thêm T1566.001
+    if phase1_delivery == "email_attachment":
+        if "T1566" not in techniques:
+            techniques.append("T1566")
+            tactics = _ensure_tactics(tactics, "T1566")
+            client_side_touched = True
+        if "T1566.001" not in subtechniques:
+            subtechniques.append("T1566.001")
+            tactics = _ensure_tactics(tactics, "T1566.001")
+            reasons.append("auto:T1566.001 added for email_attachment delivery vector")
+            client_side_touched = True
+
+    if client_side_touched:
+        attack["techniques"] = techniques
+        attack["subtechniques"] = subtechniques
+        attack["tactics"] = tactics
+        attack["mapping_reasons"] = reasons
+
     return phase2
 
 
