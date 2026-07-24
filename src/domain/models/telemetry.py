@@ -32,3 +32,14 @@ class TelemetryAssessment(BaseModel):
     ai_used: bool | None = None
     ai_retry_count: int = 0
     ai_model: str | None = None
+
+
+class TelemetryItem(BaseModel):
+    source: str
+    score: float = 5.0
+    label: str = "Extracted"  # "Authentic", "Extracted", "Synthetic"
+    confidence: str = "MEDIUM"  # "HIGH", "MEDIUM", "LOW"
+    event_id: int | None = None
+    log_data: dict = {}
+    raw_snippet: str | None = None
+

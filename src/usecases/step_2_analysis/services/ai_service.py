@@ -166,6 +166,43 @@ class AIBehaviorService:
         return "\n".join(lines)
 
     @classmethod
+    def _format_telemetry_blocks(
+        cls,
+        authentic_logs: list[dict] | None = None,
+        synthetic_logs: list[dict] | None = None
+    ) -> str:
+        """
+        Build 2 transparently labeled Telemetry Log Blocks for LLM prompt.
+        - Section A: Authentic Verified Logs (Score 7-10/10)
+        - Section B: Simulated / Synthetic Logs (Score 3/10)
+        """
+        lines = []
+
+        if authentic_logs:
+            lines.append("\n=== SECTION A: VERIFIED AUTHENTIC LOGS (Trust Score: 7-10/10 - EMPIRICAL EVIDENCE) ===")
+            lines.append("Instructions for AI: These logs are empirical evidence from verified test labs (OTRF/EVTX).")
+            lines.append("You MAY use these exact field values (Image, CommandLine, ParentImage) for Sigma Rule 'selection:' blocks:\n")
+            for idx, item in enumerate(authentic_logs[:3], 1):
+                score = item.get("score", 10.0)
+                source = item.get("source", "OTRF/EVTX")
+                log_data = item.get("log_data", {})
+                lines.append(f"  [Authentic Log #{idx} | Source: {source} | Score: {score}/10]:")
+                lines.append(f"    {log_data}\n")
+
+        if synthetic_logs:
+            lines.append("\n=== SECTION B: SIMULATED / SYNTHETIC LOGS (Trust Score: 3/10 - THEORETICAL ESTIMATE) ===")
+            lines.append("Instructions for AI: These logs were simulated/derived from exploit script analysis.")
+            lines.append("Use with CAUTION. DO NOT lock strict Sigma Rule detections based solely on this section:\n")
+            for idx, item in enumerate(synthetic_logs[:2], 1):
+                source = item.get("source", "ExploitScript")
+                log_data = item.get("log_data", {})
+                lines.append(f"  [Synthetic Log #{idx} | Source: {source} | Score: 3/10]:")
+                lines.append(f"    {log_data}\n")
+
+        return "\n".join(lines)
+
+
+    @classmethod
     def _format_threat_actors_block(cls, threat_actors: list[str]) -> str:
         """Build 'Threat Actors' block. Empty khi OTX không trả actor nào."""
         if not threat_actors:
