@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from typing import Any
 
 try:
@@ -9,10 +10,25 @@ except ImportError:  # pragma: no cover - fallback for minimal environments
     structlog = None
 
 
+def _get_log_level() -> int:
+    """Get log level from environment variable."""
+    env_level = os.environ.get("LOG_LEVEL", "INFO").upper()
+    level_map = {
+        "DEBUG": logging.DEBUG,
+        "INFO": logging.INFO,
+        "WARNING": logging.WARNING,
+        "ERROR": logging.ERROR,
+        "CRITICAL": logging.CRITICAL,
+    }
+    return level_map.get(env_level, logging.INFO)
+
+
 def configure() -> None:
+    log_level = _get_log_level()
+
     if structlog is None:
         logging.basicConfig(
-            level=logging.INFO,
+            level=log_level,
             format="%(asctime)s %(levelname)s %(name)s %(message)s",
         )
         return
@@ -21,7 +37,7 @@ def configure() -> None:
         processors=[
             structlog.processors.KeyValueRenderer(key_order=["event", "cve_id"])
         ],
-        wrapper_class=structlog.make_filtering_bound_logger(logging.INFO),
+        wrapper_class=structlog.make_filtering_bound_logger(log_level),
         logger_factory=structlog.PrintLoggerFactory(),
     )
 

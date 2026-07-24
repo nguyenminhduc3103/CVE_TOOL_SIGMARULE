@@ -53,6 +53,18 @@ class Settings(BaseSettings):
     # Phase 2 (ATT&CK mapping) uses analyze_ai_model (default Groq llama-3.3-70b).
     # Phase 2 là REASONING task quan trọng nhất - giữ model mạnh.
 
+    # --- Telemetry Discovery (Step 1.3) ---
+    # Enable/disable telemetry discovery stage
+    telemetry_discovery_enabled: bool = True
+    # Timeout per source in seconds
+    telemetry_discovery_timeout: int = 30
+    # Cache TTL for raw log samples (7 days)
+    telemetry_cache_ttl_seconds: int = 604800
+    # Minimum sources required to proceed (default: 1)
+    telemetry_gate_min_sources: int = 1
+    # Block pipeline when no sufficient telemetry (default: True per user decision)
+    telemetry_gate_blocking: bool = True
+
     # --- MITRE STIX + CAPEC cache (7-day TTL, dynamic ATT&CK whitelist) ---
     # Path to the directory where MITRE STIX + CAPEC bundles are cached.
     # Files inside (enterprise-attack.json, capec_stix.json) are downloaded
