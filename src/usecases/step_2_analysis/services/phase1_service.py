@@ -162,7 +162,7 @@ class AIPhase1Service:
             "threat_actors": (threat_actors or [])[: self._MAX_THREAT_ACTORS],
         }
         formatted_user = self.user_prompt_template.format(
-            input_json=json.dumps(input_payload, ensure_ascii=False, indent=2)
+            input_json=json.dumps(input_payload, ensure_ascii=False, indent=2),
         )
 
         try:

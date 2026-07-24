@@ -10,523 +10,130 @@ Treat Phase 1 output as ground truth.
 
 Do NOT re-analyze the vulnerability.
 
-Do NOT generate:
+---
 
-* family
-* signature
-* vulnerability_type
-* vulnerability_class
-* exploit_vector
-* pre_auth
-* remote_exploitable
-* exploit_complexity
-* confidence
-* likely_outcome
-* mandatory_behaviors
-* evasive_indicators
-* exploit_requirements
-* cwe_metadata
-* attack_flow
-* reasoning
+## OUTPUT FORMAT: Evidence-to-TTP Matrix
 
-Return ONLY a JSON object with TWO-TIER ATTACK CHAIN structure:
+Return ONLY this JSON structure:
 
+```json
 {
-"primary_techniques": {
-  "techniques": [],
-  "subtechniques": [],
-  "rationale": ""
-},
-"secondary_techniques": {
-  "execution": [],
-  "c2": [],
-  "impact": [],
-  "rationale": ""
-},
-"attack_confidence": 0.0,
-"mapping_reasons": []
+  "mitre_attack_chain": [
+    {
+      "technique_id": "T1190",
+      "exact_behavior_anchor": "http_request",
+      "textual_evidence": "Quote from CVE description..."
+    }
+  ],
+  "attack_confidence": 0.0,
+  "mapping_reasons": []
 }
-
-Before finalizing output, run this mandatory 2-pass mapping flow:
-1) Choose primary technique for initial exploit path.
-2) Evaluate secondary techniques and sub-techniques from explicit evidence in
-   Phase 1 attack_flow (entry_vector + execution_mechanism) and protocol clues.
-
-If Phase 1 explicitly names system protocols/services such as RDP, SMB, SSH,
-WinRM, or FTP, you MUST evaluate corresponding ATT&CK sub-technique candidates
-and include them when evidence is direct. Do not leave subtechniques empty if
-clear protocol evidence supports a valid sub-technique.
-
-Use MITRE ATT&CK Enterprise v15 IDs only.
-
-Never invent ATT&CK IDs.
-
-Never invent sub-techniques.
-
-subtechniques may legitimately be empty.
+```
 
 ---
 
-## PRIMARY DECISION ANCHOR
+## CRITICAL RULE: Behavior Anchor Required
 
-execution_surface is the strongest signal.
+For EVERY technique you select, you MUST provide an `exact_behavior_anchor` that is an **EXACT STRING** from Phase 1's `mandatory_behaviors` array.
 
-client_side
-→ prefer:
-T1204
-T1566
-T1189
+**If no Phase 1 behavior supports a technique, DO NOT include it.**
 
-server_side
-→ prefer:
-T1190
-T1210
-T1133
+### Examples:
 
-local
-→ prefer:
-T1068
-T1548.xxx
+**For Information Disclosure (CVE-2023-49103):**
+- Phase 1 behaviors: `["http_request", "data_exfiltration"]`
+- ✓ VALID: `{"technique_id": "T1190", "exact_behavior_anchor": "http_request"}`
+- ✗ INVALID: `{"technique_id": "T1203", "exact_behavior_anchor": "memory_corruption"}` - NO memory_corruption in Phase 1
+- ✗ INVALID: `{"technique_id": "T1071", "exact_behavior_anchor": "callback"}` - NO callback in Phase 1
+- ✗ INVALID: `{"technique_id": "T1486", "exact_behavior_anchor": "ransomware"}` - NO ransomware in Phase 1
 
-multi_hop
-→ prefer:
-T1195.xxx
-T1611
-
-unknown
-→ derive from remaining evidence.
+**For RCE (Log4Shell):**
+- Phase 1 behaviors: `["http_request", "network_callback", "tool_download", "command_execution"]`
+- ✓ VALID: `{"technique_id": "T1190", "exact_behavior_anchor": "http_request"}`
+- ✓ VALID: `{"technique_id": "T1071.001", "exact_behavior_anchor": "network_callback"}`
+- ✓ VALID: `{"technique_id": "T1105", "exact_behavior_anchor": "tool_download"}`
 
 ---
 
-## TWO-TIER ATTACK CHAIN OUTPUT (MANDATORY)
+## PHASE 1 BEHAVIORS MAPPING
 
-You MUST output MITRE techniques in TWO distinct tiers:
+Use these as your anchor vocabulary (must match Phase 1 exactly):
 
-### Tier 1: PRIMARY (Exploit Core)
-- Direct technique that triggers the vulnerability
-- Use for: Prevention, Direct Detection
-- Only ONE primary technique unless multiple distinct exploit paths exist
-- PRIMARY always gets added to primary_techniques.techniques
-
-### Tier 2: SECONDARY (Post-Exploit Behaviors)
-- Techniques the attacker performs AFTER successful exploitation
-- Use for: Threat Hunting, Wide-area Monitoring
-- Multiple secondary techniques allowed when evidence supports them
-- SECONDARY goes to secondary_techniques.execution / c2 / impact
-
-## TIER SELECTION RULES
-
-### PRIMARY Techniques (select ONE):
-- T1190: HTTP/Web-facing application exploitation
-- T1210: SMB/RDP/SSH/FTP/RPC remote service exploitation
-- T1133: External Remote Services (VPN, RD Gateway)
-- T1204: User Execution (client-side requiring user action)
-- T1068: Privilege Escalation (local only)
-- T1195: Supply Chain Compromise
-- T1203: Exploitation for Code Execution (memory corruption, JNDI, deserialization)
-
-### SECONDARY - Execution (add to secondary_techniques.execution when evidence exists):
-- T1203: Exploitation for Code Execution (JNDI, deserialization, heap overflow)
-- T1059: Command/Script Interpreter (shell spawned post-exploit)
-- T1059.001: PowerShell
-- T1059.003: Windows Command Shell
-- T1059.004: Unix Shell
-
-### SECONDARY - C2/Collection (add to secondary_techniques.c2 when evidence exists):
-- T1105: Ingress Tool Transfer (file downloads: .class, .jar, .dll, binaries)
-- T1071: Application Layer Protocol (LDAP, HTTP, DNS callbacks)
-- T1071.001: HTTPS/DNS
-
-### SECONDARY - Impact (add to secondary_techniques.impact ONLY when explicit):
-- T1499: Endpoint Denial of Service
-- T1486: Data Encrypted for Impact (ransomware)
-- T1489: Service Stop
+| Phase 1 Behavior | Appropriate Techniques |
+|-----------------|---------------------|
+| `http_request` | T1190 |
+| `web_request` | T1190 |
+| `process_creation` | T1059, T1203 |
+| `command_execution` | T1059, T1203 |
+| `shell_spawn` | T1059 |
+| `memory_corruption` | T1203 |
+| `buffer_overflow` | T1203 |
+| `network_callback` | T1071, T1071.001, T1105 |
+| `http_callback` | T1071, T1071.001 |
+| `ldap_callback` | T1071, T1071.001, T1105 |
+| `tool_download` | T1105 |
+| `file_downloaded` | T1105 |
+| `privilege_escalation` | T1068 |
+| `webshell_drop` | T1505.003 |
+| `data_exfiltration` | (no specific ATT&CK - skip) |
+| `sensitive_data_disclosure` | (no specific ATT&CK - skip) |
+| `ransomware_behavior` | T1486 |
+| `encryption` | T1486 |
 
 ---
 
-## SERVICE / PROTOCOL ANALYSIS
+## TECHNIQUE SELECTION GUIDELINES
 
-HTTP / HTTPS web applications
-(web frameworks, APIs, servlet containers,
-Spring, Struts, Log4j, Tomcat, JBoss, WebLogic)
+**T1190 (Exploit Public-Facing Application):**
+- Use for: HTTP/Web server exploitation
+- Required anchor: `http_request`, `web_request`
 
-→ T1190
+**T1203 (Exploitation for Client Execution):**
+- Use for: Memory corruption, buffer overflow, deserialization RCE
+- Required anchor: `memory_corruption`, `buffer_overflow`, `command_execution` (server-side)
 
-SMB / RDP / SSH / FTP / RPC / Telnet
+**T1059 (Command and Scripting Interpreter):**
+- Use for: Shell spawn, command execution (after RCE)
+- Required anchor: `shell_spawn`, `process_creation`, `command_execution`
 
-→ T1210
+**T1071 (Application Layer Protocol):**
+- Use for: Callbacks, C2 channels
+- Required anchor: `network_callback`, `http_callback`, `ldap_callback`
 
-VPN gateways / remote access systems
+**T1105 (Ingress Tool Transfer):**
+- Use for: File/tool downloads
+- Required anchor: `tool_download`, `file_downloaded`
 
-→ T1133
-
-Container escape
-
-→ T1611
-
-Supply-chain compromise
-
-→ T1195.xxx
-
-Do NOT select T1210 merely because:
-
-* LDAP is used
-* RMI is used
-* JNDI lookup occurs
-* outbound callbacks occur
-* network traffic exists
-
-T1210 requires exploitation of a remote service
-such as SMB, RDP, SSH, FTP, RPC, or similar.
+**T1486 (Data Encrypted for Impact):**
+- Use for: Ransomware
+- Required anchor: `ransomware_behavior`, `encryption`
 
 ---
 
-## PRIMARY TECHNIQUE SELECTION
-
-Select the technique that best represents
-the initial exploitation path.
-
-Examples:
-
-HTTP endpoint exploitation
-→ T1190
-
-SMB service exploitation
-→ T1210
-
-VPN auth bypass
-→ T1133
-
-Supply-chain compromise
-→ T1195.xxx
-
-Container escape
-→ T1611
-
-Do not select multiple primary techniques
-unless Phase 1 clearly indicates multiple paths.
-
----
-
-## SECONDARY TECHNIQUE ANALYSIS
-
-After selecting the primary technique,
-evaluate whether Phase 1 explicitly identifies
-additional ATT&CK behaviors for SECONDARY tier.
-
-## EVIDENCE QUALITY HIERARCHY (CRITICAL)
-
-Add secondary techniques ONLY when evidence exists:
-
-EXPLICIT (direct text mention):
-- "spawns cmd.exe", "downloads payload", "loads Java class"
-→ Add technique immediately
-
-INFERRED (clear implication from description):
-- JNDI/RMI description → remote class loading
-- LDAP callback mentioned → T1105/T1071
-→ Add with lower confidence
-
-ASSUMED (not mentioned, requires guess):
-→ DO NOT ADD
-
-## EVIDENCE-BASED SECONDARY RULES
-
-### JNDI / Log4j / LDAP / RMI CVEs:
-→ PRIMARY: T1190 (Exploit Public-Facing Application)
-→ SECONDARY.execution: T1203 (Exploitation for Code Execution)
-→ SECONDARY.c2: T1105 (Ingress Tool Transfer), T1071.001 (LDAP/HTTP callback)
-
-### Deserialization CVEs:
-→ PRIMARY: T1190 or T1210
-→ SECONDARY.execution: T1203 (if memory corruption)
-→ SECONDARY.execution: T1059 (if shell interpreter spawned)
-
-### File Download / Ingress Tool Transfer:
-→ SECONDARY.c2: T1105
-
-### LDAP / HTTP / DNS Callbacks:
-→ SECONDARY.c2: T1071.001
-
-### Shell Command Execution (PowerShell/cmd/bash):
-→ SECONDARY.execution: T1059.001 / T1059.003 / T1059.004
-
-### Ransomware / File Encryption:
-→ SECONDARY.impact: T1486
-
-### DoS / Service Crash:
-→ SECONDARY.impact: T1499
-
----
-
-## EXECUTION TECHNIQUE ANALYSIS
-
-T1190 and T1210 often already capture both
-initial access and execution for server-side CVEs.
-
-Do NOT automatically add T1059 simply because:
-
-* code execution occurs
-* remote code execution occurs
-* deserialization occurs
-* JNDI is involved
-* LDAP callback occurs
-* a Java class is loaded remotely
-
-Select T1059 only when Phase 1 explicitly identifies:
-
-* shell execution
-* command execution
-* scripting execution
-* interpreter execution
-
-Examples:
-
-PowerShell
-→ T1059.001
-
-Windows cmd
-→ T1059.003
-
-Unix shell
-→ T1059.004
-
-Python
-→ T1059.006
-
-JavaScript
-→ T1059.007
-
-If no interpreter is identified:
-
-Do NOT select T1059.
-
----
-
-## SUB-TECHNIQUE DECISION
-
-subtechniques may be empty.
-
-This is preferred over guessing.
-
-Only emit sub-techniques when Phase 1 identifies
-a specific execution primitive.
-
-Examples:
-
-PowerShell
-→ T1059.001
-
-cmd.exe
-→ T1059.003
-
-bash / sh
-→ T1059.004
-
-Python
-→ T1059.006
-
-JavaScript
-→ T1059.007
-
-Never infer a T1059 sub-technique from:
-
-* deserialization
-* JNDI
-* LDAP
-* RMI
-* remote bytecode loading
-* Java class loading
-* generic RCE
-
-Execution of a Java class alone is NOT sufficient
-evidence for T1059 or any T1059 sub-technique.
-
----
-
-## MEMORY CORRUPTION GUIDANCE
-
-When cwe_metadata.cwe_ids contains:
-
-* CWE-787
-* CWE-125
-* CWE-416
-* CWE-119
-* CWE-190
-
-apply execution-aware analysis.
-
-Client-side memory corruption:
-
-* browser
-* document parser
-* media parser
-
-→ T1203 generally fits.
-
-Server-side HTTP memory corruption
-
-→ T1190 is usually sufficient.
-
-SMB / RDP / SSH memory corruption
-
-→ T1210
-
-Add T1068 only when privilege escalation
-or SYSTEM-level execution is evident.
-
-T1203 should NOT be selected for:
-
-* kernel drivers
-* network stacks
-* transport-layer vulnerabilities
-
-unless Phase 1 explicitly identifies a userland
-parser execution path.
-
-Document inclusion or exclusion of T1203
-inside mapping_reasons.
-
----
-
-## IMPACT ANALYSIS
-
-Add:
-
-Technique:
-T1499.004
-
-Tactic:
-TA0040
-
-ONLY when Phase 1 explicitly identifies:
-
-* denial of service
-* DoS
-* service crash
-* process crash
-* segfault
-* application termination
-
-Remote code execution alone does NOT imply Impact.
-
----
-
-## TACTIC SELECTION
-
-Techniques drive tactics.
-
-Derive tactics from selected techniques.
-
-Typical mappings:
-
-T1190
-→ TA0001
-
-T1210
-→ TA0008
-
-T1059
-→ TA0002
-
-T1204
-→ TA0002
-
-T1566
-→ TA0001
-
-T1068
-→ TA0004
-
-T1133
-→ TA0001
-
-T1611
-→ TA0004
-→ TA0005
-
-T1195.xxx
-→ TA0001
-
-T1071
-→ TA0011
-
-T1105
-→ TA0011
-
-T1499.004
-→ TA0040
-
-Do not emit tactics unsupported by the selected techniques.
-
----
-
-## MINIMUM ANALYSIS REQUIREMENT
-
-For RCE vulnerabilities, you MUST evaluate ALL attack phases:
-
-### Phase 1 (PRIMARY - Exploit Core):
-- What is the initial exploitation technique?
-- execution_surface + entry_vector → PRIMARY technique
-
-### Phase 2 (SECONDARY - Post-Exploit):
-Evaluate secondary behaviors from Phase 1 observable_side_effects:
-- Does Phase 1 mention JNDI/RMI/remote lookup? → T1190 (PRIMARY) + T1203 (SECONDARY.execution)
-- Does Phase 1 mention LDAP/HTTP/DNS callbacks? → T1105/T1071 (SECONDARY.c2)
-- Does Phase 1 mention shell/command execution? → T1059.xxx (SECONDARY.execution)
-- Does Phase 1 mention file downloads/ingress? → T1105 (SECONDARY.c2)
-- Does Phase 1 mention DoS/ransomware? → T1499/T1486 (SECONDARY.impact)
-
-A single-technique result is valid only when
-no additional ATT&CK behavior is supported.
+## CONFIDENCE SCALE
+
+attack_confidence:
+- 1.0 = direct evidence from Phase 1
+- 0.8-0.9 = strong evidence
+- 0.5-0.7 = partial evidence
+- <0.5 = weak evidence
 
 ---
 
 ## MAPPING REASONS
 
-Every selected technique must be justified with evidence from Phase 1.
+Explain each technique selection based on Phase 1 evidence.
 
-### PRIMARY Rationale (required):
-Explain WHY this is the primary exploit technique based on:
-1. execution_surface (server_side → T1190, etc.)
-2. entry_vector evidence
-3. vulnerable component
-
-### SECONDARY Rationale (required):
-Explain WHY secondary techniques are added:
-1. observable_side_effects evidence
-2. specific behaviors identified in Phase 1
-3. why certain secondary techniques were NOT added
-
-Examples:
-
-"T1190 (PRIMARY) selected because Phase 1 determined execution_surface=server_side and the vulnerable component is a public-facing HTTP application via JNDI injection."
-
-"T1203 (SECONDARY.execution) added because Phase 1's observable_side_effects include 'remote class loading via JNDI lookup' which indicates exploitation for code execution."
-
-"T1105 (SECONDARY.c2) added because Phase 1's observable_side_effects indicate LDAP callback for downloading malicious payload."
-
-"T1059 not added (SECONDARY) because Phase 1 identifies remote class loading but no command interpreter or scripting interpreter execution."
-
-"T1210 not selected because the vulnerability affects an HTTP application rather than SMB, RDP, SSH, FTP, RPC, or another remote service."
+Example:
+```
+"mapping_reasons": [
+  "T1190 selected because Phase 1's mandatory_behaviors include 'http_request'",
+  "No T1203 because Phase 1 has no memory_corruption or buffer_overflow behavior",
+  "No T1071 because Phase 1 has no network_callback behavior"
+]
+```
 
 ---
-
-## CONFIDENCE
-
-attack_confidence:
-
-1.0
-= direct evidence
-
-0.8-0.9
-= strong evidence
-
-0.5-0.7
-= partial evidence
-
-<0.5
-= weak evidence
 
 Return JSON only.
 

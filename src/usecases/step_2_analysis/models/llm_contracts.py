@@ -61,11 +61,24 @@ class Phase1LLMResponse(BaseModel):
     reasoning: list[str] = Field(default_factory=list)
 
 
+class Phase2TechniqueEntry(BaseModel):
+    """One entry in the Evidence-to-TTP Matrix.
+
+    Each technique must cite a behavior anchor from Phase 1's mandatory_behaviors.
+    If no matching behavior exists, the technique should NOT be included.
+    """
+    technique_id: str = Field(min_length=1)
+    exact_behavior_anchor: str = Field(min_length=1, description="MUST match a Phase 1 mandatory_behaviors entry")
+    textual_evidence: str = Field(default="", description="Quote from CVE description supporting this mapping")
+
+
 class Phase2PrimaryTechniques(BaseModel):
     """Primary techniques - direct exploitation technique."""
     techniques: list[str] = Field(default_factory=list)
     subtechniques: list[str] = Field(default_factory=list)
     rationale: str = Field(default="")
+    # Evidence-to-TTP Matrix - required for each technique
+    behavior_anchors: list[Phase2TechniqueEntry] = Field(default_factory=list)
 
 
 class Phase2SecondaryTechniques(BaseModel):
@@ -74,16 +87,26 @@ class Phase2SecondaryTechniques(BaseModel):
     c2: list[str] = Field(default_factory=list)
     impact: list[str] = Field(default_factory=list)
     rationale: str = Field(default="")
+    # Evidence-to-TTP Matrix - required for each technique
+    behavior_anchors: list[Phase2TechniqueEntry] = Field(default_factory=list)
 
 
 class Phase2LLMResponse(BaseModel):
-    """Two-tier response for Phase 2 ATT&CK mapping.
+    """Phase 2 ATT&CK mapping response.
 
-    - primary_techniques: Direct exploitation technique (Prevention/Detection)
-    - secondary_techniques: Post-exploit behaviors (Threat Hunting)
+    Supports THREE formats (backward compatible):
+    1. Evidence-to-TTP Matrix (NEW): mitre_attack_chain with behavior anchors
+    2. Two-Tier format: primary_techniques + secondary_techniques
+    3. Legacy flat format: tactics, techniques, subtechniques
     """
+    # Format 1: Evidence-to-TTP Matrix (NEW - Preferred)
+    mitre_attack_chain: list[Phase2TechniqueEntry] = Field(default_factory=list)
+
+    # Format 2: Two-Tier format (existing)
     primary_techniques: Phase2PrimaryTechniques = Field(default_factory=Phase2PrimaryTechniques)
     secondary_techniques: Phase2SecondaryTechniques = Field(default_factory=Phase2SecondaryTechniques)
+
+    # Common fields
     attack_confidence: float = Field(ge=0.0, le=1.0)
     mapping_reasons: list[str] = Field(default_factory=list)
 

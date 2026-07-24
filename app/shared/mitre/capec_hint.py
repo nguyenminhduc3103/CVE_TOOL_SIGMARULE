@@ -27,7 +27,7 @@ import threading
 from pathlib import Path
 from typing import Any
 
-from app.core.config import settings
+from config.settings import settings
 
 logger = logging.getLogger(__name__)
 

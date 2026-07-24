@@ -257,8 +257,8 @@ async def run_interactive_pipeline(cve_id: str) -> bool:
         _print_list(a.behavior_reason or [])
 
         # Two-phase fields (Phase 1 output).
-        print(f"  Execution surface:   {a.execution_surface.value if a.execution_surface else 'n/a'}")
-        print(f"  Delivery vector:     {a.delivery_vector.value if a.delivery_vector else 'n/a'}")
+        print(f"  Execution surface:   {a.execution_surface if a.execution_surface else 'n/a'}")
+        print(f"  Delivery vector:     {a.delivery_vector if a.delivery_vector else 'n/a'}")
         print(f"  User interaction:    {a.user_interaction_required}")
         print(f"  AI used/model(s):    {a.ai_used} / {a.ai_model} / {a.ai_models_used or []}")
 

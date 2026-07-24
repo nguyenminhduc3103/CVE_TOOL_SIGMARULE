@@ -29,6 +29,7 @@ from src.usecases.step_1_triage.stages.exposure_stage import run_exposure_stage
 from src.usecases.step_1_triage.stages.kev_stage import run_kev_stage
 from src.usecases.step_1_triage.stages.poc_stage import run_poc_stage
 from src.usecases.step_1_triage.stages.telemetry_stage import run_telemetry_stage
+from src.usecases.step_2_analysis.rule_based.attack_validator import validate_ttp_list
 
 
 def _err_line(exc: BaseException) -> str:
@@ -375,8 +376,6 @@ error=_err_line(exc),
         try:
             analysis_context, attack_context = await run_analysis_stage(context, capability)
             # Apply MITRE ATT&CK validator cho rule-based output
-            from src.usecases.step_2_analysis.rule_based.attack_validator import validate_ttp_list
-
             validation = validate_ttp_list(
                 attack_context.tactics if attack_context else None,
                 attack_context.techniques if attack_context else None,

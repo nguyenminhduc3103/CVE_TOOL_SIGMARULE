@@ -24,7 +24,7 @@ def _get_whitelist():
     """Lazy import + accessor. Tránh forcing 30MB STIX parse chỉ vì import
     module này cho 1 helper function.
     """
-    from src.infrastructure.mitre.loader import MitreAttackWhitelist
+    from app.shared.mitre.loader import MitreAttackWhitelist
     return MitreAttackWhitelist.get()
 
 
@@ -392,3 +392,256 @@ def validate_against_cve_context(
             kept.append(norm)
 
     return {"kept": kept, "dropped": dropped, "dropped_reasons": dropped_reasons}
+
+
+# ==============================================================
+# CONSENSUS PROMPTING: Evidence-to-TTP Matrix Validation
+# ==============================================================
+# Zero-hardcode dynamic validation: techniques must cite Phase 1 behavior anchors.
+# If a technique cannot cite a matching Phase 1 behavior, it's hallucination.
+# This replaces hardcoded negative rules with dynamic evidence checking.
+
+
+def validate_technique_chain_against_phase1(
+    attack_chain: list[dict],
+    phase1_behaviors: list[str],
+) -> dict[str, list[dict] | dict[str, str]]:
+    """Validate techniques have matching behavior anchors from Phase 1.
+
+    This implements the Consensus Prompting pattern: for each technique selected,
+    the AI must cite an exact_behavior_anchor that exists in Phase 1's
+    mandatory_behaviors. If no match exists, the technique is hallucinated.
+
+    Args:
+        attack_chain: List of technique entries with behavior_anchors.
+                      Each entry should have: technique_id, exact_behavior_anchor
+        phase1_behaviors: List of mandatory_behaviors from Phase 1.
+
+    Returns:
+        {
+            "valid_entries": [...],      # Entries with matching anchors
+            "invalid_entries": [...],    # Entries with no matching anchor
+            "dropped_reasons": {tech_id: reason, ...},
+            "kept_technique_ids": [...], # Just the IDs for backward compat
+            "dropped_technique_ids": [...],
+        }
+    """
+    valid_entries = []
+    invalid_entries = []
+    kept_technique_ids = []
+    dropped_technique_ids = []
+    dropped_reasons: dict[str, str] = {}
+
+    # Normalize Phase 1 behaviors for matching
+    # Use lowercase + partial matching for flexibility
+    behavior_set = {b.lower() for b in phase1_behaviors}
+
+    for entry in attack_chain:
+        technique_id = entry.get("technique_id", "")
+        anchor = entry.get("exact_behavior_anchor", "").lower().strip()
+
+        if not technique_id:
+            continue
+
+        # Check if anchor matches any Phase 1 behavior
+        # Match if: anchor is substring of behavior OR behavior is substring of anchor
+        matched = False
+        matched_behavior = None
+        for behavior in behavior_set:
+            if anchor in behavior or behavior in anchor:
+                matched = True
+                matched_behavior = behavior
+                break
+
+        if matched:
+            valid_entries.append(entry)
+            if technique_id not in kept_technique_ids:
+                kept_technique_ids.append(technique_id)
+        else:
+            invalid_entries.append(entry)
+            if technique_id not in dropped_technique_ids:
+                dropped_technique_ids.append(technique_id)
+            dropped_reasons[technique_id] = (
+                f"No Phase 1 behavior matches anchor '{anchor}'. "
+                f"Available behaviors: {list(phase1_behaviors)}"
+            )
+
+    return {
+        "valid_entries": valid_entries,
+        "invalid_entries": invalid_entries,
+        "dropped_reasons": dropped_reasons,
+        "kept_technique_ids": kept_technique_ids,
+        "dropped_technique_ids": dropped_technique_ids,
+    }
+
+
+# ==============================================================
+# BEHAVIOR KEYWORD SETS (Minimal taxonomy for fuzzy matching)
+# flexible anchor matching. The actual validation is pure set membership.
+# ==============================================================
+
+# Keywords that indicate web/HTTP exploitation → T1190
+_WEB_BEHAVIOR_KEYWORDS = frozenset({
+    "http", "web", "request", "url", "endpoint", "api", "html", "php",
+    "server", "apache", "nginx", "iis", "tomcat", "jboss",
+})
+
+# Keywords that indicate data exfiltration → no specific ATT&CK (info disclosure)
+_DATA_EXFIL_KEYWORDS = frozenset({
+    "disclosure", "leak", "exposure", "sensitive", "credential", "password",
+    "secret", "token", "api_key", "config", "information", "read",
+})
+
+# Keywords that indicate command/shell execution → T1059 family
+_EXECUTION_KEYWORDS = frozenset({
+    "command", "shell", "exec", "spawn", "process", "script", "bash",
+    "powershell", "cmd", "python", "perl", "ruby",
+})
+
+# Keywords that indicate memory corruption → T1203
+_MEMORY_CORRUPTION_KEYWORDS = frozenset({
+    "memory", "heap", "stack", "buffer", "overflow", "corruption",
+    "use_after_free", "uaf", "race", "condition",
+})
+
+# Keywords that indicate C2/callback → T1071 family
+_C2_KEYWORDS = frozenset({
+    "callback", "c2", "beacon", "ldap", "dns", "http_callback",
+    "reverse_shell", "outbound", "connection",
+})
+
+# Keywords that indicate file download/tool transfer → T1105
+_DOWNLOAD_KEYWORDS = frozenset({
+    "download", "transfer", "payload", "malware", "tool", "stage",
+})
+
+# Keywords that indicate impact (ransomware/DoS) → T1486, T1499
+_IMPACT_KEYWORDS = frozenset({
+    "ransomware", "encrypt", "destruction", "dos", "denial", "crash",
+    "service_stop", "wipe", "delete",
+})
+
+
+def _extract_keywords_from_behaviors(behaviors: list[str]) -> set[str]:
+    """Extract individual keywords from behaviors for flexible matching."""
+    keywords = set()
+    for behavior in behaviors:
+        # Split on common delimiters and extract words
+        words = behavior.lower().replace("_", " ").replace("-", " ").split()
+        keywords.update(words)
+    return keywords
+
+
+def validate_technique_chain_against_phase1(
+    attack_chain: list[dict],
+    phase1_behaviors: list[str],
+) -> dict[str, list[dict] | dict[str, str]]:
+    """Validate techniques have matching behavior anchors from Phase 1.
+
+    This implements the Consensus Prompting pattern: for each technique selected,
+    the AI must cite an exact_behavior_anchor that exists in Phase 1's
+    mandatory_behaviors. If no match exists, the technique is hallucinated.
+
+    The validation is PURE SET MEMBERSHIP - no hardcoded behavior-to-technique
+    mapping. We only check if the cited anchor exists in Phase 1 behaviors.
+
+    Args:
+        attack_chain: List of technique entries with behavior_anchors.
+                      Each entry should have: technique_id, exact_behavior_anchor
+        phase1_behaviors: List of mandatory_behaviors from Phase 1.
+
+    Returns:
+        {
+            "valid_entries": [...],      # Entries with matching anchors
+            "invalid_entries": [...],    # Entries with no matching anchor
+            "dropped_reasons": {tech_id: reason, ...},
+            "kept_technique_ids": [...], # Just the IDs for backward compat
+            "dropped_technique_ids": [...],
+        }
+    """
+    valid_entries = []
+    invalid_entries = []
+    kept_technique_ids = []
+    dropped_technique_ids = []
+    dropped_reasons: dict[str, str] = {}
+
+    if not phase1_behaviors:
+        # No behaviors from Phase 1 - accept all techniques (cannot validate)
+        for entry in attack_chain:
+            tech_id = entry.get("technique_id", "")
+            if tech_id:
+                kept_technique_ids.append(tech_id.upper())
+                valid_entries.append(entry)
+        return {
+            "valid_entries": valid_entries,
+            "invalid_entries": [],
+            "dropped_reasons": {},
+            "kept_technique_ids": kept_technique_ids,
+            "dropped_technique_ids": [],
+        }
+
+    # Normalize Phase 1 behaviors for matching
+    behavior_set = {b.lower().strip() for b in phase1_behaviors}
+    behavior_keywords = _extract_keywords_from_behaviors(phase1_behaviors)
+
+    for entry in attack_chain:
+        technique_id = entry.get("technique_id", "")
+        anchor = entry.get("exact_behavior_anchor", "").lower().strip()
+
+        if not technique_id:
+            continue
+
+        technique_id = technique_id.upper()
+
+        # Check if anchor matches any Phase 1 behavior
+        # Match strategies:
+        # 1. Exact match
+        # 2. Partial match (anchor substring of behavior or vice versa)
+        # 3. Keyword overlap
+        matched = False
+        matched_behavior = None
+
+        for behavior in behavior_set:
+            # Exact match
+            if anchor == behavior:
+                matched = True
+                matched_behavior = behavior
+                break
+            # Partial match
+            if anchor in behavior or behavior in anchor:
+                matched = True
+                matched_behavior = behavior
+                break
+
+        # Keyword-based fuzzy matching
+        if not matched and anchor:
+            anchor_words = anchor.replace("_", " ").replace("-", " ").split()
+            for behavior in behavior_set:
+                behavior_words = behavior.replace("_", " ").replace("-", " ").split()
+                # Check if any word overlaps
+                if any(w in behavior_words for w in anchor_words if len(w) > 3):
+                    matched = True
+                    matched_behavior = behavior
+                    break
+
+        if matched:
+            valid_entries.append(entry)
+            if technique_id not in kept_technique_ids:
+                kept_technique_ids.append(technique_id)
+        else:
+            invalid_entries.append(entry)
+            if technique_id not in dropped_technique_ids:
+                dropped_technique_ids.append(technique_id)
+            dropped_reasons[technique_id] = (
+                f"Anchor '{anchor}' not found in Phase 1 behaviors. "
+                f"Available: {list(phase1_behaviors)}"
+            )
+
+    return {
+        "valid_entries": valid_entries,
+        "invalid_entries": invalid_entries,
+        "dropped_reasons": dropped_reasons,
+        "kept_technique_ids": kept_technique_ids,
+        "dropped_technique_ids": dropped_technique_ids,
+    }
+

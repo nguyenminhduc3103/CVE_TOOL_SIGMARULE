@@ -463,7 +463,7 @@ async def _run_step2_two_phase(
     capec_hints_by_cwe: dict[str, list[dict]] = {}
     if cwe_ids:
         try:
-            from src.infrastructure.mitre.capec_hint import query_capec_for_cwe
+            from app.shared.mitre.capec_hint import query_capec_for_cwe
             for cwe_id in cwe_ids:
                 if not cwe_id or cwe_id.startswith("NVD-CWE"):
                     continue
@@ -591,7 +591,16 @@ async def _run_step2_two_phase(
     if attack_block:
         phase2_dict["attack_mapping"] = _enrich_subtechniques(attack_block, phase1_dict)
 
-    # 4. CRITICAL CVE Override - BƯỚC CUỐI CÙNG (ghi đè tuyệt đối)
+    # 4. CONSENSUS VALIDATION GATE - Evidence-to-TTP Matrix check
+    # Validate Phase 2 techniques against Phase 1 behavior anchors
+    # This catches hallucinated techniques that cannot cite a Phase 1 behavior
+    attack_block = phase2_dict.get("attack_mapping", {})
+    if attack_block:
+        phase2_dict["attack_mapping"] = _validate_evidence_to_ttp(
+            attack_block, phase1_dict, cve_id
+        )
+
+    # 5. CRITICAL CVE Override - BƯỚC CUỐI CÙNG (ghi đè tuyệt đối)
     # Ground Truth override phải là bộ lọc CUỐI CÙNG trước khi trả về Pydantic model
     attack_block = phase2_dict.get("attack_mapping", {})
     if attack_block:
@@ -733,19 +742,53 @@ def _normalize_phase1_dict(
 def _normalize_phase2_dict(
     data: dict[str, Any], cve_id: str
 ) -> dict[str, Any]:
-    """Normalize Phase 2 dict: handle Two-Tier format and wrap for _ai_dict_to_pydantic.
+    """Normalize Phase 2 dict: handle Three formats and wrap for _ai_dict_to_pydantic.
 
-    Phase 2 output can be in TWO formats:
-    1. NEW Two-Tier format: {primary_techniques, secondary_techniques, ...}
-    2. LEGACY flat format: {tactics, techniques, subtechniques, ...}
+    Phase 2 output can be in THREE formats:
+    1. NEW Evidence-to-TTP Matrix format: {mitre_attack_chain: [{technique_id, exact_behavior_anchor, ...}]}
+    2. Two-Tier format: {primary_techniques, secondary_techniques, ...}
+    3. LEGACY flat format: {tactics, techniques, subtechniques, ...}
 
-    This function converts both to the format expected by _ai_dict_to_pydantic:
-    {"attack_mapping": {tactics, techniques, subtechniques, ...}}
+    This function converts all to the format expected by _ai_dict_to_pydantic:
+    {"attack_mapping": {tactics, techniques, subtechniques, behavior_anchors, ...}}
     """
     if not isinstance(data, dict):
         data = {}
 
-    # Check if Two-Tier format exists (NEW format)
+    # Format 1: Evidence-to-TTP Matrix (NEW)
+    mitre_chain = data.get("mitre_attack_chain") or []
+    if mitre_chain and isinstance(mitre_chain, list):
+        techniques = []
+        behavior_anchors = []
+        for entry in mitre_chain:
+            if isinstance(entry, dict):
+                tech_id = entry.get("technique_id")
+                if tech_id:
+                    techniques.append(tech_id)
+                behavior_anchors.append(entry)
+
+        tactics = _derive_tactics_from_techniques(techniques)
+        mapping_reasons = list(data.get("mapping_reasons") or [])
+        # Add anchor citations to mapping_reasons
+        for anchor in behavior_anchors:
+            if isinstance(anchor, dict):
+                tech = anchor.get("technique_id", "")
+                beh = anchor.get("exact_behavior_anchor", "")
+                if tech and beh:
+                    mapping_reasons.append(f"[{tech}] anchored by: {beh}")
+
+        attack_mapping_block = {
+            "tactics": tactics,
+            "techniques": techniques,
+            "subtechniques": [],
+            "behavior_anchors": behavior_anchors,
+            "mapping_reasons": mapping_reasons,
+            "confidence": data.get("attack_confidence"),
+            "attack_mapping_confidence": data.get("attack_confidence"),
+        }
+        return {"attack_mapping": attack_mapping_block}
+
+    # Format 2: Two-Tier format (existing)
     primary = data.get("primary_techniques") or {}
     secondary = data.get("secondary_techniques") or {}
 
@@ -909,6 +952,87 @@ def _enrich_phase2_with_protocol_context(
         attack["mapping_reasons"] = reasons
 
     return phase2
+
+
+def _validate_evidence_to_ttp(
+    attack_mapping: dict,
+    phase1: dict[str, Any],
+    cve_id: str,
+) -> dict:
+    """Validate Phase 2 techniques against Phase 1 behavior anchors.
+
+    This implements Consensus Prompting: each technique must cite a behavior
+    anchor from Phase 1's mandatory_behaviors. If no matching anchor exists,
+    the technique is dropped as hallucination.
+
+    Validation is PURE SET MEMBERSHIP - no hardcoded behavior-to-technique mapping.
+
+    Args:
+        attack_mapping: Dict with techniques, subtechniques, behavior_anchors
+        phase1: Phase 1 output with mandatory_behaviors
+        cve_id: CVE ID for logging
+
+    Returns:
+        Dict with invalid techniques removed
+    """
+    from src.usecases.step_2_analysis.rule_based.attack_validator import (
+        validate_technique_chain_against_phase1,
+    )
+
+    techniques = list(attack_mapping.get("techniques") or [])
+    subtechniques = list(attack_mapping.get("subtechniques") or [])
+    mapping_reasons = list(attack_mapping.get("mapping_reasons") or [])
+
+    # Get Phase 1 mandatory behaviors
+    mandatory_behaviors = phase1.get("mandatory_behaviors") or []
+    if not mandatory_behaviors:
+        logger.debug(
+            "[Step 2 - CONSENSUS VALIDATION] %s: no mandatory_behaviors from Phase 1, skipping",
+            cve_id,
+        )
+        return attack_mapping
+
+    # Build attack chain from techniques
+    # Each technique needs a behavior anchor from Phase 1
+    attack_chain = []
+    for tech in techniques:
+        attack_chain.append({
+            "technique_id": tech,
+            "exact_behavior_anchor": "",  # Will be validated
+        })
+
+    # Validate each technique has matching behavior anchor
+    validation = validate_technique_chain_against_phase1(
+        attack_chain=attack_chain,
+        phase1_behaviors=mandatory_behaviors,
+    )
+
+    invalid = validation.get("dropped_technique_ids", [])
+    if invalid:
+        logger.warning(
+            "[Step 2 - CONSENSUS VALIDATION] %s: dropped techniques without Phase 1 evidence: %s",
+            cve_id, invalid,
+        )
+        # Remove invalid techniques
+        attack_mapping["techniques"] = validation.get("kept_technique_ids", [])
+        # Also remove subtechniques whose parent was dropped
+        for sub in list(subtechniques):
+            parent = sub.split(".")[0] if "." in sub else sub
+            if parent.upper() in [t.upper() for t in invalid]:
+                subtechniques.remove(sub)
+        attack_mapping["subtechniques"] = subtechniques
+        # Re-derive tactics from remaining techniques
+        if attack_mapping["techniques"]:
+            attack_mapping["tactics"] = _derive_tactics_from_techniques(
+                attack_mapping["techniques"]
+            )
+        # Add validation warnings
+        for tech_id, reason in validation.get("dropped_reasons", {}).items():
+            mapping_reasons.append(f"CONSENSUS_DROP:{tech_id}:{reason}")
+        attack_mapping["mapping_reasons"] = mapping_reasons
+        attack_mapping["_consensus_validated"] = True
+
+    return attack_mapping
 
 
 def _enrich_subtechniques(

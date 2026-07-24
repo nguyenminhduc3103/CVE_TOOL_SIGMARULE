@@ -25,7 +25,7 @@ _REPO_ROOT = _HERE.parents[2]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from app.core.config import settings  # noqa: E402
+from config.settings import settings  # noqa: E402
 from app.shared.mitre.loader import (  # noqa: E402
     _ENTERPRISE_ATTACK_URL,
     _HTTP_TIMEOUT,
