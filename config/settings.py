@@ -69,6 +69,18 @@ class Settings(BaseSettings):
     step4_ai_api_key: str | None = None
     step4_ai_keys: str | None = None  # comma-separated cho round-robin
 
+    # --- Step 6 (Sigma Rule Generation) ---
+    # Step 6 Detection Logic Planner (AI). Mirror pattern Step 4:
+    # AI emits semantic intent only; codes layer handles Sigma emission.
+    # RECOMMEND: same provider as Step 4 (Gemini 2.5 Flash) for consistency.
+    step6_ai_model: str | None = None
+    step6_ai_base_url: str | None = None
+    step6_ai_api_key: str | None = None
+    step6_ai_keys: str | None = None
+    # Enable/disable AI path for Step 6. When False, orchestrator always uses
+    # rule-based fallback planner. Default True.
+    step6_ai_enabled: bool = True
+
     # --- Telemetry Discovery (Step 1.3) ---
     # Enable/disable telemetry discovery stage
     telemetry_discovery_enabled: bool = True
@@ -201,6 +213,52 @@ class Settings(BaseSettings):
         phase1_url = self.get_phase1_base_url()
         if phase1_url:
             return phase1_url
+        return self.ai_base_url
+
+    def get_step6_model(self) -> str:
+        """Resolve model name for Step 6 Detection Logic Planner.
+
+        Priority: STEP6_AI_MODEL > STEP4_AI_MODEL > ANALYZE_AI_MODEL > legacy AI_MODEL.
+        RECOMMEND: same provider as Step 4 (Gemini 2.0 Flash Lite) for consistency.
+        Default: gemini-2.0-flash-lite.
+        """
+        if self.step6_ai_model and self.step6_ai_model.strip():
+            return self.step6_ai_model.strip()
+        step4_model = self.get_step4_model()
+        if step4_model:
+            return step4_model
+        return self.ai_model or "gemini-2.0-flash-lite"
+
+    def get_step6_api_keys(self) -> list[str]:
+        """Resolve API keys for Step 6 AI client.
+
+        Priority: STEP6_AI_KEYS > STEP6_AI_API_KEY > STEP4 keys > PHASE1 keys > main.
+        """
+        raw_keys: list[str] = []
+        if self.step6_ai_keys:
+            raw_keys = [k.strip() for k in self.step6_ai_keys.split(",") if k.strip()]
+        if not raw_keys and self.step6_ai_api_key:
+            stripped = self.step6_ai_api_key.strip()
+            if stripped:
+                raw_keys = [stripped]
+        if not raw_keys:
+            step4_keys = self.get_step4_api_keys()
+            if step4_keys:
+                raw_keys = step4_keys
+            else:
+                raw_keys = self.get_api_keys()
+        return raw_keys
+
+    def get_step6_base_url(self) -> str | None:
+        """Resolve base URL for Step 6 AI client.
+
+        Priority: STEP6_AI_BASE_URL > STEP4_AI_BASE_URL > PHASE1_AI_BASE_URL > AI_BASE_URL.
+        """
+        if self.step6_ai_base_url and self.step6_ai_base_url.strip():
+            return self.step6_ai_base_url.strip()
+        step4_url = self.get_step4_base_url()
+        if step4_url:
+            return step4_url
         return self.ai_base_url
 
     model_config = SettingsConfigDict(

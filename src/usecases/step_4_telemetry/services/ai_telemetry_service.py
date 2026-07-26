@@ -23,6 +23,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -77,7 +78,7 @@ class AITelemetrySelector:
     _SYSTEM_FILE = "select_telemetry.system.txt"
     _USER_FILE = "select_telemetry.user.txt"
     # Default: Gemini 2.5 Flash (1M TPM free). Override via env STEP4_AI_MODEL.
-    _DEFAULT_MODEL = "gemini-2.5-flash"
+    _DEFAULT_MODEL = "gemini-2.5-flash-lite"
     # Cap description length tránh tràn TPM khi CVE có description dài.
     _MAX_DESCRIPTION_CHARS = 1200
 
@@ -131,6 +132,8 @@ class AITelemetrySelector:
                     model=self._MODEL,
                     override_api_key=step4_keys[0],
                     override_base_url=settings.get_step4_base_url(),
+                    max_tokens=16384,
+                    response_format_json=True,
                 )
             else:
                 logger.info(
@@ -141,16 +144,21 @@ class AITelemetrySelector:
                     system_prompt=self._system_prompt_template,
                     user_prompt=formatted_user,
                     model=self._MODEL,
+                    max_tokens=16384,
+                    response_format_json=True,
                 )
 
             cleaned = self._clean_json(response_text)
             data = json.loads(cleaned)
             validated = TelemetryLLMResponse.model_validate(data)
         except (json.JSONDecodeError, AIServiceError) as exc:
-            logger.error(
-                "[Step 4] AI call failed for %s: %s",
-                cve_id, exc,
+            preview = (response_text or "")[:1200]
+            sys.stderr.write(
+                f"\n[Step 4 RAW RESPONSE for {cve_id}]\n{preview}\n[/Step 4 RAW]\n"
             )
+            sys.stderr.flush()
+            preview_log = preview[:500].replace("\n", "\\n")
+            logger.error("[Step 4] AI call failed for %s: %s | raw_preview=%s", cve_id, exc, preview_log)
             raise AIServiceError(f"Step 4 Telemetry selection failed: {exc}") from exc
         except Exception as exc:
             logger.error(
