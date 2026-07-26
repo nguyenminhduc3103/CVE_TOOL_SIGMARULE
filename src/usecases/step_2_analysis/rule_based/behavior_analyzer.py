@@ -178,6 +178,13 @@ def analyze_behavior(
         mandatory_behaviors.append("webshell_drop")
     if "ldap" in text or "jndi" in text:
         mandatory_behaviors.append("network_callback")
+    # File upload/arbitrary file write detection
+    if ("upload" in text and "file" in text) or "arbitrary file" in text:
+        mandatory_behaviors.append("file_write")
+    if "place malicious file" in text or "place file" in text:
+        mandatory_behaviors.append("file_write")
+    if "write" in text and ("arbitrary" in text or "server" in text):
+        mandatory_behaviors.append("file_write")
 
     if classifier.get("remote_exploitable"):
         exploit_requirements.append("reachable_service")

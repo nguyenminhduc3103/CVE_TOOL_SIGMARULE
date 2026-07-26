@@ -132,22 +132,36 @@ observable_side_effects MUST include ALL observable behaviors categorized by tim
 - "sql_injection" - SQL injection
 - "command_injection" - OS command injection
 - "buffer_overflow" - Buffer overflow exploitation
+- "file_write" - Arbitrary file write/upload on server (e.g., webshell, config overwrite)
+- "file_upload" - File upload vulnerability exploited
+- "privilege_escalation" - Exploiting to gain elevated privileges (e.g., from user to root/SYSTEM)
+- "privilege_escalation_exploit" - Kernel/driver exploits for privilege escalation
+- "local_privilege_escalation" - Local privilege escalation from user to root/SYSTEM
+- "authentication_bypass" - Bypassing authentication mechanisms without credentials
+- "cryptographic_flaw" - Exploiting cryptographic weaknesses (e.g., weak cipher, entropy issues)
+- "ldap_callback" - LDAP callback for JNDI/deserialize attacks
+- "tool_download" - Downloading tools/payloads from attacker infrastructure
 
 ## Post-Exploit Behaviors (add when evidence exists):
 - "outbound_ldap_callback" - LDAP callback to attacker server
 - "remote_class_loading" - Remote class/JAR loading
 - "shell_spawned" - Shell interpreter spawned
+- "webshell_drop" - Dropping web shell for persistence
 - "file_downloaded" - File downloaded from attacker
+- "file_written" - File written to disk by attacker (webshell, malware)
 - "http_callback" - HTTP callback to attacker
 - "dns_query_to_attacker" - DNS query to attacker domain
 - "process_creation" - New process created
 - "network_callback" - Network callback established
 - "data_exfiltration" - Data being exfiltrated
+- "credential_dumping" - Dumping credentials from memory or storage
+- "identity_spoofing" - Spoofing identities or authentication tokens
 
 ## Impact Behaviors (add when explicit):
 - "dos_observed" - Denial of service observed
 - "service_crash" - Service/application crash
 - "ransomware_behavior" - File encryption/ransomware behavior
+- "encryption" - File encryption observed
 
 ---
 

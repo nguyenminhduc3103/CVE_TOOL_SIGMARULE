@@ -1,19 +1,98 @@
+"""Stage wrapper for Step 4 — Telemetry Assessment.
+
+Refactor 2026-07:
+  - AI primary: AITelemetrySelector.select() emit candidate_*, run code layer
+    (mapper + validator + feasibility) → TelemetryAssessment.
+  - Rule-based fallback: Nếu AI fail → shared_engines rule-based.
+
+Logic cũ (rule-based thuần) preserve 100% làm fallback.
+"""
 from __future__ import annotations
 
+import logging
+from typing import Any
+
+from config.settings import settings
 from src.domain.models.enriched import EnrichedCVEContext
 from src.domain.models.telemetry import SigmaLogsource, TelemetryAssessment, TelemetryRequirements
+from src.domain.services.capability import CapabilityClassification
+from src.infrastructure.ai.core import AIServiceError, BaseAIClient
 from src.usecases.step_4_telemetry._shared_engines.correlation_advisor import advise_correlation
 from src.usecases.step_4_telemetry._shared_engines.field_mapper import map_required_fields
 from src.usecases.step_4_telemetry._shared_engines.logsource_mapper import map_logsources
-from src.usecases.step_4_telemetry._shared_engines.telemetry_selector import select_detection_axis
 from src.usecases.step_4_telemetry._shared_engines.taxonomy_validator import validate_fields_by_logsources
-from src.domain.services.capability import CapabilityClassification
+from src.usecases.step_4_telemetry._shared_engines.telemetry_feasibility import (
+    compute_telemetry_feasibility,
+)
+from src.usecases.step_4_telemetry._shared_engines.telemetry_selector import select_detection_axis
+from src.usecases.step_4_telemetry.services.ai_telemetry_service import AITelemetrySelector
+
+logger = logging.getLogger(__name__)
 
 
 async def run_telemetry_stage(
     context: EnrichedCVEContext,
     capability: CapabilityClassification | None = None,
 ) -> TelemetryAssessment:
+    """Run Step 4 — Telemetry Assessment.
+
+    Args:
+        context: EnrichedCVEContext (cần analysis + attack từ Step 2).
+        capability: Optional capability classification (gate modifier).
+
+    Returns:
+        TelemetryAssessment đã populate. Nếu AI chạy được → ai_used=True.
+        Nếu fallback → ai_used=False, telemetry_confidence giảm.
+    """
+    # AI primary (nếu enabled + có analysis từ Step 2)
+    ai_used = False
+    ai_attempt_failed = False
+    if getattr(settings, "ai_enabled", False) and context.analysis is not None:
+        try:
+            logger.info(
+                "[Stage-4] Attempting AI telemetry selection (model=%s)",
+                settings.get_step4_model(),
+            )
+            client = BaseAIClient()
+            ai_selector = AITelemetrySelector(client)
+            ai_assessment = await ai_selector.select(
+                cve_id=context.core.cve_id,
+                analysis=context.analysis,
+                attack=context.attack,
+            )
+            ai_used = True
+            # Apply capability modifier
+            if capability and capability.value.startswith("out_of_scope"):
+                if ai_assessment.telemetry_feasibility_score is not None:
+                    ai_assessment.telemetry_feasibility_score = round(
+                        ai_assessment.telemetry_feasibility_score * capability.telemetry_modifier,
+                        2,
+                    )
+                if ai_assessment.telemetry_confidence is not None:
+                    ai_assessment.telemetry_confidence = round(
+                        ai_assessment.telemetry_confidence * capability.telemetry_modifier,
+                        2,
+                    )
+            logger.info(
+                "[Stage-4] AI success: feasibility=%.2f confidence=%.2f",
+                ai_assessment.telemetry_feasibility_score or 0.0,
+                ai_assessment.telemetry_confidence or 0.0,
+            )
+            return ai_assessment
+        except AIServiceError as exc:
+            logger.warning(
+                "[Stage-4] AI telemetry selection failed: %s → fallback rule-based",
+                exc,
+            )
+            ai_attempt_failed = True
+        except Exception as exc:
+            logger.warning(
+                "[Stage-4] AI telemetry unexpected error: %s → fallback rule-based",
+                exc,
+            )
+            ai_attempt_failed = True
+
+    # Rule-based fallback (legacy path, preserve 100%)
     mandatory_behaviors = context.analysis.mandatory_behaviors if context.analysis else []
     techniques = context.attack.techniques if context.attack else []
 
@@ -97,6 +176,19 @@ async def run_telemetry_stage(
         telemetry_confidence = round(telemetry_confidence * capability.telemetry_modifier, 2)
         feasibility = round(feasibility * capability.telemetry_modifier, 2)
 
+    # Compute feasibility_score rule-based (cùng công thức với AI path để consistency)
+    feasibility_score_rb, feasibility_breakdown_rb = compute_telemetry_feasibility(
+        sigma_logsources=sigma_logsources,
+        validated_fields=validated_fields,
+        invalid_fields=invalid_fields,
+        candidate_logsources=None,  # Rule-based path không có candidate_logsources
+        correlation_required=correlation_required,
+        rule_strategy=strategy,
+    )
+
+    # Cap bằng legacy `feasibility` để tránh giảm quality cho rule-based path đã mature.
+    final_feasibility = round(max(feasibility, feasibility_score_rb), 2)
+
     return TelemetryAssessment(
         detection_axis=detection_axis or None,
         candidate_logsources=categories or None,
@@ -105,8 +197,10 @@ async def run_telemetry_stage(
         pre_exploit_detection=pre_exploit_detection or None,
         post_exploit_detection=post_exploit_detection or None,
         impact_detection=impact_detection or None,
-        telemetry_feasibility_score=round(feasibility, 2),
+        telemetry_feasibility_score=final_feasibility,
+        telemetry_feasibility_breakdown=feasibility_breakdown_rb,
         detection_strategy=strategy or None,
+        rule_strategy=strategy or None,
         required_events=required_events or None,
         required_fields=validated_fields or None,
         validated_fields=validated_fields or None,
@@ -115,4 +209,7 @@ async def run_telemetry_stage(
         telemetry_confidence=telemetry_confidence,
         correlation_required=correlation_required,
         field_taxonomy_notes=(notes + taxonomy_warnings) or None,
+        ai_used=ai_used,
+        ai_retry_count=0,
+        ai_model=None,  # Rule-based fallback không có AI model
     )

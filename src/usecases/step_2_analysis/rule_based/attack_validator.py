@@ -521,6 +521,100 @@ _IMPACT_KEYWORDS = frozenset({
     "service_stop", "wipe", "delete",
 })
 
+# Keywords that indicate file operations → T1105 (Ingress Tool Transfer), T1505 (Server Software)
+_FILE_OPERATION_KEYWORDS = frozenset({
+    "file_write", "file_upload", "file_written", "webshell", "upload",
+    "write", "uploaded", "writefile", "uploadfile", "drop", "placed",
+    "file_creation", "script_upload", "malicious_file", "shell_upload",
+})
+
+# Keywords that indicate privilege escalation → T1068 (Exploitation for Privilege Escalation)
+_PRIVILEGE_ESCALATION_KEYWORDS = frozenset({
+    "privilege_escalation", "privilege_escalation_exploit", "local_privilege_escalation",
+    "elevate", "elevation", "system_privileges", "root_access", "admin_access",
+    "service_abuse", "config_modified", "registry_modified", "implant", "inject",
+    "spooler", "printnightmare", "privesc",
+})
+
+# Keywords that indicate cryptographic flaws → T1556 (Modify Authentication Process)
+_CRYPTOGRAPHIC_FLAW_KEYWORDS = frozenset({
+    "cryptographic_flaw", "crypto", "cipher", "encryption", "entropy",
+    "zerologon", "curveball", "spoof", "authentication_bypass", "netlogon",
+    "ms-nrpc", "machine_account_password", "ntlm_relay",
+})
+
+
+def _validate_file_operation_against_phase1(
+    technique_id: str,
+    anchor: str,
+    phase1_behaviors: list[str],
+    behavior_set: set[str],
+) -> bool:
+    """Validate file operation, privilege escalation, and cryptographic techniques.
+
+    For T1505 (Web Shell), T1105 (Ingress Tool), T1068 (Privilege Escalation),
+    T1556 (Modify Authentication), check if Phase 1 has evidence of related behaviors.
+
+    Returns:
+        True if technique is valid, False otherwise
+    """
+    # T1505 family (Web Shell, Server Software Component)
+    if technique_id.startswith("T1505"):
+        for behavior in behavior_set:
+            for kw in _FILE_OPERATION_KEYWORDS:
+                if kw in behavior or behavior in kw:
+                    return True
+        return False
+
+    # T1068 (Exploitation for Privilege Escalation)
+    if technique_id == "T1068":
+        for behavior in behavior_set:
+            for kw in _PRIVILEGE_ESCALATION_KEYWORDS:
+                if kw in behavior or behavior in kw:
+                    return True
+        return False
+
+    # T1556 (Modify Authentication Process) - cryptographic flaws, auth bypass
+    if technique_id == "T1556":
+        for behavior in behavior_set:
+            for kw in _CRYPTOGRAPHIC_FLAW_KEYWORDS:
+                if kw in behavior or behavior in kw:
+                    return True
+        return False
+
+    # T1105 (Ingress Tool Transfer) - file download
+    if technique_id == "T1105":
+        for behavior in behavior_set:
+            if "download" in behavior or "transfer" in behavior or "tool" in behavior:
+                return True
+        return False
+
+    # Generic check for privilege escalation techniques (T1068.xxx)
+    if technique_id.startswith("T1068"):
+        for behavior in behavior_set:
+            for kw in _PRIVILEGE_ESCALATION_KEYWORDS:
+                if kw in behavior or behavior in kw:
+                    return True
+        return False
+
+    # Generic check for auth modification techniques (T1556.xxx)
+    if technique_id.startswith("T1556"):
+        for behavior in behavior_set:
+            for kw in _CRYPTOGRAPHIC_FLAW_KEYWORDS:
+                if kw in behavior or behavior in kw:
+                    return True
+        return False
+
+    # Generic file operation check for anchor
+    if anchor:
+        anchor_lower = anchor.lower()
+        for kw in _FILE_OPERATION_KEYWORDS | _PRIVILEGE_ESCALATION_KEYWORDS | _CRYPTOGRAPHIC_FLAW_KEYWORDS:
+            if kw in anchor_lower:
+                for behavior in behavior_set:
+                    if kw in behavior or behavior in kw:
+                        return True
+    return False
+
 
 def _extract_keywords_from_behaviors(behaviors: list[str]) -> set[str]:
     """Extract individual keywords from behaviors for flexible matching."""
@@ -623,6 +717,13 @@ def validate_technique_chain_against_phase1(
                     matched = True
                     matched_behavior = behavior
                     break
+
+        # Special handling for file operation techniques (T1505, T1105, etc.)
+        # These need file_write/file_upload evidence from Phase 1
+        if not matched:
+            matched = _validate_file_operation_against_phase1(
+                technique_id, anchor, phase1_behaviors, behavior_set
+            )
 
         if matched:
             valid_entries.append(entry)

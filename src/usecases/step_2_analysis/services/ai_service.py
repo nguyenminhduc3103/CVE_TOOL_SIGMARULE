@@ -1,16 +1,9 @@
-"""AI Service cho Step 2 - Technical & ATT&CK Analyzer.
+"""AI Service cho Step 2 — Phase 2 ATT&CK mapping.
 
-Phase 2 ONLY: AIBehaviorService.fetch_attack_mapping() gọi LLM để map
-ATT&CK tactics/techniques dựa trên Phase 1 output làm canonical anchor.
+Gọi LLM, parse JSON, validate contract, trả dict thuần.
+KHÔNG có fallback logic — orchestrator lo phần đó.
 
-Phase 1 (behavior only) được handle bởi AIPhase1Service trong
-`services/phase1_service.py`.
-
-Single Responsibility: gọi LLM + parse JSON + validate contract, sau đó trả
-dict thuần. KHÔNG có fallback logic (orchestrator lo phần đó).
-
-Returns:
-    dict (raw AI JSON đã clean) hoặc raises AIServiceError nếu fail.
+Phase 1 (behavior) handle ở services/phase1_service.py.
 """
 from __future__ import annotations
 
@@ -31,20 +24,15 @@ _PROMPTS_DIR = Path(__file__).parent.parent / "prompts"
 
 
 class AIBehaviorService:
-    """Service gọi AI Phase 2 - ATT&CK mapping.
+    """Service gọi AI Phase 2 — ATT&CK mapping.
 
-    Single Responsibility: gọi LLM + parse JSON. Output là dict thuần
-    (Pydantic conversion làm ở orchestrator).
-
-    Model selection (env-driven): ANALYZE_AI_MODEL cho Phase 2 call.
-    Falls back về default nếu env unset → backward compat.
+    Output: dict thuần (Pydantic conversion làm ở orchestrator).
+    Model: ANALYZE_AI_MODEL env, fallback _DEFAULT_MODEL.
     """
 
     _PHASE2_SYSTEM_FILE = "analyze_behavior_phase2.system.txt"
     _SHARED_FILE = "_shared_mitre_rules.md"
     _USER_FILE = "analyze_behavior.user.txt"
-    # Default Phase 2 model — Groq llama-3.3-70b-versatile, 6K TPM free tier.
-    # Override via env ANALYZE_AI_MODEL.
     _DEFAULT_MODEL = "llama-3.3-70b-versatile"
 
     def __init__(self, base_client: BaseAIClient) -> None:
@@ -78,22 +66,11 @@ class AIBehaviorService:
         capec_hints_by_cwe: dict[str, list[dict]] | None = None,
         phase1_output: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """Phase 2 AI call - return ATT&CK mapping dict only.
+        """Phase 2 AI call — return ATT&CK mapping dict only.
 
-        Invoked AFTER Phase 1. Phase 1 output được embed làm canonical anchor
-        tránh AV:N→T1190 bias. No behavior fields (Phase 1 lo phần đó).
-
-        Output dict shape:
-          {
-            "tactics": list[str],
-            "techniques": list[str],
-            "subtechniques": list[str],
-            "attack_confidence": float,
-            "mapping_reasons": list[str]
-          }
-
+        Phase 1 output embed làm canonical anchor tránh AV:N→T1190 bias.
         Raises:
-            AIServiceError: nếu AI fail
+            AIServiceError: nếu AI fail.
         """
         phase2_system = self._phase2_system_prompt
 
@@ -136,7 +113,8 @@ class AIBehaviorService:
 
     @staticmethod
     def _clean_json(text: str) -> str:
-        """Strip markdown fences / leading prose để json.loads parse được."""
+        """Strip markdown fences / leading prose để json.loads parse được.
+        """
         fenced = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
         if fenced:
             return fenced.group(1).strip()
@@ -153,7 +131,7 @@ class AIBehaviorService:
 
     @classmethod
     def _format_poc_block(cls, poc_references: list[str]) -> str:
-        """Build 'Public PoC References' block. Empty khi không có PoC (block omitted)."""
+        """Empty khi không có PoC. Block omitted khỏi prompt."""
         if not poc_references:
             return ""
         refs = poc_references[:cls._MAX_POC_REFS]
@@ -167,7 +145,7 @@ class AIBehaviorService:
 
     @classmethod
     def _format_threat_actors_block(cls, threat_actors: list[str]) -> str:
-        """Build 'Threat Actors' block. Empty khi OTX không trả actor nào."""
+        """Empty khi OTX không trả actor nào."""
         if not threat_actors:
             return ""
         actors = threat_actors[:cls._MAX_THREAT_ACTORS]
@@ -181,12 +159,10 @@ class AIBehaviorService:
 
     @classmethod
     def _format_capec_hints_block(cls, capec_hints_by_cwe: dict[str, list[dict]]) -> str:
-        """Build 'CAPEC hints' block. INSPIRATION ONLY (không phải ground truth)."""
+        """CAPEC hints INSPIRATION ONLY — không phải ground truth."""
         if not capec_hints_by_cwe:
             return ""
-        lines = [
-            "\nCAPEC hints (INSPIRATION, NOT requirements — use only if CVE signals support):"
-        ]
+        lines = ["\nCAPEC hints (INSPIRATION, NOT requirements — use only if CVE signals support):"]
         for cwe_id, hints in capec_hints_by_cwe.items():
             if not hints:
                 continue
@@ -203,17 +179,9 @@ class AIBehaviorService:
         lines.append("")
         return "\n".join(lines)
 
-    # Phase 1 anchor (two-phase refactor)
-
     @classmethod
     def _format_phase1_block(cls, phase1_output: dict[str, Any]) -> str:
-        """Build 'Phase 1 canonical facts' block cho Phase 2 prompt.
-
-        Phase 2 ANCHOR trên: execution_surface, delivery_vector,
-        user_interaction_required, + entry_vector/execution_mechanism.
-
-        Empty string khi phase1_output rỗng (single-shot mode backward compat).
-        """
+        """Empty string khi phase1_output rỗng (single-shot backward compat)."""
         if not phase1_output:
             return ""
 
@@ -245,11 +213,7 @@ class AIBehaviorService:
 
     @staticmethod
     def _summarize_phase1(phase1_output: dict[str, Any]) -> str:
-        """Tóm tắt Phase 1 thành description ngắn cho Phase 2 user prompt.
-
-        Gồm: vulnerability_type + family + entry_vector + execution_mechanism.
-        Phase 2 chỉ cần ngắn gọn (focus vào ATT&CK mapping, không cần full).
-        """
+        """Phase 1 → description ngắn (focus Phase 2 vào ATT&CK mapping)."""
         if not phase1_output:
             return "n/a"
         vt = phase1_output.get("vulnerability_type") or "n/a"
@@ -270,17 +234,12 @@ class AIBehaviorService:
         phase1_output: dict[str, Any] | None,
         nvd_description: str,
     ) -> str:
-        """Build Phase 2 description: NVD (primary) + Phase 1 summary (anchor).
-
-        Why BOTH (generalizable, không code-injection specific):
-        - NVD description: chứa product/keyword triggers (vd "OGNL",
-          "WebWork", "Jinja2", "eval") giúp LLM chọn sub-technique đúng
-          (T1059.007 JS, T1059.006 Python). Thiếu keywords → LLM anchor
-          vào T1190 generic, miss T1059.xxx.
-        - Phase 1 summary: canonical facts tránh AV:N→T1190 bias.
-
-        NVD rỗng/ngắn → return Phase 1 summary alone. Truncate NVD
-        portion to _MAX_DESCRIPTION_CHARS.
+        """NVD (primary) + Phase 1 summary (anchor) — WHY:
+        - NVD chứa product/keyword triggers (OGNL, Jinja2, eval) giúp LLM chọn
+          sub-technique đúng (T1059.007 JS, T1059.006 Python). Thiếu → LLM
+          anchor vào T1190 generic, miss T1059.xxx.
+        - Phase 1 tránh AV:N→T1190 bias.
+        NVD rỗng/ngắn → return Phase 1 summary alone.
         """
         nvd_truncated = (nvd_description or "N/A")[: AIBehaviorService._MAX_DESCRIPTION_CHARS]
         phase1_summary = AIBehaviorService._summarize_phase1(phase1_output or {})
@@ -290,13 +249,12 @@ class AIBehaviorService:
 
     @staticmethod
     def _condense_shared_rules_for_phase2(full_rules: str) -> str:
-        """Trích phần shared rules CẦN THIẾT cho Phase 2 (ATT&CK mapping).
+        """Trích phần shared rules CẦN THIẾT cho Phase 2.
 
-        Phase 2 đã có anchor rules + reference examples riêng trong
-        analyze_behavior_phase2.system.txt nên KHÔNG cần 5 soft principles,
-        reference examples, CAPEC hints inspiration. GIỮ MEMORY CORRUPTION
-        rule (cho CVE-2021-3156/2013-4365), EVASIVE INDICATORS ENFORCEMENT,
-        SUBTECHNIQUE DECISION.
+        Phase 2 đã có riêng anchor rules + reference examples, KHÔNG cần:
+        5 soft principles, reference examples, CAPEC hints inspiration.
+        GIỮ: MEMORY CORRUPTION (cho CVE-2021-3156/2013-4365),
+        EVASIVE INDICATORS ENFORCEMENT, SUBTECHNIQUE DECISION.
         """
         keep_sections = [
             "MEMORY CORRUPTION → execution-aware discriminator",

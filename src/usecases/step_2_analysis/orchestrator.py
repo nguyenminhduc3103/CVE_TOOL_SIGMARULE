@@ -1,11 +1,11 @@
-"""Orchestrator cho Step 2 - Technical & ATT&CK Analyzer.
+"""Orchestrator cho Step 2 — Technical & ATT&CK Analyzer (2-phase flow).
 
-Step 2 chỉ chạy 2-phase flow:
-  - Phase 1 (behavior only): extract FACTS - execution_surface,
-    delivery_vector, user_interaction_required, attack_flow, behaviors.
-    KHÔNG có tactics/techniques → tránh AV:N→T1190 bias.
-  - Phase 2 (ATT&CK mapping): nhận Phase 1 output làm canonical anchor
-    → chọn technique đúng kể cả client-side CVE (MSHTML CVE-2021-40444).
+Phase 1 (behavior only): FACTS - execution_surface, delivery_vector,
+user_interaction_required, attack_flow, behaviors. KHÔNG có tactics/techniques
+(tránh AV:N→T1190 bias).
+
+Phase 2 (ATT&CK mapping): nhận Phase 1 làm canonical anchor → chọn technique
+đúng kể cả client-side CVE (vd MSHTML CVE-2021-40444).
 
 Rule-based fallback chỉ chạy khi cả 2 phase AI fail.
 """
@@ -30,9 +30,7 @@ from src.usecases.step_2_analysis.data_flow import (
 logger = logging.getLogger(__name__)
 
 
-# ==============================================================
 # Helper Functions
-# ==============================================================
 
 def _ensure_tactics(tactics: list, technique: str) -> list:
     """Đảm bảo tactic được thêm từ technique."""
@@ -43,9 +41,7 @@ def _ensure_tactics(tactics: list, technique: str) -> list:
     return tactics
 
 
-# ==============================================================
-# TECHNIQUE → TACTIC Mapping (Suy diễn tactics từ techniques)
-# ==============================================================
+# TECHNIQUE → TACTIC Mapping
 
 TECHNIQUE_TO_TACTICS: dict[str, list[str]] = {
     # Initial Access
@@ -99,16 +95,11 @@ def _derive_tactics_from_techniques(techniques: list[str]) -> list[str]:
     return tactics
 
 
-# ==============================================================
-# FALLBACK RULES - Chỉ dùng khi AI sai rõ ràng (Hybrid Approach)
-# ==============================================================
-
-# NOTE: Đây là FALLBACK thay vì OVERRIDE.
-# AI là canonical source of truth - chỉ fallback khi AI sai rõ ràng.
-# Các CVE nổi tiếng được thêm vào đây sau khi VERIFIED bằng threat intel.
+# FALLBACK CHAINS — chỉ dùng khi AI sai rõ ràng (hybrid approach).
+# AI là canonical source of truth; các CVE thêm vào đây sau khi VERIFIED bằng threat intel.
 
 FALLBACK_ATTACK_CHAINS: dict[str, dict[str, list[str]]] = {
-    # Log4Shell (đã verify: JNDI → LDAP callback)
+    # Log4Shell (verified: JNDI → LDAP callback)
     "CVE_2021_44228": {
         "techniques": ["T1190", "T1203", "T1071"],
         "subtechniques": ["T1071.001"],
@@ -117,7 +108,7 @@ FALLBACK_ATTACK_CHAINS: dict[str, dict[str, list[str]]] = {
         "techniques": ["T1190", "T1203", "T1499"],
         "subtechniques": [],
     },
-    # ProxyLogon (đã verify: SSRF → arbitrary command)
+    # ProxyLogon (verified: SSRF → arbitrary command)
     "CVE_2021_26855": {
         "techniques": ["T1190", "T1059", "T1071"],
         "subtechniques": ["T1059.003", "T1071.001"],
@@ -130,19 +121,11 @@ def _apply_intelligent_override(
     attack_mapping: dict,
     phase1_dict: dict | None = None,
 ) -> dict:
-    """Hybrid override - chỉ override khi AI sai rõ ràng.
+    """Hybrid override — chỉ override khi AI sai rõ ràng.
 
-    AI là canonical source of truth. Override chỉ xảy ra khi:
-    1. techniques rỗng hoàn toàn → fallback sang FALLBACK_ATTACK_CHAINS
-    2. tactics không match techniques → derive lại
-
-    Args:
-        cve_id: CVE ID (vd 'CVE-2021-44228')
-        attack_mapping: Dict chứa tactics, techniques, subtechniques
-        phase1_dict: Phase 1 output (optional, cho rule-based fallback)
-
-    Returns:
-        Dict đã được override nếu cần thiết, ngược lại trả về nguyên
+    Conditions:
+    1. techniques rỗng → FALLBACK_ATTACK_CHAINS, hoặc rule-based từ Phase 1.
+    2. tactics không match techniques → derive lại.
     """
     if not cve_id:
         return attack_mapping
@@ -150,14 +133,13 @@ def _apply_intelligent_override(
     techniques = attack_mapping.get("techniques") or []
     tactics = attack_mapping.get("tactics") or []
 
-    # === CONDITION 1: techniques rỗng → fallback ===
+    # Condition 1: techniques rỗng → fallback
     if not techniques:
         cve_key = _normalize_cve_key(cve_id)
         if cve_key in FALLBACK_ATTACK_CHAINS:
             chain = FALLBACK_ATTACK_CHAINS[cve_key]
             attack_mapping["techniques"] = chain["techniques"]
             attack_mapping["subtechniques"] = chain.get("subtechniques", [])
-            # Derive tactics từ fallback techniques
             attack_mapping["tactics"] = _derive_tactics_from_techniques(
                 chain["techniques"]
             )
@@ -167,7 +149,6 @@ def _apply_intelligent_override(
                 cve_id, attack_mapping["tactics"], chain["techniques"],
             )
         else:
-            # Không có fallback → dùng rule-based từ Phase 1
             if phase1_dict:
                 derived = _derive_from_phase1_fallback(phase1_dict, cve_id)
                 if derived:
@@ -180,7 +161,7 @@ def _apply_intelligent_override(
                 attack_mapping["tactics"] = []
         return attack_mapping
 
-    # === CONDITION 2: tactics không match techniques → derive lại ===
+    # Condition 2: tactics không match techniques → derive lại
     derived_tactics = _derive_tactics_from_techniques(techniques)
     derived_set = set(derived_tactics)
     current_set = set(tactics)
@@ -194,15 +175,12 @@ def _apply_intelligent_override(
             cve_id, derived_tactics, tactics, techniques,
         )
 
-    # === CONDITION 3: AI output valid → giữ nguyên ===
+    # Condition 3: AI output valid → giữ nguyên
     return attack_mapping
 
 
 def _normalize_cve_key(cve_id: str) -> str:
-    """Normalize CVE ID to lookup key.
-
-    CVE-2021-44228 → CVE_2021_44228
-    """
+    """CVE-2021-44228 → CVE_2021_44228."""
     cve_key = cve_id.upper().replace("-", "_").replace("CVE_", "CVE_")
     if not cve_key.startswith("CVE_"):
         cve_key = "CVE_" + cve_key
@@ -213,17 +191,10 @@ def _derive_from_phase1_fallback(
     phase1_dict: dict,
     cve_id: str,
 ) -> dict | None:
-    """Derive attack chain từ Phase 1 output (rule-based fallback).
+    """Derive attack chain từ Phase 1 (rule-based fallback).
 
-    Dựa trên execution_surface, entry_vector, và observable_side_effects
-    để suy luận techniques/phương pháp rule-based.
-
-    Args:
-        phase1_dict: Phase 1 output với attack_flow, execution_surface, etc.
-        cve_id: CVE ID cho logging
-
-    Returns:
-        Dict với techniques, tactics, subtechniques hoặc None nếu không suy luận được
+    Dựa trên execution_surface, entry_vector, observable_side_effects.
+    Returns None nếu không suy luận được.
     """
     if not phase1_dict:
         return None
@@ -231,7 +202,6 @@ def _derive_from_phase1_fallback(
     techniques: list[str] = []
     subtechniques: list[str] = []
 
-    # Lấy thông tin từ Phase 1
     exec_surface = str(phase1_dict.get("execution_surface", "")).lower()
     delivery = str(phase1_dict.get("delivery_vector", "")).lower()
     flow = phase1_dict.get("attack_flow") or {}
@@ -242,7 +212,7 @@ def _derive_from_phase1_fallback(
 
     combined_text = f"{exec_surface} {delivery} {entry_vec} {exec_mech} {effects_text}"
 
-    # PRIMARY: Derive từ execution_surface
+    # Derive từ execution_surface
     if exec_surface == "server_side":
         if any(kw in combined_text for kw in ["smb", "rdp", "ssh", "ftp", "rpc"]):
             techniques.append("T1210")  # Remote Service Exploitation
@@ -301,9 +271,7 @@ def _derive_from_phase1_fallback(
 _apply_critical_override = _apply_intelligent_override
 
 
-# ==============================================================
 # Rule-based fallback (chỉ chạy khi AI fail hoàn toàn)
-# ==============================================================
 
 def _build_rule_based_pydantic(
     *,
@@ -318,9 +286,8 @@ def _build_rule_based_pydantic(
 ) -> tuple[TechnicalAnalysis, AttackMapping]:
     """Build Pydantic trực tiếp từ rule-based engines (NO dict intermediate).
 
-    Spec CVE-2-Sigma.md: "AI có dự phòng" → rule-based chỉ chạy khi AI
-    fail. Output ở đây là FINAL, không cần validate lại, không qua
-    `_ai_dict_to_pydantic`.
+    Spec CVE-2-Sigma.md: "AI có dự phòng" → rule-based chỉ chạy khi AI fail.
+    Output FINAL — không qua `_ai_dict_to_pydantic`.
     """
     from src.usecases.step_2_analysis.rule_based.behavior_analyzer import analyze_behavior
     from src.usecases.step_2_analysis.rule_based.attack_mapper import map_attack
@@ -398,9 +365,7 @@ def _build_rule_based_pydantic(
     return tech, attack
 
 
-# ==============================================================
 # Main entry point
-# ==============================================================
 
 async def run_step2_tech_analysis(
     ai_service: AIBehaviorService,
@@ -454,12 +419,13 @@ async def _run_step2_two_phase(
     threat_actors: list[str] | None = None,
 ) -> tuple[TechnicalAnalysis | None, AttackMapping | None, dict[str, Any]]:
     """Two-phase flow: Phase 1 behavior → Phase 2 ATT&CK.
+
     Backward compat: returns same tuple shape as legacy flow.
     """
     from src.usecases.step_2_analysis.services.phase1_service import AIPhase1Service
     from src.domain.models.execution_surface import DeliveryVector, ExecutionSurface
 
-    # Query CAPEC hints (chi can cho Phase 2)
+    # CAPEC hints chỉ cần cho Phase 2
     capec_hints_by_cwe: dict[str, list[dict]] = {}
     if cwe_ids:
         try:
@@ -494,8 +460,8 @@ async def _run_step2_two_phase(
             "[Step 2 - Two-Phase] Phase 1 failed for %s: %s → rule-based fallback",
             cve_id, exc,
         )
-        # Phase 1 fail → fallback rule-based cho toàn bo (cung cap execution_surface
-        # qua classify_execution_surface de Phase 2 downstream consumer có data).
+        # Phase 1 fail → fallback rule-based cho toàn bộ (cung cấp execution_surface
+        # qua classify_execution_surface để Phase 2 downstream consumer có data).
         tech, attack = _build_rule_based_pydantic(
             cve_id=cve_id,
             description=description,
@@ -654,23 +620,19 @@ async def _run_step2_two_phase(
 def _normalize_phase1_dict(
     data: dict[str, Any], cve_id: str, cwe_ids: list[str]
 ) -> dict[str, Any]:
-    """Normalize Phase 1 dict: clean key names, fill rule-based fallback cho
-    execution_surface/delivery_vector neu AI de unknown.
+    """Normalize Phase 1 dict: fill rule-based fallback cho execution_surface /
+    delivery_vector khi AI để unknown.
 
-    Phase 1 dict structure khac Phase 2 (flat, khong co technical_analysis/attack_mapping
-    wrapper). Phase 1 la "behavior only" nen dict shape giong cu, nhung them 3
-    field moi o top level.
+    Phase 1 dict flat (không có technical_analysis/attack_mapping wrapper).
     """
     if not isinstance(data, dict):
         data = {}
 
-    # Rule-based fallback cho execution_surface / delivery_vector / user_interaction
+    # Lấy description gốc cho rule-based fallback
     desc = data.get("attack_flow", {}).get("entry_vector", "") if isinstance(data.get("attack_flow"), dict) else ""
-    # Lay description goc tu data neu co, neu khong lay tu attack_flow
     rule_explanation_desc = data.get("description") or desc
     cvss_vector = data.get("cvss_vector")
 
-    # Neu AI khong set execution_surface, su dung rule-based fallback
     from src.usecases.step_2_analysis.rule_based.exploit_classifier import (
         classify_delivery_vector,
         classify_execution_surface,
@@ -684,7 +646,6 @@ def _normalize_phase1_dict(
                 cve_id, rule_surface.value,
             )
 
-    # Tuong tu cho delivery_vector (can execution_surface da co)
     if data.get("execution_surface"):
         from src.domain.models.execution_surface import ExecutionSurface
         if not data.get("delivery_vector") or data.get("delivery_vector") == "unknown":
