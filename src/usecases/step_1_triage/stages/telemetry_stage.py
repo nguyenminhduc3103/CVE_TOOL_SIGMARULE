@@ -14,7 +14,7 @@ from typing import Any
 
 from config.settings import settings
 from src.domain.models.enriched import EnrichedCVEContext
-from src.domain.models.telemetry import SigmaLogsource, TelemetryAssessment, TelemetryRequirements
+from src.domain.models.telemetry import DetectionFeature, SigmaLogsource, TelemetryAssessment
 from src.domain.services.capability import CapabilityClassification
 from src.infrastructure.ai.core import AIServiceError, BaseAIClient
 from src.usecases.step_4_telemetry._shared_engines.correlation_advisor import advise_correlation
@@ -22,9 +22,11 @@ from src.usecases.step_4_telemetry._shared_engines.field_mapper import map_requi
 from src.usecases.step_4_telemetry._shared_engines.logsource_mapper import map_logsources
 from src.usecases.step_4_telemetry._shared_engines.taxonomy_validator import validate_fields_by_logsources
 from src.usecases.step_4_telemetry._shared_engines.telemetry_feasibility import (
+    compute_effective_confidence,
     compute_telemetry_feasibility,
 )
 from src.usecases.step_4_telemetry._shared_engines.telemetry_selector import select_detection_axis
+from src.usecases.step_4_telemetry._resolver import resolve, validate_domains, map_to_sigma
 from src.usecases.step_4_telemetry.services.ai_telemetry_service import AITelemetrySelector
 
 logger = logging.getLogger(__name__)
@@ -181,7 +183,6 @@ async def run_telemetry_stage(
         sigma_logsources=sigma_logsources,
         validated_fields=validated_fields,
         invalid_fields=invalid_fields,
-        candidate_logsources=None,  # Rule-based path không có candidate_logsources
         correlation_required=correlation_required,
         rule_strategy=strategy,
     )
@@ -189,11 +190,129 @@ async def run_telemetry_stage(
     # Cap bằng legacy `feasibility` để tránh giảm quality cho rule-based path đã mature.
     final_feasibility = round(max(feasibility, feasibility_score_rb), 2)
 
+    # === Refactor 2026-07: KB-resolved fields cho rule-based path ===
+    # mandatory_behaviors → canonical domains
+    behavior_to_domains: dict[str, list[str]] = {
+        "process_creation": ["process"],
+        "file_write": ["filesystem"],
+        "registry_modification": ["registry"],
+        "image_load": ["memory"],
+        "network_callback": ["network"],
+        "network_connection": ["network"],
+        "web_request": ["http"],
+        "public_facing_exploit": ["http"],
+        "auth_bypass": ["identity"],
+        "privilege_escalation": ["identity", "process"],
+        "webshell_drop": ["filesystem", "persistence"],
+        "ldap_query": ["ldap"],
+        "credential_dump": ["credential", "memory"],
+        "cloud_api_call": ["cloud"],
+        "container_exec": ["container"],
+        "k8s_api_call": ["kubernetes"],
+    }
+    rb_domains: list[str] = []
+    for b in mandatory_behaviors or []:
+        for d in behavior_to_domains.get(b, []):
+            if d not in rb_domains:
+                rb_domains.append(d)
+    valid_domains, invalid_domains, _ = validate_domains(rb_domains)
+
+    # Resolve → Canonical telemetry (để populate canonical_telemetry, canonical_fields)
+    canonical_bundle = resolve(domains=valid_domains or ["process"], attacker_platforms=["windows"])
+    rb_canonical_telemetry = [ct.id for ct in canonical_bundle.canonical_telemetry]
+    rb_canonical_fields = [cf.canonical for cf in canonical_bundle.canonical_fields]
+    rb_skipped = canonical_bundle.skipped_domains
+
+    # Effective confidence cho rule-based path
+    rb_effective_confidence = compute_effective_confidence(
+        ai_confidence=telemetry_confidence,
+        validated_fields=validated_fields,
+        invalid_fields=invalid_fields,
+        canonical_resolved=len(canonical_bundle.canonical_telemetry),
+        canonical_skipped=len(canonical_bundle.skipped_domains),
+    )
+
+    # === Telemetry requirements → structured dict ===
+    rb_telemetry_requirements: dict[str, list[str]] = {}
+    if required_event_ids:
+        rb_telemetry_requirements["sysmon"] = [str(e) for e in required_event_ids]
+    if required_events:
+        rb_telemetry_requirements.setdefault("events", []).extend(required_events)
+    # Populate từ canonical telemetry (để Step 6 đọc dễ)
+    for ct in canonical_bundle.canonical_telemetry:
+        if ct.events:
+            rb_telemetry_requirements[ct.id] = [str(e) for e in ct.events]
+
+    # === Phase 6: Rule-based 3-tier features (fix Bug #2) ===
+    rb_stable_features: list[DetectionFeature] = []
+    rb_conditional_features: list[DetectionFeature] = []
+    rb_optional_features: list[DetectionFeature] = []
+
+    # Stable: required event IDs (Windows Security / Sysmon)
+    for eid in required_event_ids or []:
+        rb_stable_features.append(
+            DetectionFeature(
+                field='EventID',
+                value=str(eid),
+                pattern=None,
+                rationale=f'Required event {eid} from canonical telemetry — direct artifact',
+            )
+        )
+
+    # Conditional: behaviors → suspicious indicators (Post-exploit RCE)
+    behavior_indicators: dict[str, list[DetectionFeature]] = {
+        'process_creation': [
+            DetectionFeature(field='Image', value='\\cmd.exe', rationale='Post-exploit shell spawn'),
+            DetectionFeature(field='Image', value='\\powershell.exe', rationale='Post-exploit PowerShell'),
+        ],
+        'privilege_escalation': [
+            DetectionFeature(field='Image', value='\\cmd.exe', rationale='PrivEsc result'),
+        ],
+        'auth_bypass': [
+            DetectionFeature(field='CommandLine', pattern='*lsass*', rationale='Credential access after bypass'),
+        ],
+        'file_write': [
+            DetectionFeature(field='TargetFilename', pattern='*.aspx', rationale='Webshell drop'),
+        ],
+        'registry_modification': [
+            DetectionFeature(field='TargetObject', pattern='*\\Run\\*', rationale='Persistence key'),
+        ],
+        'network_callback': [
+            DetectionFeature(field='DestinationPort', value=4444, rationale='Common C2 port'),
+        ],
+    }
+    seen_cond: set[str] = set()
+    for b in mandatory_behaviors or []:
+        for f in behavior_indicators.get(b, []):
+            key = f'{f.field}={f.value or f.pattern}'
+            if key not in seen_cond:
+                rb_conditional_features.append(f)
+                seen_cond.add(key)
+
+    # Optional: easy-to-spoof indicators
+    rb_optional_features = [
+        DetectionFeature(field='SourceIp', pattern='*', rationale='Easily spoofed via proxy'),
+        DetectionFeature(field='UserAgent', pattern='*', rationale='Easily spoofed'),
+    ]
+
+    # Rule-based rationale (since AI didn't provide one)
+    rb_selection_rationale: list[str] = []
+    for ct in canonical_bundle.canonical_telemetry[:5]:
+        rb_selection_rationale.append(
+            f'{ct.id}: rule-based mapping from mandatory_behaviors'
+        )
+
     return TelemetryAssessment(
         detection_axis=detection_axis or None,
         candidate_logsources=categories or None,
+        # NEW: KB-resolved fields
+        candidate_telemetry_domains=valid_domains or None,
+        canonical_telemetry=rb_canonical_telemetry or None,
+        canonical_fields=rb_canonical_fields or None,
+        skipped_domains=rb_skipped or None,
+        effective_confidence=rb_effective_confidence,
         sigma_logsources=sigma_logsources or None,
-        telemetry_requirements=TelemetryRequirements(required_event_ids=required_event_ids or None),
+        telemetry_requirements=rb_telemetry_requirements,
         pre_exploit_detection=pre_exploit_detection or None,
         post_exploit_detection=post_exploit_detection or None,
         impact_detection=impact_detection or None,
@@ -201,6 +320,11 @@ async def run_telemetry_stage(
         telemetry_feasibility_breakdown=feasibility_breakdown_rb,
         detection_strategy=strategy or None,
         rule_strategy=strategy or None,
+        recommended_rule_strategy=strategy or None,
+        stable_features=rb_stable_features or None,
+        conditional_features=rb_conditional_features or None,
+        optional_features=rb_optional_features or None,
+        telemetry_selection_rationale=rb_selection_rationale or None,
         required_events=required_events or None,
         required_fields=validated_fields or None,
         validated_fields=validated_fields or None,

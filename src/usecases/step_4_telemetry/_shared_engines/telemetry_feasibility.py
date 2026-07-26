@@ -34,11 +34,15 @@ def compute_telemetry_feasibility(
     sigma_logsources: list[SigmaLogsource] | None,
     validated_fields: list[str] | None,
     invalid_fields: list[str] | None,
-    candidate_logsources: list[str] | None,
     correlation_required: bool | None,
     rule_strategy: list[str] | None = None,
 ) -> tuple[float, dict[str, float]]:
     """Compute telemetry_feasibility_score rule-based.
+
+    Refactor Phase 7 (2026-07): Drop `candidate_logsources` parameter. AI emit
+    semantic domains → Knowledge Resolver → canonical telemetry → Sigma. Step
+    feasibility score không cần biết candidate domain nữa — chỉ cần sigma
+    output + validated fields.
 
     Returns:
         Tuple (score ∈ [0, 1], breakdown dict).
@@ -46,7 +50,6 @@ def compute_telemetry_feasibility(
     sigma_logsources = sigma_logsources or []
     validated_fields = validated_fields or []
     invalid_fields = invalid_fields or []
-    candidate_logsources = candidate_logsources or []
     rule_strategy = rule_strategy or []
 
     # telemetry_found
@@ -59,13 +62,10 @@ def compute_telemetry_feasibility(
     else:
         fields_validated = len(validated_fields) / total_fields
 
-    # logsource_mapped
-    if not candidate_logsources:
-        logsource_mapped = 1.0 if sigma_logsources else 0.0
-    else:
-        # Ước lượng: min(mapped, candidate) / candidate
-        mapped_count = min(len(sigma_logsources), len(candidate_logsources))
-        logsource_mapped = mapped_count / len(candidate_logsources)
+    # logsource_mapped: ratio sigma_logsources vs validated fields coverage
+    # (Refactor Phase 7: không còn candidate_logsources → dùng unique categories)
+    unique_categories = len({item.category for item in sigma_logsources})
+    logsource_mapped = unique_categories / max(unique_categories, 1) if sigma_logsources else 0.0
 
     # correlation_clear
     if correlation_required is None or correlation_required is False:
@@ -89,6 +89,46 @@ def compute_telemetry_feasibility(
         "n_sigma_logsources": float(len(sigma_logsources)),
         "n_validated_fields": float(len(validated_fields)),
         "n_invalid_fields": float(len(invalid_fields)),
-        "n_candidate_logsources": float(len(candidate_logsources)),
     }
     return round(score, 2), breakdown
+
+
+def compute_effective_confidence(
+    ai_confidence: float,
+    validated_fields: list[str] | None,
+    invalid_fields: list[str] | None,
+    canonical_resolved: int,
+    canonical_skipped: int,
+) -> float:
+    """Effective confidence = AI confidence × (field_ratio ⊓ domain_ratio).
+
+    Refactor 2026-07: AI tự chấm `telemetry_confidence` (semantic, cảm tính).
+    Khi validation ratio thấp (AI over-emit fields không match canonical DB),
+    AI confidence bị over-estimate. Effective confidence phản ánh thực tế.
+
+    Args:
+        ai_confidence: AI self-assessment (0.0-1.0).
+        validated_fields: validated bởi Knowledge Resolver + canonical field DB.
+        invalid_fields: rejected bởi Knowledge Resolver.
+        canonical_resolved: số canonical telemetry matched từ domains.
+        canonical_skipped: số domains không match canonical telemetry.
+
+    Returns:
+        Float ∈ [0.0, 1.0].
+    """
+    validated_fields = validated_fields or []
+    invalid_fields = invalid_fields or []
+
+    # Field validation ratio
+    total_fields = len(validated_fields) + len(invalid_fields)
+    field_ratio = (len(validated_fields) / total_fields) if total_fields > 0 else 1.0
+
+    # Domain resolution ratio
+    total_domains = canonical_resolved + canonical_skipped
+    domain_ratio = (canonical_resolved / total_domains) if total_domains > 0 else 1.0
+
+    # Combined via geometric mean — penalize mạnh khi 1 dimension thấp
+    combined = (field_ratio * domain_ratio) ** 0.5
+
+    effective = ai_confidence * combined
+    return round(min(1.0, max(0.0, effective)), 2)

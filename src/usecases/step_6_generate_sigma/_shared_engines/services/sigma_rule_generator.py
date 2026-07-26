@@ -283,7 +283,8 @@ class SigmaRuleGenerator:
 
     def _select_logsources(self, telemetry: TelemetryAssessment | dict[str, object] | None) -> tuple[str, list[str]]:
         priority = ["process_creation", "webserver", "network_connection"]
-        categories = self._list(self._get(telemetry, "candidate_logsources"))
+        # Phase 7 (2026-07): candidate_logsources đã deprecated → chỉ đọc từ sigma_logsources
+        categories: list[str] = []
         sigma_logsources = self._get(telemetry, "sigma_logsources") or []
         for item in sigma_logsources:
             category = self._get(item, "category")

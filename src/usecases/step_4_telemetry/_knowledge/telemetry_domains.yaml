@@ -1,0 +1,96 @@
+version: 1
+
+# 18 canonical semantic telemetry domains.
+# AI emit 2-5 domain IDs từ danh sách này.
+# Domain gần như KHÔNG thay đổi theo CVE — chỉ mở rộng khi xuất hiện
+# một loại telemetry hoàn toàn mới (vd quantum computing audit — chưa tới).
+domains:
+  - id: identity
+    label: "Identity & Authentication"
+    description: "Authentication events, logon sessions, user identity changes"
+    aliases: [authentication, identity_auth, auth]
+
+  - id: process
+    label: "Process Execution"
+    description: "Process creation, parent-child relationships, command-line"
+    aliases: [execution, process_creation]
+
+  - id: network
+    label: "Network Connection"
+    description: "Outbound connections, lateral movement, network telemetry"
+    aliases: [network_connection, network_egress]
+
+  - id: registry
+    label: "Windows Registry"
+    description: "Registry modifications, persistence keys"
+    aliases: [registry_modification, registry_event]
+
+  - id: filesystem
+    label: "File System"
+    description: "File creation, modification, deletion"
+    aliases: [file_event, file_write, file_create]
+
+  - id: memory
+    label: "Memory Operations"
+    description: "Image load, DLL injection, memory protection"
+    aliases: [image_load, memory_load]
+
+  - id: dns
+    label: "DNS Resolution"
+    description: "DNS queries, resolution results"
+    aliases: [dns_query]
+
+  - id: ldap
+    label: "LDAP / AD Queries"
+    description: "LDAP queries, AD operations"
+    aliases: []
+
+  - id: http
+    label: "HTTP / Web Request"
+    description: "HTTP requests, web server logs"
+    aliases: [web, web_request]
+
+  - id: persistence
+    label: "Persistence Mechanism"
+    description: "Scheduled tasks, services, startup items"
+    aliases: [persistence_mechanism]
+
+  - id: credential
+    label: "Credential Access"
+    description: "LSASS access, credential dumping, token manipulation"
+    aliases: [credential_access]
+
+  - id: cloud
+    label: "Cloud Audit"
+    description: "CloudTrail, Sign-in logs, control plane events"
+    aliases: [cloud_audit, cloudtrail]
+
+  - id: container
+    label: "Container Runtime"
+    description: "Docker, containerd, runtime events"
+    aliases: [container_audit]
+
+  - id: kubernetes
+    label: "Kubernetes Audit"
+    description: "K8s API audit, kubelet, pod events"
+    aliases: [k8s_audit, k8s]
+
+  - id: email
+    label: "Email"
+    description: "SMTP, mail server, mailbox events"
+    aliases: [email_event]
+
+  - id: office
+    label: "Office 365 / Productivity"
+    description: "M365, Exchange Online, SharePoint, OneDrive"
+    aliases: [o365, office365]
+
+  - id: module
+    label: "Module / Library Load"
+    description: "Module load events, DLL/SO loading"
+    aliases: [module_load]
+
+  - id: authorization
+    label: "Authorization / Access Control"
+    description: "Permission changes, ACL modifications, privilege use"
+    aliases: [authz, access_control]

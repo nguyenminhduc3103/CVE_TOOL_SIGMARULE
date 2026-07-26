@@ -166,7 +166,9 @@ class QualityAssessmentEngine:
             return 0.0
 
     def _telemetry_logsources(self, telemetry) -> list[str]:
-        return [str(item) for item in self._get(telemetry, "candidate_logsources") or []]
+        # Phase 7 (2026-07): candidate_logsources đã deprecated → đọc từ sigma_logsources
+        sigma_logsources = self._get(telemetry, "sigma_logsources") or []
+        return [str(self._get(item, "category") or "") for item in sigma_logsources]
 
     def _get(self, value: object | None, key: str) -> object | None:
         if value is None:
