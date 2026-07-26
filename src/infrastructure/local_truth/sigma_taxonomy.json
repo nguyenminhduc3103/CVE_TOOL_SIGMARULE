@@ -1,0 +1,724 @@
+{
+  "_version": "1.0",
+  "_source": "sigma_taxonomy_mappings.json + MITRE CTID sensor-mappings-to-attack + SigmaHQ spec",
+  "_description": "Single Source of Truth cho Sigma Logsources, Allowed Fields & Event IDs.",
+  "logsources": {
+    "process_creation": {
+      "product": [
+        "windows",
+        "linux"
+      ],
+      "category": "process_creation",
+      "service": null,
+      "mitre_data_component": "Process Creation",
+      "native_event_ids": [
+        "Sysmon EID 1",
+        "Windows Security EID 4688",
+        "Windows Security EID 4696",
+        "Auditd USER_CMD"
+      ],
+      "required_events": [
+        "process_start"
+      ],
+      "core_fields": [
+        "CommandLine",
+        "Image",
+        "ParentImage",
+        "ParentCommandLine",
+        "User"
+      ],
+      "allowed_fields": [
+        "CommandLine",
+        "Image",
+        "ParentImage",
+        "ParentCommandLine",
+        "User",
+        "ProcessId",
+        "ParentProcessId",
+        "IntegrityLevel",
+        "CurrentDirectory",
+        "OriginalFileName",
+        "Hashes",
+        "Product",
+        "Company",
+        "LogonId",
+        "UtcTime",
+        "ProcessGuid",
+        "ParentProcessGuid",
+        "auid",
+        "euid",
+        "suid",
+        "fsuid",
+        "syscall",
+        "tty",
+        "cwd",
+        "proctitle"
+      ],
+      "detection_phase": "post_exploit"
+    },
+    "network_connection": {
+      "product": [
+        "windows",
+        "linux"
+      ],
+      "category": "network_connection",
+      "service": null,
+      "mitre_data_component": "Network Connection Creation",
+      "native_event_ids": [
+        "Sysmon EID 3",
+        "Windows Security EID 5031",
+        "Windows Security EID 5154",
+        "Windows Security EID 5155",
+        "Windows Security EID 5156",
+        "Windows Security EID 5157",
+        "Windows Security EID 5158",
+        "Windows Security EID 5159"
+      ],
+      "required_events": [
+        "network_connect"
+      ],
+      "core_fields": [
+        "DestinationIp",
+        "DestinationHostname",
+        "DestinationPort",
+        "Image",
+        "Protocol"
+      ],
+      "allowed_fields": [
+        "DestinationIp",
+        "DestinationHostname",
+        "DestinationPort",
+        "SourceIp",
+        "SourcePort",
+        "Protocol",
+        "Initiated",
+        "User",
+        "Image",
+        "ProcessId",
+        "ProcessGuid",
+        "UtcTime",
+        "auid",
+        "euid",
+        "suid",
+        "fsuid",
+        "syscall",
+        "tty",
+        "cwd",
+        "proctitle"
+      ],
+      "detection_phase": "post_exploit"
+    },
+    "file_event": {
+      "product": [
+        "windows",
+        "linux"
+      ],
+      "category": "file_event",
+      "service": null,
+      "mitre_data_component": "File Creation",
+      "native_event_ids": [
+        "Sysmon EID 11",
+        "Sysmon EID 15",
+        "Windows Security EID 4663"
+      ],
+      "required_events": [
+        "file_create"
+      ],
+      "core_fields": [
+        "TargetFilename",
+        "Image",
+        "User"
+      ],
+      "allowed_fields": [
+        "TargetFilename",
+        "Image",
+        "User",
+        "ProcessId",
+        "ProcessGuid",
+        "Hashes",
+        "UtcTime",
+        "CreationUtcTime",
+        "auid",
+        "euid",
+        "suid",
+        "fsuid",
+        "syscall",
+        "tty",
+        "cwd",
+        "proctitle"
+      ],
+      "detection_phase": "post_exploit"
+    },
+    "file_change": {
+      "product": [
+        "windows",
+        "linux"
+      ],
+      "category": "file_change",
+      "service": null,
+      "mitre_data_component": "File Modification",
+      "native_event_ids": [
+        "Sysmon EID 2",
+        "Windows Security EID 4670",
+        "Auditd LABEL_LEVEL_CHANGE",
+        "Auditd LABEL_OVERRIDE"
+      ],
+      "required_events": [
+        "file_change"
+      ],
+      "core_fields": [
+        "TargetFilename",
+        "Image",
+        "User"
+      ],
+      "allowed_fields": [
+        "TargetFilename",
+        "Image",
+        "User",
+        "ProcessId",
+        "ProcessGuid",
+        "CreationUtcTime",
+        "PreviousCreationUtcTime",
+        "UtcTime",
+        "auid",
+        "euid",
+        "suid",
+        "fsuid",
+        "syscall",
+        "tty",
+        "cwd",
+        "proctitle"
+      ],
+      "detection_phase": "post_exploit"
+    },
+    "file_delete": {
+      "product": [
+        "windows",
+        "linux"
+      ],
+      "category": "file_delete",
+      "service": null,
+      "mitre_data_component": "File Deletion",
+      "native_event_ids": [
+        "Sysmon EID 23",
+        "Sysmon EID 26",
+        "Windows Security EID 4660",
+        "Windows Security EID 4663",
+        "Auditd USER_CHAUTHTOK"
+      ],
+      "required_events": [
+        "file_delete"
+      ],
+      "core_fields": [
+        "TargetFilename",
+        "Image",
+        "User"
+      ],
+      "allowed_fields": [
+        "TargetFilename",
+        "Image",
+        "User",
+        "ProcessId",
+        "ProcessGuid",
+        "Hashes",
+        "IsExecutable",
+        "Archived",
+        "UtcTime",
+        "auid",
+        "euid",
+        "suid",
+        "fsuid",
+        "syscall",
+        "tty",
+        "cwd",
+        "proctitle"
+      ],
+      "detection_phase": "post_exploit"
+    },
+    "file_rename": {
+      "product": [
+        "windows",
+        "linux"
+      ],
+      "category": "file_rename",
+      "service": null,
+      "mitre_data_component": "File Modification",
+      "native_event_ids": [
+        "Sysmon EID 2",
+        "Windows Security EID 4670",
+        "Auditd LABEL_LEVEL_CHANGE",
+        "Auditd LABEL_OVERRIDE"
+      ],
+      "required_events": [
+        "file_rename"
+      ],
+      "core_fields": [
+        "TargetFilename",
+        "Image",
+        "User"
+      ],
+      "allowed_fields": [
+        "TargetFilename",
+        "Image",
+        "User",
+        "ProcessId",
+        "UtcTime",
+        "auid",
+        "euid",
+        "suid",
+        "fsuid",
+        "syscall",
+        "tty",
+        "cwd",
+        "proctitle"
+      ],
+      "detection_phase": "post_exploit"
+    },
+    "registry_event": {
+      "product": "windows",
+      "category": "registry_event",
+      "service": null,
+      "mitre_data_component": "Windows Registry Key Modification",
+      "native_event_ids": [
+        "Sysmon EID 13",
+        "Sysmon EID 14",
+        "Windows Security EID 4657",
+        "Windows Security EID 4670"
+      ],
+      "required_events": [
+        "registry_set",
+        "registry_add"
+      ],
+      "core_fields": [
+        "TargetObject",
+        "Details",
+        "Image"
+      ],
+      "allowed_fields": [
+        "TargetObject",
+        "Details",
+        "EventType",
+        "Image",
+        "User",
+        "ProcessId",
+        "ProcessGuid",
+        "UtcTime"
+      ],
+      "detection_phase": "post_exploit"
+    },
+    "registry_add": {
+      "product": "windows",
+      "category": "registry_add",
+      "service": null,
+      "mitre_data_component": "Windows Registry Key Creation",
+      "native_event_ids": [
+        "Sysmon EID 12",
+        "Windows Security EID 4657"
+      ],
+      "required_events": [
+        "registry_add"
+      ],
+      "core_fields": [
+        "TargetObject",
+        "Details",
+        "Image"
+      ],
+      "allowed_fields": [
+        "TargetObject",
+        "Details",
+        "EventType",
+        "Image",
+        "User",
+        "ProcessId",
+        "ProcessGuid",
+        "UtcTime"
+      ],
+      "detection_phase": "post_exploit"
+    },
+    "registry_delete": {
+      "product": "windows",
+      "category": "registry_delete",
+      "service": null,
+      "mitre_data_component": "Windows Registry Key Deletion",
+      "native_event_ids": [
+        "Sysmon EID 12",
+        "Windows Security EID 4657",
+        "Windows Security EID 4660"
+      ],
+      "required_events": [
+        "registry_delete"
+      ],
+      "core_fields": [
+        "TargetObject",
+        "Image"
+      ],
+      "allowed_fields": [
+        "TargetObject",
+        "EventType",
+        "Image",
+        "User",
+        "ProcessId",
+        "ProcessGuid",
+        "UtcTime"
+      ],
+      "detection_phase": "post_exploit"
+    },
+    "registry_set": {
+      "product": "windows",
+      "category": "registry_set",
+      "service": null,
+      "mitre_data_component": "Windows Registry Key Modification",
+      "native_event_ids": [
+        "Sysmon EID 13",
+        "Sysmon EID 14",
+        "Windows Security EID 4657",
+        "Windows Security EID 4670"
+      ],
+      "required_events": [
+        "registry_set"
+      ],
+      "core_fields": [
+        "TargetObject",
+        "Details",
+        "Image"
+      ],
+      "allowed_fields": [
+        "TargetObject",
+        "Details",
+        "EventType",
+        "Image",
+        "User",
+        "ProcessId",
+        "ProcessGuid",
+        "UtcTime"
+      ],
+      "detection_phase": "post_exploit"
+    },
+    "image_load": {
+      "product": [
+        "windows",
+        "linux"
+      ],
+      "category": "image_load",
+      "service": null,
+      "mitre_data_component": "Module Load",
+      "native_event_ids": [
+        "Sysmon EID 7"
+      ],
+      "required_events": [
+        "image_load"
+      ],
+      "core_fields": [
+        "ImageLoaded",
+        "Image",
+        "Signed"
+      ],
+      "allowed_fields": [
+        "ImageLoaded",
+        "Image",
+        "Signed",
+        "Signature",
+        "SignatureStatus",
+        "Hashes",
+        "User",
+        "ProcessId",
+        "ProcessGuid",
+        "UtcTime",
+        "auid",
+        "euid",
+        "suid",
+        "fsuid",
+        "syscall",
+        "tty",
+        "cwd",
+        "proctitle"
+      ],
+      "detection_phase": "post_exploit"
+    },
+    "driver_load": {
+      "product": "windows",
+      "category": "driver_load",
+      "service": null,
+      "mitre_data_component": "Driver Load",
+      "native_event_ids": [
+        "Sysmon EID 6"
+      ],
+      "required_events": [
+        "driver_load"
+      ],
+      "core_fields": [
+        "ImageLoaded",
+        "Hashes"
+      ],
+      "allowed_fields": [
+        "ImageLoaded",
+        "Hashes",
+        "Signed",
+        "Signature",
+        "SignatureStatus",
+        "User",
+        "UtcTime"
+      ],
+      "detection_phase": "post_exploit"
+    },
+    "dns_query": {
+      "product": "windows",
+      "category": "dns_query",
+      "service": null,
+      "mitre_data_component": "Network Connection Creation",
+      "native_event_ids": [
+        "Sysmon EID 3",
+        "Windows Security EID 5031",
+        "Windows Security EID 5154",
+        "Windows Security EID 5155",
+        "Windows Security EID 5156",
+        "Windows Security EID 5157",
+        "Windows Security EID 5158",
+        "Windows Security EID 5159"
+      ],
+      "required_events": [
+        "dns_query"
+      ],
+      "core_fields": [
+        "QueryName",
+        "QueryStatus",
+        "Image"
+      ],
+      "allowed_fields": [
+        "QueryName",
+        "QueryStatus",
+        "QueryResults",
+        "Image",
+        "User",
+        "ProcessId",
+        "ProcessGuid",
+        "UtcTime"
+      ],
+      "detection_phase": "post_exploit"
+    },
+    "pipe_created": {
+      "product": "windows",
+      "category": "pipe_created",
+      "service": null,
+      "mitre_data_component": "Named Pipe Metadata",
+      "native_event_ids": [
+        "Sysmon EID 17",
+        "Sysmon EID 18",
+        "Windows Security EID 4656",
+        "Windows Security EID 5145"
+      ],
+      "required_events": [
+        "pipe_created"
+      ],
+      "core_fields": [
+        "PipeName",
+        "Image"
+      ],
+      "allowed_fields": [
+        "PipeName",
+        "Image",
+        "User",
+        "ProcessId",
+        "ProcessGuid",
+        "UtcTime"
+      ],
+      "detection_phase": "post_exploit"
+    },
+    "ps_script": {
+      "product": "windows",
+      "category": "ps_script",
+      "service": "powershell",
+      "mitre_data_component": "Script Execution",
+      "native_event_ids": [
+        "Windows Security EID 4103",
+        "Windows Security EID 4104"
+      ],
+      "required_events": [
+        "ps_script_execution"
+      ],
+      "core_fields": [
+        "ScriptBlockText",
+        "ScriptBlockId",
+        "Path"
+      ],
+      "allowed_fields": [
+        "ScriptBlockText",
+        "ScriptBlockId",
+        "Path",
+        "User"
+      ],
+      "detection_phase": "post_exploit"
+    },
+    "ps_module": {
+      "product": "windows",
+      "category": "ps_module",
+      "service": "powershell",
+      "mitre_data_component": "Script Execution",
+      "native_event_ids": [
+        "Windows Security EID 4103",
+        "Windows Security EID 4104"
+      ],
+      "required_events": [
+        "ps_module_execution"
+      ],
+      "core_fields": [
+        "ContextInfo",
+        "Payload"
+      ],
+      "allowed_fields": [
+        "ContextInfo",
+        "Payload",
+        "User"
+      ],
+      "detection_phase": "post_exploit"
+    },
+    "process_access": {
+      "product": "windows",
+      "category": "process_access",
+      "service": null,
+      "mitre_data_component": "Process Access",
+      "native_event_ids": [
+        "Sysmon EID 10",
+        "Windows Security EID 4656",
+        "Windows Security EID 4663",
+        "Auditd TTY"
+      ],
+      "required_events": [
+        "process_access"
+      ],
+      "core_fields": [
+        "SourceImage",
+        "TargetImage",
+        "GrantedAccess"
+      ],
+      "allowed_fields": [
+        "SourceImage",
+        "TargetImage",
+        "GrantedAccess",
+        "CallTrace",
+        "SourceProcessId",
+        "TargetProcessId",
+        "SourceUser",
+        "TargetUser",
+        "UtcTime"
+      ],
+      "detection_phase": "post_exploit"
+    },
+    "process_termination": {
+      "product": "windows",
+      "category": "process_termination",
+      "service": null,
+      "mitre_data_component": "Process Termination",
+      "native_event_ids": [
+        "Sysmon EID 5",
+        "Windows Security EID 4689",
+        "Auditd ANOM_ABEND"
+      ],
+      "required_events": [
+        "process_termination"
+      ],
+      "core_fields": [
+        "Image",
+        "User",
+        "ProcessId"
+      ],
+      "allowed_fields": [
+        "Image",
+        "User",
+        "ProcessId",
+        "ProcessGuid",
+        "UtcTime"
+      ],
+      "detection_phase": "post_exploit"
+    },
+    "create_remote_thread": {
+      "product": "windows",
+      "category": "create_remote_thread",
+      "service": null,
+      "mitre_data_component": "Process Access",
+      "native_event_ids": [
+        "Sysmon EID 10",
+        "Windows Security EID 4656",
+        "Windows Security EID 4663",
+        "Auditd TTY"
+      ],
+      "required_events": [
+        "create_remote_thread"
+      ],
+      "core_fields": [
+        "SourceImage",
+        "TargetImage",
+        "StartAddress"
+      ],
+      "allowed_fields": [
+        "SourceImage",
+        "TargetImage",
+        "StartAddress",
+        "StartFunction",
+        "StartModule",
+        "NewThreadId",
+        "SourceProcessId",
+        "TargetProcessId",
+        "SourceUser",
+        "TargetUser",
+        "UtcTime"
+      ],
+      "detection_phase": "post_exploit"
+    },
+    "webserver": {
+      "product": "webserver",
+      "category": "webserver",
+      "service": null,
+      "mitre_data_component": "Network Traffic Content",
+      "native_event_ids": [
+        "Auditd MAC_UNLBL_ALLOW"
+      ],
+      "required_events": [
+        "http_request"
+      ],
+      "core_fields": [
+        "cs-method",
+        "cs-uri-stem",
+        "cs-uri-query",
+        "cs-user-agent",
+        "sc-status"
+      ],
+      "allowed_fields": [
+        "cs-method",
+        "cs-uri-stem",
+        "cs-uri-query",
+        "cs-user-agent",
+        "c-ip",
+        "sc-status",
+        "cs-host",
+        "cs-referer",
+        "sc-bytes",
+        "cs-bytes"
+      ],
+      "detection_phase": "pre_exploit"
+    },
+    "antivirus": {
+      "product": "windows",
+      "category": "antivirus",
+      "service": "windefend",
+      "mitre_data_component": "Application Log Content",
+      "native_event_ids": [],
+      "required_events": [
+        "antivirus_detection"
+      ],
+      "core_fields": [
+        "ThreatName",
+        "Filename",
+        "Signature"
+      ],
+      "allowed_fields": [
+        "Filename",
+        "Signature",
+        "Action",
+        "User",
+        "ThreatName"
+      ],
+      "detection_phase": "impact"
+    }
+  }
+}

@@ -50,9 +50,15 @@ ATTACK_URL = (
     "enterprise-attack/enterprise-attack.json"
 )
 
+SIGMA_TAXONOMY_URL = (
+    "https://raw.githubusercontent.com/SigmaHQ/sigma-specification/main/"
+    "specification/sigma-appendix-taxonomy.md"
+)
+
 CAPEC_DEST = _SCRIPT_DIR / "capec_stix.json"
 CTID_DEST = _SCRIPT_DIR / "cti_mappings.csv"
 ATTACK_DEST = _SCRIPT_DIR / "attack_technique_to_tactic.json"
+SIGMA_TAXONOMY_DEST = _SCRIPT_DIR / "sigma_taxonomy.json"
 
 # MITRE ATT&CK tactic shortname → ID (v15)
 # Source: https://attack.mitre.org/tactics/enterprise/
@@ -311,10 +317,219 @@ def _validate_attack_tactics(path: Path) -> None:
             logger.warning("  %-7s MISSING from MITRE mapping!", tech)
 
 
+def _fetch_mitre_data_components() -> set[str]:
+    """Tải động danh sách MITRE ATT&CK Data Components từ STIX 2.1 repository của MITRE."""
+    url = "https://raw.githubusercontent.com/mitre-attack/attack-stix-data/master/enterprise-attack/enterprise-attack.json"
+    temp_json = _SCRIPT_DIR / "_temp_mitre_stix.json"
+    try:
+        _download(url, temp_json)
+        with open(temp_json, "r", encoding="utf-8") as f:
+            stix_data = json.load(f)
+        components = {
+            obj["name"] for obj in stix_data.get("objects", [])
+            if obj.get("type") == "x-mitre-data-component" and "name" in obj
+        }
+        return components
+    except Exception as e:
+        logger.warning("Không thể tải STIX data components từ MITRE (%s), dùng danh mục mặc định.", e)
+        return {
+            "Process Creation", "Network Connection Creation", "File Creation",
+            "Windows Registry Key Modification", "Image Load", "DNS Query",
+            "Script Execution", "Named Pipe Creation", "Kernel Module Load", "Malware Content"
+        }
+    finally:
+        if temp_json.exists():
+            temp_json.unlink()
+
+
+def _fetch_mitre_ctid_sensor_mappings() -> dict[str, list[str]]:
+    """Tải trực tiếp bảng ánh xạ Sensor EIDs từ repository chính thức của MITRE CTID."""
+    sysmon_url = "https://raw.githubusercontent.com/center-for-threat-informed-defense/sensor-mappings-to-attack/main/mappings/input/enterprise/csv/Sysmon-sensors-mappings-enterprise.csv"
+    winevtx_url = "https://raw.githubusercontent.com/center-for-threat-informed-defense/sensor-mappings-to-attack/main/mappings/input/enterprise/csv/WinEvtx-sensors-mappings-enterprise.csv"
+    auditd_url = "https://raw.githubusercontent.com/center-for-threat-informed-defense/sensor-mappings-to-attack/main/mappings/input/enterprise/csv/Auditd-sensors-mappings-enterprise.csv"
+    
+    component_to_eids: dict[str, list[str]] = {}
+    import csv, io
+
+    for url, label in [(sysmon_url, "Sysmon EID"), (winevtx_url, "Windows Security EID"), (auditd_url, "Auditd")]:
+        temp_file = _SCRIPT_DIR / f"_temp_{label.replace(' ', '_')}.csv"
+        try:
+            _download(url, temp_file)
+            with open(temp_file, "r", encoding="utf-8", errors="ignore") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    comp = row.get("ATT&CK DATA COMPONENT", "").strip()
+                    eid = row.get("EVENT ID", "").strip()
+                    if comp and eid:
+                        item = f"{label} {eid}"
+                        if comp not in component_to_eids:
+                            component_to_eids[comp] = []
+                        if item not in component_to_eids[comp]:
+                            component_to_eids[comp].append(item)
+        except Exception as e:
+            logger.warning("Không thể tải CTID sensor mapping từ %s: %s", url, e)
+        finally:
+            if temp_file.exists():
+                temp_file.unlink()
+
+    return component_to_eids
+
+
+SIGMA_TAXONOMY_DEFAULTS_PATH = _SCRIPT_DIR / "sigma_taxonomy_mappings.json"
+
+
+def _load_taxonomy_defaults() -> dict[str, Any]:
+    """Đọc tệp đặc tả quy chuẩn sigma_taxonomy_mappings.json."""
+    with open(SIGMA_TAXONOMY_DEFAULTS_PATH, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def _extract_sigmahq_valid_fields(md_text: str) -> set[str]:
+    """Bóc tách danh sách tên Field hợp lệ từ bảng Markdown spec của SigmaHQ."""
+    import re
+    valid_fields: set[str] = set()
+
+    # Tên sản phẩm / vendor cần loại trừ (không phải field name)
+    product_names = {
+        "apache", "aws", "azure", "bitbucket", "cisco", "django", "gcp",
+        "github", "huawei", "juniper", "linux", "macos", "modsecurity",
+        "m365", "okta", "onelogin", "windows", "zeek",
+    }
+
+    for match in re.finditer(r"^\|\s*([A-Za-z0-9_\-]+)\s*\|", md_text, re.M):
+        fname = match.group(1).strip()
+        if (
+            re.match(r"^(cs-|c-|sc-|[A-Z])[A-Za-z0-9_\-]+$", fname)
+            and not fname.startswith("--")
+            and fname.lower() not in product_names
+            and fname.lower() not in {"product", "company", "field", "fieldname", "description", "example", "category", "service"}
+        ):
+            valid_fields.add(fname)
+
+    return valid_fields
+
+
+def _build_sigma_taxonomy(
+    defaults: dict[str, Any],
+    ctid_eids_map: dict[str, list[str]],
+    sigmahq_valid_fields: set[str],
+) -> dict[str, dict[str, Any]]:
+    """Xây dựng sigma_taxonomy.json từ 3 nguồn: defaults JSON + CTID EIDs + SigmaHQ fields."""
+    categories = defaults.get("categories", {})
+    logsources: dict[str, dict[str, Any]] = {}
+
+    for cat, spec in categories.items():
+        mitre_comp = spec.get("mitre_data_component", "")
+
+        # Event IDs: lấy động từ MITRE CTID sensor mappings
+        ctid_eids = ctid_eids_map.get(mitre_comp, [])
+
+        # Fields: cross-validate với SigmaHQ spec (giữ lại field dù không nằm trong spec nếu nó cần thiết cho detection)
+        raw_fields = spec.get("allowed_fields", [])
+        validated = []
+        warnings = []
+        for f in raw_fields:
+            if f in sigmahq_valid_fields or f.startswith("cs-") or f.startswith("c-") or f.startswith("sc-"):
+                validated.append(f)
+            else:
+                # Vẫn giữ lại field (từ defaults là authoritative) nhưng ghi chú
+                validated.append(f)
+                if sigmahq_valid_fields:  # Chỉ warn khi có spec để so sánh
+                    warnings.append(f)
+
+        logsources[cat] = {
+            "product": spec.get("product", "windows"),
+            "category": cat,
+            "service": spec.get("service"),
+            "mitre_data_component": mitre_comp,
+            "native_event_ids": ctid_eids if ctid_eids else [],
+            "required_events": spec.get("required_events", []),
+            "core_fields": spec.get("core_fields", []),
+            "allowed_fields": validated,
+            "detection_phase": spec.get("detection_phase", "post_exploit"),
+        }
+
+        if warnings:
+            logger.debug(
+                "Category '%s': %d fields không tìm thấy trong SigmaHQ spec (vẫn giữ): %s",
+                cat, len(warnings), warnings[:5],
+            )
+
+    return logsources
+
+
+def fetch_sigma_taxonomy(force: bool = False) -> Path:
+    """Hybrid: Đọc defaults JSON + tải Event IDs từ MITRE CTID + cross-validate với SigmaHQ spec."""
+    if SIGMA_TAXONOMY_DEST.exists() and not force:
+        size_kb = SIGMA_TAXONOMY_DEST.stat().st_size // 1024
+        logger.info(
+            "sigma_taxonomy.json đã tồn tại (%d KB) - skip. "
+            "Dùng force=True để tải lại.",
+            size_kb,
+        )
+        return SIGMA_TAXONOMY_DEST
+
+    logger.info("Hybrid build: sigma_taxonomy_mappings.json + MITRE CTID + SigmaHQ spec ...")
+
+    # 1. Đọc đặc tả cấu hình từ JSON bên ngoài
+    defaults = _load_taxonomy_defaults()
+    logger.info("Đọc %d categories từ sigma_taxonomy_mappings.json", len(defaults.get("categories", {})))
+
+    # 2. Tải động Event IDs từ MITRE CTID sensor mappings
+    ctid_eids_map = _fetch_mitre_ctid_sensor_mappings()
+    logger.info("Tải %d Data Component → Event ID mappings từ MITRE CTID", len(ctid_eids_map))
+
+    # 3. Tải & bóc tách danh sách Field hợp lệ từ SigmaHQ Markdown spec
+    sigmahq_valid_fields: set[str] = set()
+    temp_md_path = _SCRIPT_DIR / "_temp_sigma_taxonomy.md"
+    try:
+        _download(SIGMA_TAXONOMY_URL, temp_md_path)
+        with open(temp_md_path, "r", encoding="utf-8", errors="ignore") as f:
+            md_content = f.read()
+        sigmahq_valid_fields = _extract_sigmahq_valid_fields(md_content)
+        logger.info("Trích xuất %d valid field names từ SigmaHQ spec", len(sigmahq_valid_fields))
+    except Exception as e:
+        logger.warning("Không thể tải SigmaHQ spec (%s), bỏ qua cross-validation", e)
+    finally:
+        if temp_md_path.exists():
+            temp_md_path.unlink()
+
+    # 4. Build sigma_taxonomy.json
+    parsed_logsources = _build_sigma_taxonomy(defaults, ctid_eids_map, sigmahq_valid_fields)
+    taxonomy_data = {
+        "_version": "1.0",
+        "_source": "sigma_taxonomy_mappings.json + MITRE CTID sensor-mappings-to-attack + SigmaHQ spec",
+        "_description": "Single Source of Truth cho Sigma Logsources, Allowed Fields & Event IDs.",
+        "logsources": parsed_logsources,
+    }
+
+    with open(SIGMA_TAXONOMY_DEST, "w", encoding="utf-8") as f:
+        json.dump(taxonomy_data, f, indent=2, ensure_ascii=False)
+
+    logger.info("Saved sigma_taxonomy.json thành công: %d categories", len(parsed_logsources))
+
+    return SIGMA_TAXONOMY_DEST
+
+
+def _validate_sigma_taxonomy_file(path: Path) -> None:
+    """Sanity-check sigma_taxonomy.json."""
+    logger.info("Validate sigma_taxonomy.json ...")
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, json.JSONDecodeError) as exc:
+        logger.error("sigma_taxonomy.json invalid: %s", exc)
+        return
+    logsources = data.get("logsources", {})
+    logger.info("  Tổng logsource categories: %d", len(logsources))
+    for cat, meta in logsources.items():
+        logger.info("  - %-20s: %d fields, Event IDs: %s", cat, len(meta.get("allowed_fields", [])), meta.get("native_event_ids", []))
+
+
 def main() -> int:
-    """Entry point - tải cả 3 file (CAPEC + CTID + ATT&CK tactics) + validate."""
+    """Entry point - tải cả 4 file (CAPEC + CTID + ATT&CK tactics + Sigma Taxonomy) + validate."""
     logger.info("=" * 60)
-    logger.info("Fetch ground truth for OntologyManager (4-Layer Resolver)")
+    logger.info("Fetch ground truth & taxonomy for CVE TI Platform")
     logger.info("=" * 60)
     logger.info("Output dir: %s", _SCRIPT_DIR)
 
@@ -322,6 +537,7 @@ def main() -> int:
         capec_path = fetch_capec()
         ctid_path = fetch_ctid()
         attack_path = fetch_attack_tactics()
+        sigma_tax_path = fetch_sigma_taxonomy()
     except Exception as exc:
         logger.error("Fetch thất bại: %s", exc)
         return 1
@@ -332,6 +548,7 @@ def main() -> int:
     _validate_capec(capec_path)
     _validate_ctid(ctid_path)
     _validate_attack_tactics(attack_path)
+    _validate_sigma_taxonomy_file(sigma_tax_path)
 
     logger.info("=" * 60)
     logger.info("✅ DONE. Bỏ env CVE_TI_DISABLE_OFFLINE_ONTOLOGY=1 để dùng.")

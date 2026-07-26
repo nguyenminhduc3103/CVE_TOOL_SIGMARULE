@@ -4,6 +4,7 @@ from src.usecases.step_1_triage.orchestrator import TriageOrchestrator
 from config.settings import settings
 from src.infrastructure.providers.opencti import OpenCTIProvider
 from src.adapters.presenters.triage_presenter import print_triage_summary, print_description
+from src.adapters.presenters.telemetry_presenter import print_telemetry_summary
 
 
 def wait_for_user(step_description: str) -> None:
@@ -35,6 +36,7 @@ class CLITriageController:
             settings.ai_enabled = original_ai_enabled
 
         print_triage_summary(enriched)
+        print_telemetry_summary(enriched)
         print_description(enriched)
 
     async def run_opencti_batch(self, limit: int) -> None:

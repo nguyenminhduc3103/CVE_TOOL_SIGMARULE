@@ -28,7 +28,7 @@ from src.usecases.step_1_triage.stages.epss_stage import run_epss_stage
 from src.usecases.step_1_triage.stages.exposure_stage import run_exposure_stage
 from src.usecases.step_1_triage.stages.kev_stage import run_kev_stage
 from src.usecases.step_1_triage.stages.poc_stage import run_poc_stage
-from src.usecases.step_1_triage.stages.telemetry_stage import run_telemetry_stage
+from src.usecases.step_4_telemetry.telemetry_stage import run_telemetry_stage
 
 
 def _err_line(exc: BaseException) -> str:

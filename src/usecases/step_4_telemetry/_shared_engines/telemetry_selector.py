@@ -14,9 +14,9 @@ def select_detection_axis(behaviors: list[str], logsources: list[str], technique
     }
     axes: list[str] = []
 
-    if "public_facing_exploit" in behaviors or "web_request" in behaviors:
+    if "public_facing_exploit" in behaviors or "web_request" in behaviors or "auth_bypass" in behaviors:
         axes.append("pre-exploit")
-    if any(behavior in behaviors for behavior in ("process_creation", "file_write", "registry_modification", "image_load", "webshell_drop")):
+    if any(behavior in behaviors for behavior in ("process_creation", "file_write", "registry_modification", "image_load", "webshell_drop", "command_execution")):
         axes.append("post-exploit")
 
     for logsource in logsources:

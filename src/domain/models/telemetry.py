@@ -9,6 +9,8 @@ class SigmaLogsource(BaseModel):
 
 class TelemetryRequirements(BaseModel):
     required_event_ids: list[str] | None = None
+    required_events: list[str] | None = None
+    required_fields: list[str] | None = None
 
 
 class TelemetryAssessment(BaseModel):
