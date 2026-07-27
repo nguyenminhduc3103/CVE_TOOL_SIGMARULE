@@ -1,11 +1,6 @@
-CVE ID: {cve_id}
-Description: {description}
-CVSS Score: {cvss_score}
-CVSS Vector: {cvss_vector}
-CWE IDs: {cwe_ids}
-CPEs: {cpes}
-References: {references}
-Published: {published_at}
-Modified: {modified_at}
+Analyze this CVE payload and return JSON only.
 
-Produce the JSON object per the schema in the system message.
+INPUT_PAYLOAD_JSON:
+{input_json}
+
+Produce exactly one JSON object that conforms to the system schema.

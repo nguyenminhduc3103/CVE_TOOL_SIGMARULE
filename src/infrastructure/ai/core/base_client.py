@@ -1,7 +1,12 @@
-"""Base AI client (OpenAI-compatible: Groq, Anthropic, Ollama)."""
+"""Base AI client (OpenAI-compatible: Groq, Anthropic, Ollama).
+
+Uses httpx.AsyncClient directly instead of openai SDK to avoid async hangs
+on certain Windows/Python environments.
+"""
 from __future__ import annotations
 
 import asyncio
+import httpx
 import logging
 import threading
 from typing import Any
@@ -12,6 +17,9 @@ from config.settings import settings
 
 logger = logging.getLogger(__name__)
 
+# Default timeout for AI API calls (60s)
+DEFAULT_TIMEOUT = 60.0
+
 
 class AIServiceError(Exception):
     """Raised when AI call cannot be fulfilled."""
@@ -19,9 +27,9 @@ class AIServiceError(Exception):
 
 
 class BaseAIClient:
-    """Thin async wrapper around OpenAI AsyncClient. Subclasses (behavior, telemetry, etc.)
-    add domain-specific prompt assembly on top of call_llm.
+    """Async HTTP client for OpenAI-compatible APIs using httpx.
 
+    Replaces AsyncOpenAI from openai SDK to avoid async hangs on Windows.
     Supports round-robin API key rotation (Groq free tier): set AI_API_KEYS=k1,k2,k3
     in .env. Falls back to AI_API_KEY (single) for backward compatibility.
     On 429 / rate_limit_exceeded response, switches to next key automatically.
@@ -30,13 +38,15 @@ class BaseAIClient:
     def __init__(self) -> None:
         self.api_keys: list[str] = settings.get_api_keys()
         self.api_key = self.api_keys[0] if self.api_keys else None  # back-compat
-        self.base_url = getattr(settings, "ai_base_url", None)
+        self.base_url = getattr(settings, "ai_base_url", None) or ""
         self.ai_enabled = getattr(settings, "ai_enabled", False)
         # Round-robin cursor + lock (multi-call safety across coroutines).
         self._key_index: int = 0
         self._key_lock = threading.Lock()
         # Track usage counts per key (key index -> count). Useful for logs/debugging.
         self._key_usage: dict[int, int] = {}
+        # Persistent httpx client (created on first use to avoid Windows issues)
+        self._client: httpx.AsyncClient | None = None
 
         if self.ai_enabled:
             if not self.api_keys:
@@ -44,18 +54,29 @@ class BaseAIClient:
                     "AI enabled but no API key configured (AI_API_KEY / AI_API_KEYS). "
                     "Calls will fail with AIServiceError."
                 )
-            # max_retries=0 disables the SDK's internal retry on 429/5xx so
-            # OUR round-robin (and our own retry budget) is the sole
-            # backoff/rotation mechanism. Without this, the SDK would re-try
-            # the same key 2-3x before our 429 detection ever fires.
-            self.client = AsyncOpenAI(
-                api_key=self.api_key,
-                base_url=self.base_url,
-                max_retries=0,
-            )
+            else:
+                logger.info(
+                    "[AI] BaseAIClient initialized: %d key(s), base_url=%s",
+                    len(self.api_keys),
+                    self.base_url,
+                )
         else:
-            self.client = None
             logger.info("AI disabled by configuration (ai_enabled=False).")
+
+    async def _get_client(self) -> httpx.AsyncClient:
+        """Get or create the persistent httpx client."""
+        if self._client is None:
+            self._client = httpx.AsyncClient(
+                timeout=httpx.Timeout(DEFAULT_TIMEOUT),
+                limits=httpx.Limits(max_keepalive_connections=5, max_connections=10),
+            )
+        return self._client
+
+    async def close(self) -> None:
+        """Close the httpx client (call on shutdown)."""
+        if self._client is not None:
+            await self._client.aclose()
+            self._client = None
 
     # ------------------------------------------------------------------
     # Key rotation helpers
@@ -68,8 +89,9 @@ class BaseAIClient:
         return (current + 1) % len(self.api_keys)
 
     def _rotate_to_next_key(self) -> str | None:
-        """Advance the round-robin cursor and rebuild the OpenAI client with
-        the new key. Returns the new key (or None if no keys configured).
+        """Advance the round-robin cursor to the next key.
+
+        Returns the new key (or None if no keys configured).
         """
         with self._key_lock:
             old_idx = self._key_index
@@ -77,40 +99,32 @@ class BaseAIClient:
                 return None
             new_idx = (old_idx + 1) % len(self.api_keys)
             self._key_index = new_idx
-            new_key = self.api_keys[new_idx]
-            # Rebuild the client bound to the new key (base_url unchanged).
-            self.client = AsyncOpenAI(
-                api_key=new_key,
-                base_url=self.base_url,
-                max_retries=0,
-            )
-            self.api_key = new_key
+            self.api_key = self.api_keys[new_idx]
         logger.debug(
             "[AI] rotating to key %d/%d after rate limit.",
             new_idx + 1,
             len(self.api_keys),
         )
-        return new_key
+        return self.api_key
 
     def _current_key_index(self) -> int:
         with self._key_lock:
             return self._key_index
 
     @staticmethod
-    def _is_rate_limit_error(exc: Exception) -> bool:
-        """Detect 429 / rate_limit_exceeded from Groq (or any OpenAI-compat)."""
-        # openai SDK exposes status_code on APIError; httpx.HTTPStatusError too.
-        status = getattr(exc, "status_code", None) or getattr(exc, "status", None)
-        if status == 429:
+    def _is_rate_limit_response(response: httpx.Response) -> bool:
+        """Detect 429 / rate_limit_exceeded from response."""
+        if response.status_code == 429:
             return True
-        # Fallback: string match on body (Groq returns {"error":{"code":"rate_limit_exceeded",...}})
-        body = getattr(exc, "body", None)
-        if body and "rate_limit_exceeded" in str(body):
-            return True
-        msg = str(exc)
-        if "rate_limit_exceeded" in msg or "Rate limit reached" in msg:
+        body_str = response.text
+        if "rate_limit_exceeded" in body_str or "Rate limit reached" in body_str:
             return True
         return False
+
+    @staticmethod
+    def _is_api_error_response(response: httpx.Response) -> bool:
+        """Check if response indicates an API error (non-200)."""
+        return response.status_code >= 400
 
     # ------------------------------------------------------------------
     # Public API
@@ -125,49 +139,58 @@ class BaseAIClient:
         override_api_key: str | None = None,
         override_base_url: str | None = None,
     ) -> str:
-        """Call the LLM. If `override_api_key`/`override_base_url` are provided,
-        build a one-shot AsyncOpenAI client bound to those (used by retry path
-        to switch providers — e.g. Groq analyze → Gemini retry to dodge TPM).
+        """Call the LLM using httpx directly.
+
+        If `override_api_key`/`override_base_url` are provided, use those instead
+        of the default client (used by retry path to switch providers).
+
+        Args:
+            system_prompt: System prompt for the LLM.
+            user_prompt: User message/prompt.
+            model: Model name (e.g. llama-3.3-70b-versatile).
+            max_retries: Max retry attempts per key.
+            override_api_key: Use this API key instead of default.
+            override_base_url: Use this base URL instead of default.
+
+        Returns:
+            The LLM response text.
+
+        Raises:
+            AIServiceError: If all attempts fail.
         """
         if not self.ai_enabled:
             raise AIServiceError("AI is disabled.")
 
-        # Per-call override client (separate from self.client so we don't
-        # touch the round-robin state for the primary key pool).
+        # Resolve API key and base URL
         if override_api_key:
             if not override_base_url:
                 raise AIServiceError(
                     "override_api_key provided but override_base_url is None."
                 )
-            call_client = AsyncOpenAI(
-                api_key=override_api_key,
-                base_url=override_base_url,
-                max_retries=0,
-            )
-            logger.debug(
-                "[AI] retry call using override endpoint (%s, model=%s)",
-                override_base_url,
-                model,
-            )
+            api_key = override_api_key
+            base_url = override_base_url
         else:
             if not self.api_keys:
                 raise AIServiceError(
                     "No API key configured (set AI_API_KEY or AI_API_KEYS in .env)."
                 )
-            call_client = self.client
+            api_key = self.api_key
+            base_url = self.base_url
 
-        last_exc: Exception | None = None
-        # Round-robin (only for primary path): try up to len(api_keys) * max_retries
-        # attempts total, rotating to the next key on 429. We use a single attempt
-        # loop and rotate manually on rate-limit instead of nested loops to keep
-        # the flow simple and the key-usage log accurate.
+        # Determine total attempts
         if override_api_key:
             total_attempts = max_retries
         else:
             total_attempts = max_retries * len(self.api_keys)
+
+        last_exc: Exception | None = None
+
         for attempt in range(total_attempts):
-            key_idx = self._current_key_index() if not override_api_key else 0
+            # Get key index for logging
             if not override_api_key:
+                key_idx = self._current_key_index()
+                with self._key_lock:
+                    self._key_usage[key_idx] = self._key_usage.get(key_idx, 0) + 1
                 logger.debug(
                     "[AI] using key %d/%d (attempt %d/%d)",
                     key_idx + 1,
@@ -175,26 +198,55 @@ class BaseAIClient:
                     attempt + 1,
                     total_attempts,
                 )
-                with self._key_lock:
-                    self._key_usage[key_idx] = self._key_usage.get(key_idx, 0) + 1
+                # Refresh api_key from current index
+                api_key = self.api_keys[key_idx]
+
             try:
-                response = await call_client.chat.completions.create(
-                    model=model,
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt},
-                    ],
-                    max_tokens=4096,
-                    temperature=0.0,
+                # Use httpx directly instead of AsyncOpenAI
+                client = await self._get_client()
+                response = await client.post(
+                    f"{base_url}/chat/completions",
+                    json={
+                        "model": model,
+                        "messages": [
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": user_prompt},
+                        ],
+                        "max_tokens": 4096,
+                        "temperature": 0.0,
+                    },
+                    headers={
+                        "Authorization": f"Bearer {api_key}",
+                        "Content-Type": "application/json",
+                    },
                 )
-                return response.choices[0].message.content
-            except Exception as e:
+
+                # Check for HTTP errors
+                if response.status_code >= 400:
+                    error_body = response.text[:500]
+                    logger.warning(
+                        "[AI] HTTP %d error (attempt %d/%d): %s",
+                        response.status_code,
+                        attempt + 1,
+                        total_attempts,
+                        error_body,
+                    )
+                    raise httpx.HTTPStatusError(
+                        message=f"HTTP {response.status_code}: {error_body}",
+                        request=response.request,
+                        response=response,
+                    )
+
+                # Parse response
+                data = response.json()
+                content = data["choices"][0]["message"]["content"]
+                return content
+
+            except httpx.HTTPStatusError as e:
                 last_exc = e
-                logger.debug("[AI] raw exception type=%s msg=%r body=%r status=%s", type(e).__name__, str(e), getattr(e, 'body', None), getattr(e, 'status_code', None))
-                if self._is_rate_limit_error(e):
+                is_rate_limit = self._is_rate_limit_response(e.response)
+                if is_rate_limit:
                     if override_api_key:
-                        # Override path has only one "key" — no rotation.
-                        # Just backoff and retry.
                         logger.warning(
                             "[AI] override endpoint hit rate limit (attempt %d/%d): %s",
                             attempt + 1, total_attempts, e,
@@ -209,25 +261,85 @@ class BaseAIClient:
                         total_attempts,
                         e,
                     )
-                    # Rotate to next key. If only one key, still re-raise to
-                    # let outer retry/backoff handle it on next attempt.
                     if len(self.api_keys) > 1:
                         self._rotate_to_next_key()
-                        # No sleep — move to next key immediately.
                         continue
-                    # Single key: fall through to backoff path.
                     await asyncio.sleep(2)
                     continue
-                # Non-rate-limit error: simple backoff retry.
+                # Non-rate-limit HTTP error
                 logger.warning(
-                    "[AI] call attempt %d/%d failed: %s. Retrying in 2s.",
+                    "[AI] HTTP error (attempt %d/%d): %s. Retrying in 2s.",
                     attempt + 1,
                     total_attempts,
                     e,
                 )
                 await asyncio.sleep(2)
+                continue
+
+            except httpx.RequestError as e:
+                last_exc = e
+                logger.warning(
+                    "[AI] request error (attempt %d/%d): %s. Retrying in 2s.",
+                    attempt + 1,
+                    total_attempts,
+                    e,
+                )
+                await asyncio.sleep(2)
+                continue
+
+            except (KeyError, ValueError, TypeError) as e:
+                last_exc = e
+                logger.warning(
+                    "[AI] response parse error (attempt %d/%d): %s. Retrying in 2s.",
+                    attempt + 1,
+                    total_attempts,
+                    e,
+                )
+                await asyncio.sleep(2)
+                continue
+
+            except Exception as e:
+                last_exc = e
+                # Try to extract status code for rate limit detection
+                status = getattr(e, "status_code", None)
+                if status == 429 or "rate_limit" in str(e).lower():
+                    if override_api_key:
+                        await asyncio.sleep(2)
+                        continue
+                    if len(self.api_keys) > 1:
+                        self._rotate_to_next_key()
+                        continue
+                    await asyncio.sleep(2)
+                    continue
+                logger.warning(
+                    "[AI] unexpected error (attempt %d/%d): %s. Retrying in 2s.",
+                    attempt + 1,
+                    total_attempts,
+                    e,
+                )
+                await asyncio.sleep(2)
+                continue
 
         # All attempts exhausted.
         raise AIServiceError(
             f"AI Call failed after {total_attempts} attempts: {last_exc}"
         )
+
+    def make_phase1_client_kwargs(self) -> dict[str, Any]:
+        """Build kwargs (api_key, base_url) for Phase 1.
+
+        Two-phase refactor: Phase 1 may use a different provider (e.g. OpenRouter
+        free model) than Phase 2 (e.g. Groq llama-3.3-70b).
+
+        Priority: PHASE1_AI_KEYS > PHASE1_AI_API_KEY > main API keys (fallback).
+        """
+        phase1_keys = settings.get_phase1_api_keys()
+        if not phase1_keys:
+            raise AIServiceError(
+                "Phase 1 AI enabled but no API key configured "
+                "(set PHASE1_AI_API_KEY or PHASE1_AI_KEYS in .env)."
+            )
+        return {
+            "api_key": phase1_keys[0],
+            "base_url": settings.get_phase1_base_url(),
+        }

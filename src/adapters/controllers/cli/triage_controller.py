@@ -3,7 +3,7 @@ from __future__ import annotations
 from src.usecases.step_1_triage.orchestrator import TriageOrchestrator
 from config.settings import settings
 from src.infrastructure.providers.opencti import OpenCTIProvider
-from src.adapters.presenters.triage_presenter import print_triage_summary, print_description
+from src.adapters.presenters.triage_presenter import print_triage_summary, print_description, print_telemetry_discovery
 from src.adapters.presenters.telemetry_presenter import print_telemetry_summary
 
 
@@ -38,6 +38,7 @@ class CLITriageController:
         print_triage_summary(enriched)
         print_telemetry_summary(enriched)
         print_description(enriched)
+        print_telemetry_discovery(enriched)
 
     async def run_opencti_batch(self, limit: int) -> None:
         print("==========================================================")

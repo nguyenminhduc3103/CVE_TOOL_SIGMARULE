@@ -20,4 +20,5 @@ class TriageContext(BaseModel):
     decision: str | None = None
     decision_reason: str | None = None
     rationale: str | None = None
+    telemetry_blocked: bool = False  # Step 1.4: Set True if telemetry gate blocks pipeline
     extensions: dict[str, object] | None = Field(default=None, description="Reserved for Phase 2")

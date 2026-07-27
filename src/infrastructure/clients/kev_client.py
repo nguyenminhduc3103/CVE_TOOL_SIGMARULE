@@ -103,7 +103,7 @@ class KEVHTTPClient(BaseHTTPClient):
                 # the failure is retryable (timeout, network, 403).
                 if self._using_default_endpoint and self._should_fallback_to_mirror(exc):
                     self.logger.warning(
-                        "[WARN] Akamai/WAF chặn IP. Tự động chuyển hướng sang GitHub Mirror..."
+                        "[KEV] Akamai/WAF chặn IP. Tự động chuyển hướng sang GitHub Mirror..."
                     )
                     mirror_payload = await self._fetch_from_mirror()
                     if mirror_payload is not None:

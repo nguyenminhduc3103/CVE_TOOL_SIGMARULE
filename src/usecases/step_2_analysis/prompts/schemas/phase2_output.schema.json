@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": [
+    "mitre_attack_chain",
+    "attack_confidence",
+    "mapping_reasons"
+  ],
+  "properties": {
+    "mitre_attack_chain": {
+      "type": "array",
+      "description": "Evidence-to-TTP Matrix: each technique MUST cite a behavior anchor from Phase 1",
+      "items": {
+        "type": "object",
+        "required": ["technique_id", "exact_behavior_anchor"],
+        "properties": {
+          "technique_id": {
+            "type": "string",
+            "pattern": "^T\\d{4}(\\.\\d{3})?$",
+            "description": "MITRE ATT&CK technique ID (e.g. T1190, T1071.001)"
+          },
+          "exact_behavior_anchor": {
+            "type": "string",
+            "minLength": 1,
+            "description": "MUST be an exact string from Phase 1's mandatory_behaviors. If no match exists, DO NOT include this technique."
+          },
+          "textual_evidence": {
+            "type": "string",
+            "description": "Quote from CVE description/references supporting this mapping"
+          }
+        }
+      }
+    },
+    "attack_confidence": {
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "description": "Confidence level for the entire attack chain mapping"
+    },
+    "mapping_reasons": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Detailed mapping justifications"
+    }
+  }
+}

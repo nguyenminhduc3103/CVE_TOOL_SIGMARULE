@@ -9,6 +9,7 @@ from src.domain.models.attack import AttackMapping, TechnicalAnalysis
 from src.domain.models.coverage import CoverageAssessment
 from src.domain.models.cve import CoreCVEData
 from src.domain.models.telemetry import TelemetryAssessment
+from src.domain.models.telemetry_discovery import TelemetryDiscovery, TelemetrySourceAssessment
 from src.domain.models.triage import TriageContext
 
 
@@ -64,6 +65,8 @@ class EnrichedCVEContext(BaseModel):
     attack: AttackMapping | None = None
     coverage: CoverageAssessment | None = None
     telemetry: TelemetryAssessment | None = None
+    telemetry_discovery: TelemetryDiscovery | None = None  # Step 1.3: Two-phase discovery
+    telemetry_assessment: TelemetrySourceAssessment | None = None  # Step 1.4: Gate decision
     threat_intelligence: ThreatIntelligenceContext | None = None
     attack_mapping: AttackMappingContext | None = None
     detections: DetectionContext | None = None

@@ -39,6 +39,7 @@ class TechnicalAnalysis(BaseModel):
     ai_used: bool | None = None
     ai_retry_count: int = 0
     ai_model: str | None = None
+    ai_models_used: list[str] | None = None
 
 
 class AttackMapping(BaseModel):
@@ -48,5 +49,11 @@ class AttackMapping(BaseModel):
     confidence: float | None = None
     mapping_reasons: list[str] | None = None
     attack_mapping_confidence: float | None = None
+    validation_warnings: list[str] | None = None
+    dropped_tactics: list[str] | None = None
+    dropped_techniques: list[str] | None = None
+    dropped_subtechniques: list[str] | None = None
     ai_used: bool | None = None
+    ai_retry_count: int = 0
     ai_model: str | None = None
+    ai_models_used: list[str] | None = None

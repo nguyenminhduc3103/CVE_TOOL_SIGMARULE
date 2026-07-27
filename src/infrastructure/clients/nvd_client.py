@@ -30,6 +30,11 @@ def _settings_api_key() -> str | None:
 class NVDHTTPClient(BaseHTTPClient):
     BASE_URL = 'https://services.nvd.nist.gov'
     ENDPOINT = '/rest/json/cves/2.0'
+    # Mirror khi NVD fail (Akamai/WAF block, 503): MITRE CVE Services.
+    # Khác với KEV mirror (GitHub) — MITRE cveawg là authoritative source
+    # của CVE record, không bị Akamai block, format JSON khác NVD nhưng
+    # đầy đủ fields (description, CVSS, CWE, references, affected).
+    MIRROR_URL = 'https://cveawg.mitre.org/api/cve'
     # NVD is SLOW even with a valid key — measured ~49s for a single CVE
     # in practice. 90s timeout gives us headroom for cold-cache first hit
     # without hanging the pipeline.
@@ -138,16 +143,21 @@ class NVDHTTPClient(BaseHTTPClient):
                 # out fast on 4xx other than 429 (e.g. 404 for unknown CVE).
                 status = exc.response.status_code if exc.response is not None else 0
                 if status == 429 or status >= 500:
-                    # On final attempt, cache the failure briefly so we don't
-                    # hammer a struggling upstream on the next request.
+                    # On final attempt, try MITRE mirror before giving up.
+                    # If mirror also fails, cache the failure briefly and raise.
                     if attempt >= self.MAX_ATTEMPTS:
-                        self._cache.set(
-                            "nvd",
-                            cve_id,
-                            {"__error__": status},
-                            ttl_seconds=60,
-                        )
-                        raise
+                        try:
+                            mirror_payload = await self._fetch_from_mirror(cve_id)
+                            # Cache mirror-fetched payload (24h TTL same as success)
+                            self._cache.set("nvd", cve_id, mirror_payload)
+                            return mirror_payload
+                        except Exception as mirror_exc:
+                            self._cache.set(
+                                "nvd", cve_id,
+                                {"__error__": status},
+                                ttl_seconds=60,
+                            )
+                            raise
                     # Longer backoff for rate limiting: 3s, 6s.
                     await asyncio.sleep(3.0 * (2 ** (attempt - 1)))
                     continue
@@ -156,3 +166,59 @@ class NVDHTTPClient(BaseHTTPClient):
         if last_exc is not None:
             raise last_exc
         return {}
+
+    async def _fetch_from_mirror(self, cve_id: str) -> dict:
+        """Fallback sang MITRE CVE Services khi NVD unavailable.
+
+        MITRE cveawg serves same CVE record ở JSON shape hơi khác.
+        Adapter `_normalize_mitre_to_nvd_shape` convert về NVD 2.0
+        format để NVDParser parse được.
+        """
+        url = f"{self.MIRROR_URL}/{cve_id}"
+        response = await self.get(url)
+        response.raise_for_status()
+        mitre_payload = response.json()
+        return self._normalize_mitre_to_nvd_shape(mitre_payload)
+
+    @staticmethod
+    def _normalize_mitre_to_nvd_shape(mitre: dict) -> dict:
+        """Convert MITRE cveawg response → NVD 2.0 envelope cho NVDParser.
+
+        MITRE format:
+          {
+            "cveMetadata": {"cveId": "...", "datePublished": "...", "dateUpdated": "..."},
+            "containers": {"cna": {"descriptions": [{"lang": "en", "value": "..."}],
+                                    "metrics": [...], "problemTypes": [...],
+                                    "references": [...], "affected": [...]}}
+          }
+
+        NVD 2.0 (NVDParser expects):
+          {
+            "vulnerabilities": [{"cve": {"id": ..., "descriptions": [...],
+                                          "metrics": [...], "weaknesses": [...],
+                                          "references": [...], "configurations": [...],
+                                          "published": ..., "lastModified": ...}}]
+          }
+        """
+        cve_meta = mitre.get("cveMetadata", {})
+        cna = mitre.get("containers", {}).get("cna", {})
+        return {
+            "vulnerabilities": [{
+                "cve": {
+                    "id": cve_meta.get("cveId"),
+                    "descriptions": [
+                        {"lang": d.get("lang", "en"), "value": d.get("value", "")}
+                        for d in cna.get("descriptions", [])
+                    ],
+                    "metrics": cna.get("metrics", []),
+                    "weaknesses": [
+                        {"description": [{"value": pt.get("cweId", "")}]}
+                        for pt in cna.get("problemTypes", [])
+                    ],
+                    "references": [{"url": r.get("url")} for r in cna.get("references", [])],
+                    "configurations": cna.get("affected", []),
+                    "published": cve_meta.get("datePublished"),
+                    "lastModified": cve_meta.get("dateUpdated"),
+                }
+            }]
+        }

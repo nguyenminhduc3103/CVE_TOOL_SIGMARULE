@@ -29,6 +29,9 @@ from src.usecases.step_1_triage.stages.exposure_stage import run_exposure_stage
 from src.usecases.step_1_triage.stages.kev_stage import run_kev_stage
 from src.usecases.step_1_triage.stages.poc_stage import run_poc_stage
 from src.usecases.step_4_telemetry.telemetry_stage import run_telemetry_stage
+from src.usecases.step_1_triage.stages.telemetry_discovery_stage import run_telemetry_discovery_stage
+from src.usecases.step_1_triage.stages.telemetry_assessment_stage import run_telemetry_assessment_stage
+from src.usecases.step_2_analysis.rule_based.attack_validator import validate_ttp_list
 
 
 def _err_line(exc: BaseException) -> str:
@@ -202,6 +205,55 @@ class TriageOrchestrator:
             provider_errors=provider_errors,
         )
 
+        # ============================================================
+        # Step 1.3: Telemetry Discovery (Two-Phase)
+        # Phase A: Discover candidate sources
+        # Phase B: Verify actual telemetry artifacts
+        # ============================================================
+        telemetry_discovery_result = await run_telemetry_discovery_stage(
+            cve_id=cve_id,
+            triage=triage,
+            description=core.description,
+            vendor=None,
+        )
+        enriched.telemetry_discovery = telemetry_discovery_result.discovery
+
+        # ============================================================
+        # Step 1.4: Telemetry Assessment (GATE)
+        # Gate only PASSES if verified artifacts exist
+        # ============================================================
+        telemetry_assessment = await run_telemetry_assessment_stage(enriched.telemetry_discovery)
+        enriched.telemetry_assessment = telemetry_assessment
+
+        # GATE DECISION: If no verified artifacts, stop pipeline
+        if telemetry_assessment.blocking:
+            self.logger.warning(
+                "[ORCHESTRATOR] telemetry_gate_blocked",
+                cve_id=cve_id,
+                verified_count=telemetry_assessment.verified_count,
+                candidate_count=telemetry_assessment.candidate_count,
+                decision=telemetry_assessment.decision.value,
+            )
+            # Override GO decision to NO-GO
+            triage.decision = "NO-GO"
+            triage.decision_reason = f"Telemetry gate blocked: {telemetry_assessment.reasoning}"
+            triage.telemetry_blocked = True
+
+            # Add metadata and return early (skip Step 2, 3, 4)
+            metadata = EnrichmentMetadata(
+                enriched_at=datetime.now(timezone.utc),
+                enrichment_duration_ms=int((perf_counter() - pipeline_started) * 1000),
+                providers_used=provider_used,
+                partial_enrichment=True,
+                provider_durations_ms=provider_durations or None,
+            )
+            enriched.metadata = metadata
+            enriched.triage = triage
+            return enriched
+
+        # ============================================================
+        # Continue to Step 2: Analysis Stage
+        # ============================================================
         analysis_context, attack_context, stage_failed = await self._run_analysis_stage(enriched, capability_classification)
         stage_partial = stage_partial or stage_failed
         enriched.analysis = analysis_context
@@ -283,7 +335,6 @@ class TriageOrchestrator:
                 client = BaseAIClient()
                 ai_service = AIBehaviorService(client)
 
-                # NEW: dùng orchestrator mới (clean architecture)
                 tech_analysis, attack_mapping, coverage = await run_step2_tech_analysis(
                     ai_service=ai_service,
                     base_client=client,
@@ -304,6 +355,11 @@ class TriageOrchestrator:
                         if context.core.modified_at
                         else ""
                     ),
+                    # Phase 6: pass PoC refs + threat actors from Step 1 triage
+                    # context. AI uses these as INSPIRATION (not ground truth)
+                    # to narrow down exploit mechanism for vague CVEs.
+                    poc_references=getattr(context.triage, "poc_references", None) or [],
+                    threat_actors=getattr(context.triage, "threat_actors", None) or [],
                 )
 
                 # Nếu AI fail hoàn toàn → fall through
@@ -311,14 +367,18 @@ class TriageOrchestrator:
                     raise AIServiceError("AI returned None after retry")
 
                 # Apply MITRE ATT&CK validator (safety net 2.3) cho AI output
-                clean = filter_attack_mapping(
+                validation = validate_ttp_list(
                     attack_mapping.tactics,
                     attack_mapping.techniques,
                     attack_mapping.subtechniques,
                 )
-                attack_mapping.tactics = clean["tactics"]
-                attack_mapping.techniques = clean["techniques"]
-                attack_mapping.subtechniques = clean["subtechniques"]
+                attack_mapping.tactics = validation["valid_tactics"] or None
+                attack_mapping.techniques = validation["valid_techniques"] or None
+                attack_mapping.subtechniques = validation["valid_subtechniques"] or None
+                attack_mapping.validation_warnings = validation["warnings"] or None
+                attack_mapping.dropped_tactics = validation["invalid_tactics"] or None
+                attack_mapping.dropped_techniques = validation["invalid_techniques"] or None
+                attack_mapping.dropped_subtechniques = validation["invalid_subtechniques"] or None
 
                 # Normalize family name về enum chuẩn (e.g. "Apache Log4j2" -> "jndi_injection")
                 normalized_fam = normalize_family(tech_analysis.family)
@@ -331,14 +391,22 @@ class TriageOrchestrator:
                     coverage=coverage.get("overall_coverage", 0),
                     verdict=coverage.get("verdict", "?"),
                 )
-                # Record AI usage so the test/CLI can report it.
-                model_name = (
-                    tech_analysis.ai_model
-                    or attack_mapping.ai_model
-                    or "unknown"
-                )
-                if model_name not in self._ai_steps_used:
-                    self._ai_steps_used.append(model_name)
+                # Record AI usage so the test/CLI can report it. Two-phase
+                # flow exposes `ai_models_used` (list) covering both Phase 1
+                # (e.g. OpenRouter) + Phase 2 (e.g. Groq). Legacy 1-shot flow
+                # only has `ai_model` (single string). Aggregate both shapes.
+                used_models: list[str] = []
+                if tech_analysis.ai_models_used:
+                    used_models.extend(tech_analysis.ai_models_used)
+                if attack_mapping.ai_models_used:
+                    used_models.extend(attack_mapping.ai_models_used)
+                if not used_models:
+                    fallback = tech_analysis.ai_model or attack_mapping.ai_model
+                    if fallback:
+                        used_models = [fallback]
+                for m in used_models:
+                    if m and m not in self._ai_steps_used:
+                        self._ai_steps_used.append(m)
                 return tech_analysis, attack_mapping, False
             except AIServiceError as exc:
                 self.logger.warning(
@@ -359,8 +427,6 @@ error=_err_line(exc),
         try:
             analysis_context, attack_context = await run_analysis_stage(context, capability)
             # Apply MITRE ATT&CK validator cho rule-based output
-            from src.usecases.step_2_analysis.rule_based.attack_validator import validate_ttp_list
-
             validation = validate_ttp_list(
                 attack_context.tactics if attack_context else None,
                 attack_context.techniques if attack_context else None,
@@ -373,9 +439,14 @@ error=_err_line(exc),
                     dropped_tactics=len(validation["invalid_tactics"]),
                     dropped_techniques=len(validation["invalid_techniques"]),
                 )
+            if attack_context:
                 attack_context.tactics = validation["valid_tactics"] or None
                 attack_context.techniques = validation["valid_techniques"] or None
                 attack_context.subtechniques = validation["valid_subtechniques"] or None
+                attack_context.validation_warnings = validation["warnings"] or None
+                attack_context.dropped_tactics = validation["invalid_tactics"] or None
+                attack_context.dropped_techniques = validation["invalid_techniques"] or None
+                attack_context.dropped_subtechniques = validation["invalid_subtechniques"] or None
             return analysis_context, attack_context, False
         except Exception as exc:
             self.logger.warning("[ORCHESTRATOR] stage_failed", stage="analysis_stage", cve_id=context.core.cve_id, error=_err_line(exc))
@@ -408,6 +479,15 @@ error=_err_line(exc),
             if data is None:
                 provider_status[provider_name] = "failed"
                 error_message = getattr(provider, "last_error_message", None) or "provider returned no data"
+                provider_errors[provider_name] = error_message
+                self.logger.warning("[ORCHESTRATOR] provider_failed", provider=provider_name, cve_id=cve_id, duration_ms=duration_ms, error=error_message)
+                return None
+            # Defensive: client layer trả empty dict {} (vd OTX bug cũ) cũng
+            # được coi là failure thay vì success. Catch client-layer regressions
+            # mà không cần đợi từng provider sửa từng behavior.
+            if isinstance(data, dict) and not data:
+                provider_status[provider_name] = "failed"
+                error_message = getattr(provider, "last_error_message", None) or "provider returned empty data"
                 provider_errors[provider_name] = error_message
                 self.logger.warning("[ORCHESTRATOR] provider_failed", provider=provider_name, cve_id=cve_id, duration_ms=duration_ms, error=error_message)
                 return None

@@ -1,5 +1,22 @@
-﻿.env
+# Environment & secrets
+.env
 .venv/
 venv/
+
+# Python
 __pycache__/
 *.pyc
+*.pyo
+.pytest_cache/
+
+# Caches (NVD/KEV/EPSS response cache + MITRE STIX + CAPEC)
+.cache/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
