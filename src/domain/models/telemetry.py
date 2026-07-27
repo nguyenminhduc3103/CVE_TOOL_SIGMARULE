@@ -161,12 +161,7 @@ class TelemetryAssessment(BaseModel):
     telemetry_confidence: float | None = Field(
         default=None,
         ge=0.0, le=1.0,
-        description="AI self-assessment (semantic). Khác effective_confidence (× validation ratio).",
-    )
-    effective_confidence: float | None = Field(
-        default=None,
-        ge=0.0, le=1.0,
-        description="AI confidence × validation ratio × domain resolution ratio. Phản ánh thực tế.",
+        description="AI self-assessment (semantic). Confidence telemetry đủ detect CVE này.",
     )
     # 3-tier features — flattened (Refactor 2026-07)
     stable_features: list[DetectionFeature] | None = Field(
@@ -189,11 +184,6 @@ class TelemetryAssessment(BaseModel):
     )
 
     # ----- Phase 7 (2026-07): Explainability + audit -----
-    provenance: list["ProvenanceStep"] | None = Field(
-        default=None,
-        description="Audit trail: Domain → KB → Canonical → Sigma. Mỗi step giải thích "
-                    "vì sao mapping xảy ra (KB mapping_reason).",
-    )
     ai_hallucination_ratio: float | None = Field(
         default=None,
         ge=0.0, le=1.0,
@@ -270,23 +260,6 @@ class TelemetryAssessment(BaseModel):
 # ============================================================
 # Phase 7 (2026-07): Explainability + audit
 # ============================================================
-
-
-class ProvenanceStep(BaseModel):
-    """Một bước trong audit trail: Domain → KB → Canonical → Sigma.
-
-    Mỗi step giải thích mapping xảy ra (KB mapping_reason) để reviewer
-    hiểu pipeline.
-    """
-
-    step: str = Field(description="Step name: 'domain', 'kb_lookup', 'canonical_resolution', 'sigma_mapping'")
-    input: str = Field(description="Input của step (vd 'identity', 'windows_security_audit')")
-    output: str = Field(description="Output của step (vd 'windows_security_audit', '4624')")
-    reason: str = Field(default="", description="KB mapping_reason — vì sao mapping xảy ra")
-    kb_source: str | None = Field(
-        default=None,
-        description="Path/file trong KB chứa mapping này (vd 'telemetry_domains.yaml:14')",
-    )
 
 
 class StructuredRationale(BaseModel):

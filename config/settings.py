@@ -93,15 +93,11 @@ class Settings(BaseSettings):
     # Block pipeline when no sufficient telemetry (default: True per user decision)
     telemetry_gate_blocking: bool = True
 
-    # --- MITRE STIX + CAPEC cache (7-day TTL, dynamic ATT&CK whitelist) ---
-    # Path to the directory where MITRE STIX + CAPEC bundles are cached.
-    # Files inside (enterprise-attack.json, capec_stix.json) are downloaded
-    # by `app.shared.mitre.fetch_stix` and consumed by `loader.py` /
-    # `capec_hint.py`. Cache is per-host; safe to delete to force a refresh.
-    # Note: the capec_stix.json file is kept for `capec_hint` (CWE→CAPEC
-    # inspiration queries), NOT for ground-truth validation. Old
-    # ground_truth_sources/ directory (4.3MB CAPEC + 34KB CTID + script)
-    # was removed in Phase 4 since compute_ground_truth/coverage is gone.
+    # --- MITRE STIX cache (7-day TTL, dynamic ATT&CK whitelist) ---
+    # Path to the directory where the MITRE ATT&CK STIX bundle is cached.
+    # The file `enterprise-attack.json` is downloaded by
+    # `src.shared.mitre.fetch_stix` and consumed by `loader.py`.
+    # Cache is per-host; safe to delete to force a refresh.
     mitre_cache_dir: str = ".cache/mitre_attack"
     # 7 days (604800s). STIX bundle is updated ~quarterly by MITRE; 7 days
     # gives a comfortable margin without thrashing on every run.

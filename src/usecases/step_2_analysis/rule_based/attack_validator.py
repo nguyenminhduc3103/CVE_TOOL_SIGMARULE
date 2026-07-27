@@ -24,7 +24,7 @@ def _get_whitelist():
     """Lazy import + accessor. Tránh forcing 30MB STIX parse chỉ vì import
     module này cho 1 helper function.
     """
-    from app.shared.mitre.loader import MitreAttackWhitelist
+    from src.shared.mitre.loader import MitreAttackWhitelist
     return MitreAttackWhitelist.get()
 
 

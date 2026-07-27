@@ -22,7 +22,6 @@ from src.usecases.step_4_telemetry._shared_engines.field_mapper import map_requi
 from src.usecases.step_4_telemetry._shared_engines.logsource_mapper import map_logsources
 from src.usecases.step_4_telemetry._shared_engines.taxonomy_validator import validate_fields_by_logsources
 from src.usecases.step_4_telemetry._shared_engines.telemetry_feasibility import (
-    compute_effective_confidence,
     compute_telemetry_feasibility,
 )
 from src.usecases.step_4_telemetry._shared_engines.telemetry_selector import select_detection_axis
@@ -223,15 +222,6 @@ async def run_telemetry_stage(
     rb_canonical_fields = [cf.canonical for cf in canonical_bundle.canonical_fields]
     rb_skipped = canonical_bundle.skipped_domains
 
-    # Effective confidence cho rule-based path
-    rb_effective_confidence = compute_effective_confidence(
-        ai_confidence=telemetry_confidence,
-        validated_fields=validated_fields,
-        invalid_fields=invalid_fields,
-        canonical_resolved=len(canonical_bundle.canonical_telemetry),
-        canonical_skipped=len(canonical_bundle.skipped_domains),
-    )
-
     # === Telemetry requirements → structured dict ===
     rb_telemetry_requirements: dict[str, list[str]] = {}
     if required_event_ids:
@@ -310,7 +300,6 @@ async def run_telemetry_stage(
         canonical_telemetry=rb_canonical_telemetry or None,
         canonical_fields=rb_canonical_fields or None,
         skipped_domains=rb_skipped or None,
-        effective_confidence=rb_effective_confidence,
         sigma_logsources=sigma_logsources or None,
         telemetry_requirements=rb_telemetry_requirements,
         pre_exploit_detection=pre_exploit_detection or None,

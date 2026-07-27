@@ -21,9 +21,12 @@ class TestTelemetryAssessmentGate:
     """Test gate decision logic for two-phase discovery."""
 
     def test_no_verified_artifacts_blocks(self):
-        """0 verified artifacts → STOP_GATE (blocking=True).
+        """0 verified artifacts → CONTINUE (hard bypass 2026-07).
 
-        Even if there are candidates, gate should FAIL.
+        Step 1.4 chưa hoàn thiện — providers search logic thiếu nhiều trường hợp,
+        verified_count gần như luôn = 0. Pipeline KHÔNG bị block; Step 4/6 vẫn chạy
+        với AI-inferred telemetry (confidence=LOW). Reviewer cần kiểm tra logsource
+        + field được AI đề xuất.
         """
         discovery = TelemetryDiscovery(cve_id="CVE-2021-44228")
 
@@ -43,10 +46,13 @@ class TestTelemetryAssessmentGate:
 
         assert assessment.available is False
         assert assessment.verified_count == 0
-        assert assessment.decision.value == "STOP_GATE"
-        assert assessment.blocking is True
+        # Hard bypass: gate KHÔNG block
+        assert assessment.decision.value == "CONTINUE"
+        assert assessment.blocking is False
         assert assessment.candidate_count == 2  # Candidates exist
         assert assessment.confidence.value == "low"
+        # Reasoning phải cảnh báo bypass
+        assert "bypassed" in assessment.reasoning.lower() or "chưa hoàn thiện" in assessment.reasoning
 
     def test_single_verified_artifact_continues(self):
         """1 verified artifact WITH evidence → CONTINUE (not blocking)."""
@@ -112,7 +118,11 @@ class TestTelemetryAssessmentGate:
         assert assessment.blocking is False
 
     def test_candidates_only_is_not_enough(self):
-        """Having ONLY candidates (no verified artifacts) should FAIL gate."""
+        """Candidates only (no verified) → CONTINUE (hard bypass 2026-07).
+
+        Step 1.4 chưa hoàn thiện. Pipeline chạy tiếp với candidates làm advisory
+        metadata, không block. Confidence vẫn = LOW để reviewer cảnh giác.
+        """
         discovery = TelemetryDiscovery(cve_id="CVE-2021-XXXX")
 
         # Add 5 candidates
@@ -125,12 +135,13 @@ class TestTelemetryAssessmentGate:
 
         assessment = TelemetrySourceAssessment.from_discovery(discovery)
 
-        # Should still FAIL because no verified artifacts
+        # Hard bypass: gate KHÔNG block dù chỉ có candidates
         assert assessment.verified_count == 0
         assert assessment.candidate_count == 5
-        assert assessment.decision.value == "STOP_GATE"
-        assert assessment.blocking is True
-        assert "No verified telemetry artifacts" in assessment.reasoning
+        assert assessment.decision.value == "CONTINUE"
+        assert assessment.blocking is False
+        # Reasoning vẫn warn về bypass
+        assert "bypassed" in assessment.reasoning.lower() or "chưa hoàn thiện" in assessment.reasoning
 
 
 class TestTelemetryDiscovery:

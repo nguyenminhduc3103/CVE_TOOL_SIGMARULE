@@ -243,17 +243,11 @@ async def run_interactive_pipeline(cve_id: str) -> bool:
         print(f"  Required Events:    {t.required_events}")
     if t.telemetry_requirements:
         print(f"  Telemetry Requirements: {t.telemetry_requirements}")
-    if t.provenance:
-        print(f"  Provenance (audit trail):")
-        for step in t.provenance:
-            print(f"      [{step.step}] {step.input} → {step.output}")
-            if step.reason:
-                print(f"          reason: {step.reason}")
 
     # BLOCK 3: Telemetry Quality Assessment
     valid_total = len(t.validated_fields or []) + len(t.invalid_fields or [])
     valid_pct = (len(t.validated_fields or []) / valid_total * 100) if valid_total else 0
-    eff_conf = t.effective_confidence if t.effective_confidence is not None else (t.telemetry_confidence or 0.0)
+    eff_conf = t.telemetry_confidence or 0.0
     print(f"\n  ╠══ Telemetry Quality Assessment ═════════════════════════╣")
     print(f"  Validated Fields:          {len(t.validated_fields or [])}/{valid_total} ({valid_pct:.0f}%)")
     if t.invalid_fields:

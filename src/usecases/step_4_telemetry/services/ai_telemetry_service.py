@@ -9,7 +9,7 @@ canonical field DB enforce schema.
   candidate_semantic_tags    →   knowledge_resolver → canonical_telemetry
   candidate_canonical_fields →   field_mapper → validated_fields
   telemetry_requirements     →   telemetry_feasibility engine
-  telemetry_confidence       →   compute_effective_confidence
+  telemetry_confidence       →   passed through as-is (AI self-assessment)
   stable/conditional/features →   (kept as-is for Step 6)
 
 Single Responsibility: gọi LLM + parse JSON + validate contract. Output là
@@ -31,7 +31,6 @@ from config.settings import settings
 from src.domain.models.attack import AttackMapping, TechnicalAnalysis
 from src.domain.models.telemetry import (
     DetectionFeature,
-    ProvenanceStep,
     TelemetryAssessment,
 )
 from src.infrastructure.ai.core import AIServiceError, BaseAIClient
@@ -48,7 +47,6 @@ from src.usecases.step_4_telemetry._shared_engines.logsource_mapper import (
     map_logsources,
 )
 from src.usecases.step_4_telemetry._shared_engines.telemetry_feasibility import (
-    compute_effective_confidence,
     compute_telemetry_feasibility,
 )
 from src.usecases.step_4_telemetry._shared_engines.telemetry_selector import (
@@ -134,6 +132,7 @@ class AITelemetrySelector:
                     override_base_url=settings.get_step4_base_url(),
                     max_tokens=16384,
                     response_format_json=True,
+                    max_retries=3,
                 )
             else:
                 logger.info(
@@ -146,6 +145,7 @@ class AITelemetrySelector:
                     model=self._MODEL,
                     max_tokens=16384,
                     response_format_json=True,
+                    max_retries=3,
                 )
 
             cleaned = self._clean_json(response_text)
@@ -283,14 +283,6 @@ class AITelemetrySelector:
             rule_strategy=llm.recommended_rule_strategy,
         )
 
-        effective_confidence = compute_effective_confidence(
-            ai_confidence=llm.telemetry_confidence,
-            validated_fields=validated_fields,
-            invalid_fields=invalid_fields,
-            canonical_resolved=len(canonical_bundle.canonical_telemetry),
-            canonical_skipped=len(canonical_bundle.skipped_domains),
-        )
-
         # === correlation_required ===
         correlation_required = llm.correlation_required
         if not correlation_required:
@@ -329,13 +321,6 @@ class AITelemetrySelector:
             + tier_warnings
         )
 
-        # === Provenance trail (Phase 7): Domain → KB → Canonical → Sigma ===
-        provenance = self._build_provenance(
-            valid_domains=valid_domains,
-            canonical_telemetry=canonical_bundle.canonical_telemetry,
-            sigma_logsources=sigma_logsources,
-        )
-
         # === AI hallucination ratio (Phase 7): |required - validated| / max(required, 1) ===
         n_required = len(required_fields or [])
         n_validated = len(validated_fields or [])
@@ -360,12 +345,10 @@ class AITelemetrySelector:
             correlation_required=correlation_required,
             field_taxonomy_notes=llm.field_taxonomy_notes or None,
             telemetry_confidence=llm.telemetry_confidence,
-            effective_confidence=effective_confidence,
             stable_features=valid_stable or None,
             conditional_features=valid_conditional or None,
             optional_features=valid_optional or None,
             telemetry_selection_rationale=llm.telemetry_selection_rationale or None,
-            provenance=provenance or None,
             ai_hallucination_ratio=ai_hallucination_ratio,
             # Code layer (deterministic) — NEW canonical fields
             canonical_telemetry=[ct.id for ct in canonical_bundle.canonical_telemetry] or None,
@@ -492,68 +475,6 @@ class AITelemetrySelector:
 
         new_conditional = list(conditional or []) + demoted
         return new_stable, new_conditional, list(optional or []), warnings
-
-    @staticmethod
-    def _build_provenance(
-        valid_domains: list[str],
-        canonical_telemetry: list,
-        sigma_logsources: list,
-    ) -> list[ProvenanceStep]:
-        """Phase 7 (2026-07): Build provenance trail (Domain → KB → Canonical → Sigma).
-
-        Mỗi step kèm reason (KB mapping_reason). Reviewer có thể audit
-        toàn bộ pipeline:
-
-            Domain       → Canonical Telemetry  → Sigma Logsource
-            identity     → windows_security_audit → 4624
-            process      → sysmon_process          → 1
-
-        Returns:
-            List of ProvenanceStep. Empty list nếu empty inputs.
-        """
-        if not valid_domains and not canonical_telemetry:
-            return []
-
-        provenance: list[ProvenanceStep] = []
-
-        # Step 1: Domain → KB lookup
-        for domain in valid_domains:
-            provenance.append(
-                ProvenanceStep(
-                    step="domain",
-                    input=domain,
-                    output=domain,
-                    reason=f"AI emit domain '{domain}' — semantic intent",
-                    kb_source="telemetry_domains.yaml",
-                )
-            )
-
-        # Step 2: Canonical resolution (domain → canonical telemetry)
-        for ct in canonical_telemetry:
-            provenance.append(
-                ProvenanceStep(
-                    step="canonical_resolution",
-                    input=", ".join(ct.source_domains) if hasattr(ct, "source_domains") else "domain",
-                    output=ct.id,
-                    reason=getattr(ct, "mapping_reason", "")
-                    or f"KB canonical '{ct.id}' mapped from domain(s)",
-                    kb_source=f"telemetry_domains.yaml:{getattr(ct, 'id', '?')}",
-                )
-            )
-
-        # Step 3: Sigma mapping (canonical → sigma logsource)
-        for sl in sigma_logsources:
-            provenance.append(
-                ProvenanceStep(
-                    step="sigma_mapping",
-                    input=str(sl.category) if hasattr(sl, "category") else "",
-                    output=f"{getattr(sl, 'category', '')}/{getattr(sl, 'product', '')}",
-                    reason=f"Sigma logsource from canonical telemetry",
-                    kb_source=f"sigma_categories.yaml:{getattr(sl, 'category', '')}",
-                )
-            )
-
-        return provenance
 
     @staticmethod
     def _clean_json(text: str) -> str:

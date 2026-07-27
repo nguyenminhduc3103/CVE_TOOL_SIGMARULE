@@ -12,7 +12,6 @@ Contract này KHÔNG chứa:
   - required_fields, validated_fields, invalid_fields (→ field_mapper)
   - canonical_telemetry, canonical_fields (→ resolver)
   - telemetry_feasibility_score / breakdown (→ feasibility engine)
-  - effective_confidence (→ compute_effective_confidence)
 """
 from __future__ import annotations
 
@@ -124,6 +123,5 @@ class TelemetryLLMResponse(BaseModel):
         default=0.7,
         ge=0.0,
         le=1.0,
-        description="AI self-assessment. Code sẽ tính effective_confidence = "
-                    "ai_confidence × (field_ratio ⊓ domain_ratio).",
+        description="AI self-assessment về khả năng detect CVE này với telemetry đã chọn.",
     )

@@ -13,8 +13,6 @@ from src.usecases.step_4_telemetry._shared_engines.correlation_advisor import (
 from src.usecases.step_4_telemetry._shared_engines.field_mapper import (
     LOGSOURCE_FIELDS,
     map_required_fields,
-    validate_sigma_taxonomy,
-    validate_sigma_taxonomy_multi,
 )
 from src.usecases.step_4_telemetry._shared_engines.logsource_mapper import (
     map_logsources,
@@ -37,8 +35,6 @@ __all__ = [
     "map_logsources",
     "map_logsources_from_candidates",
     "validate_fields_by_logsources",
-    "validate_sigma_taxonomy",
-    "validate_sigma_taxonomy_multi",
     "compute_telemetry_feasibility",
     "select_detection_axis",
 ]

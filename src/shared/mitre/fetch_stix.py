@@ -1,13 +1,11 @@
-"""CLI: download / refresh MITRE ATT&CK + CAPEC STIX bundles.
+"""CLI: download / refresh MITRE ATT&CK STIX bundle.
 
 Usage:
-    python -m app.shared.mitre.fetch_stix             # download if missing/stale
-    python -m app.shared.mitre.fetch_stix --force     # always re-download
-    python -m app.shared.mitre.fetch_stix --capec-only
-    python -m app.shared.mitre.fetch_stix --attack-only
+    python -m src.shared.mitre.fetch_stix             # download if missing/stale
+    python -m src.shared.mitre.fetch_stix --force     # always re-download
 
 After download, run a smoke import to verify parsing:
-    python -c "from app.shared.mitre.loader import MitreAttackWhitelist; \
+    python -c "from src.shared.mitre.loader import MitreAttackWhitelist; \
         w = MitreAttackWhitelist.get(); \
         print(f'{len(w.tactics)} tactics, {len(w.techniques)} techniques, {len(w.subtechniques)} subtechniques')"
 """
@@ -19,14 +17,14 @@ import logging
 import sys
 from pathlib import Path
 
-# Allow `python -m app.shared.mitre.fetch_stix` to bootstrap sys.path.
+# Allow `python -m src.shared.mitre.fetch_stix` to bootstrap sys.path.
 _HERE = Path(__file__).resolve().parent
 _REPO_ROOT = _HERE.parents[2]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from config.settings import settings  # noqa: E402
-from app.shared.mitre.loader import (  # noqa: E402
+from src.shared.mitre.loader import (  # noqa: E402
     _ENTERPRISE_ATTACK_URL,
     _HTTP_TIMEOUT,
     _USER_AGENT,
@@ -34,13 +32,6 @@ from app.shared.mitre.loader import (  # noqa: E402
 )
 
 logger = logging.getLogger("mitre.fetch_stix")
-
-
-# CAPEC bundle (used by capec_hint.py). Smaller (~4.3MB) than ATT&CK.
-_CAPEC_URL = (
-    "https://raw.githubusercontent.com/mitre/cti/master/"
-    "capec/2.1/stix-capec.json"
-)
 
 
 def _download(url: str, dest: Path) -> bool:
@@ -109,42 +100,13 @@ def _validate_stix_attack(path: Path) -> bool:
     return True
 
 
-def _validate_capec(path: Path) -> bool:
-    try:
-        with open(path, encoding="utf-8") as f:
-            bundle = json.load(f)
-    except (OSError, json.JSONDecodeError) as exc:
-        logger.error("Invalid JSON: %s — %s", path, exc)
-        return False
-    objects = bundle.get("objects") if isinstance(bundle, dict) else None
-    if not isinstance(objects, list) or not objects:
-        logger.error("Empty or missing 'objects' list in %s", path)
-        return False
-    n_attack_pattern = sum(
-        1 for o in objects if isinstance(o, dict) and o.get("type") == "attack-pattern"
-    )
-    if n_attack_pattern < 100:
-        logger.warning("Only %d CAPEC attack-patterns (expected 500+).", n_attack_pattern)
-        return False
-    logger.info("Validated: %d CAPEC attack-pattern objects", n_attack_pattern)
-    return True
-
-
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Download / refresh MITRE ATT&CK + CAPEC STIX bundles"
+        description="Download / refresh MITRE ATT&CK STIX bundle"
     )
     parser.add_argument(
         "--force", action="store_true",
         help="Re-download even if cache is fresh",
-    )
-    parser.add_argument(
-        "--attack-only", action="store_true",
-        help="Only download MITRE ATT&CK Enterprise bundle (skip CAPEC)",
-    )
-    parser.add_argument(
-        "--capec-only", action="store_true",
-        help="Only download CAPEC bundle (skip ATT&CK)",
     )
     parser.add_argument(
         "-v", "--verbose", action="store_true",
@@ -160,57 +122,35 @@ def main() -> int:
     cache_dir = Path(settings.mitre_cache_dir)
     cache_dir.mkdir(parents=True, exist_ok=True)
 
-    rc = 0
-    do_attack = not args.capec_only
-    do_capec = not args.attack_only
-
-    if do_attack:
-        dest = cache_dir / "enterprise-attack.json"
-        if not args.force and dest.exists():
-            import time
-            age_days = (time.time() - dest.stat().st_mtime) / 86400
-            logger.info(
-                "ATT&CK cache exists (age=%.1f days, ttl=%d days) — skipping (use --force to override)",
-                age_days, settings.mitre_cache_ttl_seconds // 86400,
-            )
+    dest = cache_dir / "enterprise-attack.json"
+    if not args.force and dest.exists():
+        import time
+        age_days = (time.time() - dest.stat().st_mtime) / 86400
+        logger.info(
+            "ATT&CK cache exists (age=%.1f days, ttl=%d days) — skipping (use --force to override)",
+            age_days, settings.mitre_cache_ttl_seconds // 86400,
+        )
+    else:
+        if _download(_ENTERPRISE_ATTACK_URL, dest):
+            if not _validate_stix_attack(dest):
+                return 1
         else:
-            if _download(_ENTERPRISE_ATTACK_URL, dest):
-                if not _validate_stix_attack(dest):
-                    rc = 1
-            else:
-                rc = 1
+            return 1
 
-    if do_capec:
-        dest = cache_dir / "capec_stix.json"
-        if not args.force and dest.exists():
-            import time
-            age_days = (time.time() - dest.stat().st_mtime) / 86400
-            logger.info(
-                "CAPEC cache exists (age=%.1f days) — skipping (use --force to override)",
-                age_days,
-            )
-        else:
-            if _download(_CAPEC_URL, dest):
-                if not _validate_capec(dest):
-                    rc = 1
-            else:
-                rc = 1
+    # Verify loader can parse what we just downloaded.
+    try:
+        MitreAttackWhitelist.reset()
+        wl = MitreAttackWhitelist.get()
+        print(
+            f"OK: {len(wl.tactics)} tactics, {len(wl.techniques)} techniques, "
+            f"{len(wl.subtechniques)} subtechniques "
+            f"(source={wl.source}, baseline_fallback={wl.is_baseline_fallback})"
+        )
+    except Exception as exc:
+        logger.error("Loader smoke-test failed: %s", exc)
+        return 1
 
-    if rc == 0:
-        # Verify loader can parse what we just downloaded.
-        try:
-            MitreAttackWhitelist.reset()
-            wl = MitreAttackWhitelist.get()
-            print(
-                f"OK: {len(wl.tactics)} tactics, {len(wl.techniques)} techniques, "
-                f"{len(wl.subtechniques)} subtechniques "
-                f"(source={wl.source}, baseline_fallback={wl.is_baseline_fallback})"
-            )
-        except Exception as exc:
-            logger.error("Loader smoke-test failed: %s", exc)
-            rc = 1
-
-    return rc
+    return 0
 
 
 if __name__ == "__main__":

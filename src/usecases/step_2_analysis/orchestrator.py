@@ -381,10 +381,17 @@ async def run_step2_tech_analysis(
     modified_at: str,
     poc_references: list[str] | None = None,
     threat_actors: list[str] | None = None,
+    is_kev: bool = False,
+    ransomware_usage: bool = False,
 ) -> tuple[TechnicalAnalysis | None, AttackMapping | None, dict[str, Any]]:
     """Run Step 2 bằng 2-phase AI flow.
     Phase 1 (behavior only) → Phase 2 (ATT&CK mapping với Phase 1 làm anchor).
     Rule-based fallback chỉ chạy khi Phase 1 hoặc cả 2 phase đều fail.
+
+    `is_kev` / `ransomware_usage` là advisory context signals từ caller
+    (Step 1 triage). Hiện tại chỉ thread xuống logging; Phase 2 prompt vẫn
+    dùng luồng cũ 1-shot (KB lookup table). Tín hiệu sẽ được dùng cho
+    KB-driven prompt ở refactor tiếp theo.
     """
     return await _run_step2_two_phase(
         ai_service=ai_service,
@@ -400,6 +407,8 @@ async def run_step2_tech_analysis(
         modified_at=modified_at,
         poc_references=poc_references,
         threat_actors=threat_actors,
+        is_kev=is_kev,
+        ransomware_usage=ransomware_usage,
     )
 
 
@@ -417,27 +426,21 @@ async def _run_step2_two_phase(
     modified_at: str,
     poc_references: list[str] | None = None,
     threat_actors: list[str] | None = None,
+    is_kev: bool = False,
+    ransomware_usage: bool = False,
 ) -> tuple[TechnicalAnalysis | None, AttackMapping | None, dict[str, Any]]:
     """Two-phase flow: Phase 1 behavior → Phase 2 ATT&CK.
 
     Backward compat: returns same tuple shape as legacy flow.
+    Advisory signals (is_kev, ransomware_usage) accepted but currently
+    unused by prompt — kept on signature so caller doesn't break.
     """
     from src.usecases.step_2_analysis.services.phase1_service import AIPhase1Service
     from src.domain.models.execution_surface import DeliveryVector, ExecutionSurface
 
-    # CAPEC hints chỉ cần cho Phase 2
+    # CAPEC hints disabled — `app.shared.mitre.capec_hint` đã xóa từ migration sang `src/`.
+    # Module này chưa được viết lại; default empty dict. AI Phase 1 vẫn hoạt động độc lập.
     capec_hints_by_cwe: dict[str, list[dict]] = {}
-    if cwe_ids:
-        try:
-            from app.shared.mitre.capec_hint import query_capec_for_cwe
-            for cwe_id in cwe_ids:
-                if not cwe_id or cwe_id.startswith("NVD-CWE"):
-                    continue
-                hints = query_capec_for_cwe(cwe_id, max_results=3)
-                if hints:
-                    capec_hints_by_cwe[cwe_id] = hints
-        except Exception as exc:
-            logger.debug("[Step 2 - Two-Phase] CAPEC hint query skipped: %s", exc)
 
     # ===== PHASE 1: Behavior Analysis (FACTS only) =====
     phase1_service = AIPhase1Service(base_client)

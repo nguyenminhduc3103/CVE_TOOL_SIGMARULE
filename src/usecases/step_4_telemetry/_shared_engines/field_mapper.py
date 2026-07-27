@@ -67,30 +67,3 @@ def map_required_fields(logsources: list[str], behaviors: list[str] | None = Non
             seen.add(field)
             unique_fields.append(field)
     return unique_fields
-
-
-def validate_sigma_taxonomy(category: str, fields: list[str]) -> tuple[list[str], list[str]]:
-    allowed = set(LOGSOURCE_FIELDS.get(category, ()))
-    valid_fields: list[str] = []
-    notes: list[str] = []
-    for field in fields:
-        if field in allowed:
-            valid_fields.append(field)
-        else:
-            notes.append(f"field '{field}' is outside Sigma taxonomy for category '{category}'")
-    return valid_fields, notes
-
-
-def validate_sigma_taxonomy_multi(categories: list[str], fields: list[str]) -> tuple[list[str], list[str]]:
-    allowed: set[str] = set()
-    for category in categories:
-        allowed.update(LOGSOURCE_FIELDS.get(category, ()))
-
-    valid_fields: list[str] = []
-    notes: list[str] = []
-    for field in fields:
-        if field in allowed:
-            valid_fields.append(field)
-        else:
-            notes.append(f"field '{field}' is outside Sigma taxonomy for selected categories: {','.join(categories)}")
-    return valid_fields, notes

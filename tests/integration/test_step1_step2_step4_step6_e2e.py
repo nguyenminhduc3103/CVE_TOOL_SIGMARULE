@@ -24,15 +24,6 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-# Load .env if present (so CVE_TI_DUMP_YAML=1 in .env is honored)
-try:
-    from dotenv import load_dotenv  # type: ignore
-    _env_path = ROOT / ".env"
-    if _env_path.exists():
-        load_dotenv(_env_path, override=False)
-except ImportError:
-    pass
-
 debug_mode = "--debug" in sys.argv
 if debug_mode:
     sys.argv.remove("--debug")

@@ -303,9 +303,13 @@ class TelemetrySourceAssessment(BaseModel):
     def from_discovery(cls, discovery: TelemetryDiscovery) -> TelemetrySourceAssessment:
         """Create assessment from discovery result.
 
-        Gate logic:
-        - 0 verified artifacts → STOP_GATE (blocking=True)
-        - 1+ verified artifacts → CONTINUE
+        Gate logic (2026-07): Step 1.4 (telemetry gate) chưa hoàn thiện — providers
+        search logic vẫn thiếu nhiều trường hợp, verified_count gần như luôn = 0.
+        Hard bypass: 0 verified → vẫn CONTINUE để Step 4 / 6 chạy. Confidence = LOW
+        để reviewer thấy quality gap. Khi Step 1.4 hoàn thiện, sẽ restore gate.
+
+        - 0 verified artifacts → CONTINUE (blocking=False, confidence=LOW)
+        - 1+ verified artifacts → CONTINUE (confidence=MEDIUM)
         - 3+ verified artifacts → HIGH confidence
         """
         verified_count = discovery.get_verified_count()
@@ -344,21 +348,23 @@ class TelemetrySourceAssessment(BaseModel):
             }
             verified_evidence.append(evidence_item)
 
-        # Gate decision
+        # Gate decision (hard bypass 2026-07: Step 1.4 chưa hoàn thiện)
         if verified_count == 0:
-            decision = AssessmentDecision.STOP_GATE
+            decision = AssessmentDecision.CONTINUE
             candidate_names = [s.source_name for s in discovery.candidate_sources]
             reasoning = (
-                "No verified telemetry artifacts found. "
-                f"Searched {len(discovery.candidate_sources)} telemetry providers but none "
-                "contained actual log samples, EVTX files, or other telemetry artifacts. "
-                "Cannot generate reliable Sigma rules without observed telemetry."
+                "⚠ Step 1.4 telemetry gate bypassed (verified_count=0). "
+                f"Searched {len(discovery.candidate_sources)} telemetry providers nhưng "
+                "chưa tìm được verified artifacts — Step 1.4 chưa hoàn thiện, providers "
+                "search logic thiếu nhiều trường hợp. Pipeline vẫn chạy Step 4/6 với "
+                "AI-inferred telemetry (confidence=LOW). Reviewer nên kiểm tra logsource "
+                "và field được AI đề xuất, không nên trust 100%."
             )
-            blocking = True
+            blocking = False
             recommendation = (
-                "Search for: (1) PoC repositories with log output in README, "
-                "(2) Security research blogs with real log samples, "
-                "(3) Public datasets (EVTX-ATTACK-SAMPLES, Splunk BOTS) with labeled samples."
+                "Step 1.4 providers cần bổ sung: (1) PoC repositories với log output "
+                "trong README, (2) Security research blogs có real log samples, "
+                "(3) Public datasets (EVTX-ATTACK-SAMPLES, Splunk BOTS) labeled samples."
             )
         else:
             decision = AssessmentDecision.CONTINUE
