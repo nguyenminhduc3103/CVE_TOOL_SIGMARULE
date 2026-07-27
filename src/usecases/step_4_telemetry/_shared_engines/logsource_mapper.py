@@ -111,6 +111,87 @@ def _unique(items: list[str]) -> list[str]:
     return result
 
 
+# Free-form term → SigmaLogsource resolver (for AI candidate_logsources).
+# AI emit terms như "apache", "java", "ldap" — code layer normalize về SigmaLogsource.
+_SERVICE_TO_LOGSOURCE: dict[str, SigmaLogsource] = {
+    "apache": SigmaLogsource(category="webserver", product="linux", service="apache"),
+    "nginx": SigmaLogsource(category="webserver", product="linux", service="nginx"),
+    "iis": SigmaLogsource(category="webserver", product="windows", service="iis"),
+    "tomcat": SigmaLogsource(category="webserver", product="linux", service="tomcat"),
+    "sysmon": SigmaLogsource(category="process_creation", product="windows"),
+    "edr": SigmaLogsource(category="process_creation", product="windows"),
+    "zeek": SigmaLogsource(category="network_connection", product="zeek"),
+    "suricata": SigmaLogsource(category="network_connection", product="suricata"),
+    "ldap": SigmaLogsource(category="network_connection", product="windows"),
+    "dns": SigmaLogsource(category="dns_query", product="windows"),
+    "dns_query": SigmaLogsource(category="dns_query", product="windows"),
+    "powershell": SigmaLogsource(category="ps_script", product="windows"),
+    "firewall": SigmaLogsource(category="firewall", product="windows"),
+    "antivirus": SigmaLogsource(category="antivirus", product="windows"),
+    "java": SigmaLogsource(category="process_creation", product="windows"),
+    "process": SigmaLogsource(category="process_creation", product="windows"),
+    "process_creation": SigmaLogsource(category="process_creation", product="windows"),
+    "network": SigmaLogsource(category="network_connection", product="windows"),
+    "network_connection": SigmaLogsource(category="network_connection", product="windows"),
+    "webserver": SigmaLogsource(category="webserver", product="linux", service="apache"),
+    "web": SigmaLogsource(category="webserver", product="linux", service="apache"),
+    "file": SigmaLogsource(category="file_event", product="windows"),
+    "file_event": SigmaLogsource(category="file_event", product="windows"),
+    "registry": SigmaLogsource(category="registry_event", product="windows"),
+    "registry_event": SigmaLogsource(category="registry_event", product="windows"),
+    "image_load": SigmaLogsource(category="image_load", product="windows"),
+}
+
+
+def map_logsources_from_candidates(
+    candidate_logsources: list[str] | None,
+    mandatory_behaviors: list[str] | None = None,
+    techniques: list[str] | None = None,
+) -> list[SigmaLogsource]:
+    """Map free-form AI terms → schema-enforced SigmaLogsource.
+
+    Flow: (1) resolve free-form qua _SERVICE_TO_LOGSOURCE; (2) bổ sung từ
+    mandatory_behaviors → BEHAVIOR_TO_LOGSOURCE; (3) bổ sung từ techniques →
+    TECHNIQUE_TO_LOGSOURCE; (4) dedup theo (category, product, service).
+    """
+    logsources: list[SigmaLogsource] = []
+    seen: set[tuple[str, str, str | None]] = set()
+
+    def _add(logsource: SigmaLogsource | None) -> None:
+        if logsource is None:
+            return
+        key = (logsource.category, logsource.product, logsource.service)
+        if key in seen:
+            return
+        seen.add(key)
+        logsources.append(logsource)
+
+    # Free-form candidate terms
+    for term in candidate_logsources or []:
+        normalized = term.strip().lower()
+        if not normalized:
+            continue
+        mapped = _SERVICE_TO_LOGSOURCE.get(normalized)
+        if mapped is not None:
+            _add(mapped)
+            continue
+        # Term không match whitelist → skip silently. taxonomy_validator sẽ warn field sai.
+
+    # Bổ sung từ mandatory_behaviors
+    for behavior in mandatory_behaviors or []:
+        mapped = BEHAVIOR_TO_LOGSOURCE.get(behavior)
+        if mapped is not None:
+            _add(mapped[0])
+
+    # Bổ sung từ techniques
+    for technique in techniques or []:
+        mapped = TECHNIQUE_TO_LOGSOURCE.get(technique)
+        if mapped is not None:
+            _add(mapped[0])
+
+    return logsources
+
+
 def map_logsources(
     mandatory_behaviors: list[str] | None,
     techniques: list[str] | None,

@@ -20,8 +20,8 @@ if str(ROOT) not in sys.path:
 import httpx
 import pytest
 
-from app.shared.clients.nvd_client import NVDHTTPClient
-from app.shared.clients.otx_client import OTXFetchError, OTXHTTPClient
+from src.infrastructure.clients.nvd_client import NVDHTTPClient
+from src.infrastructure.clients.otx_client import OTXFetchError, OTXHTTPClient
 
 
 # ---------------------------------------------------------------------------
@@ -60,7 +60,7 @@ class TestNVDMirrorFallback:
     def test_mirror_method_directly_returns_normalized_data(self):
         """Test _fetch_from_mirror trực tiếp + adapter normalize."""
         async def scenario():
-            from app.shared.clients.base import BaseHTTPClient
+            from src.infrastructure.clients.base import BaseHTTPClient
             from unittest.mock import AsyncMock, MagicMock
 
             nvd = NVDHTTPClient(timeout=5)
@@ -174,7 +174,7 @@ class TestOrchestratorProviderStatus:
 
     def test_empty_dict_provider_marked_failed(self):
         async def scenario():
-            from app.steps.step_1_triage.orchestrator import TriageOrchestrator
+            from src.usecases.step_1_triage.orchestrator import TriageOrchestrator
 
             orch = TriageOrchestrator.__new__(TriageOrchestrator)
             orch.logger = MagicMock()
@@ -208,7 +208,7 @@ class TestOrchestratorProviderStatus:
     def test_dict_with_keys_marked_success(self):
         """Dict có keys (kể cả value None) vẫn là success."""
         async def scenario():
-            from app.steps.step_1_triage.orchestrator import TriageOrchestrator
+            from src.usecases.step_1_triage.orchestrator import TriageOrchestrator
 
             orch = TriageOrchestrator.__new__(TriageOrchestrator)
             orch.logger = MagicMock()

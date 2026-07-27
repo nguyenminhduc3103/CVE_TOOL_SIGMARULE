@@ -73,11 +73,11 @@ Hệ thống tích hợp trực tiếp với OpenCTI TAXII 2.1 để thu thập 
 
 | Provider | Vai trò & Thông tin trích xuất | Đường dẫn mã nguồn |
 |:---|:---|:---|
-| **NVD Provider** | Lấy mô tả chi tiết, điểm số CVSS, Vector tấn công, mức độ nghiêm trọng (Severity), danh sách CPE và References. | [nvd/provider.py](file:///d:/CVE_TOOL_SIGMARULE/app/shared/providers/nvd/provider.py) |
-| **KEV Provider** | Kiểm tra trạng thái bị khai thác trong thực tế (CISA KEV), ngày đưa vào danh mục, sự liên quan tới các chiến dịch ransomware. | [kev/provider.py](file:///d:/CVE_TOOL_SIGMARULE/app/shared/providers/kev/provider.py) |
-| **EPSS Provider** | Lấy xác suất bị khai thác trong vòng 30 ngày tới (EPSS Score) và phân vị xếp hạng tương quan (EPSS Percentile). | [epss/provider.py](file:///d:/CVE_TOOL_SIGMARULE/app/shared/providers/epss/provider.py) |
-| **OTX Provider** | Truy vấn AlienVault OTX để thu thập thông tin về các nhóm tấn công (Threat Actors) liên quan. | [otx/provider.py](file:///d:/CVE_TOOL_SIGMARULE/app/shared/providers/otx/provider.py) |
-| **PoC Provider** | Thu thập các liên kết chứa mã khai thác mẫu (PoC) chất lượng từ các kho lưu trữ công cộng. | [poc/provider.py](file:///d:/CVE_TOOL_SIGMARULE/app/shared/providers/poc/provider.py) |
+| **NVD Provider** | Lấy mô tả chi tiết, điểm số CVSS, Vector tấn công, mức độ nghiêm trọng (Severity), danh sách CPE và References. | [nvd/client.py](src/infrastructure/clients/nvd_client.py) |
+| **KEV Provider** | Kiểm tra trạng thái bị khai thác trong thực tế (CISA KEV), ngày đưa vào danh mục, sự liên quan tới các chiến dịch ransomware. | [kev/client.py](src/infrastructure/clients/kev_client.py) |
+| **EPSS Provider** | Lấy xác suất bị khai thác trong vòng 30 ngày tới (EPSS Score) và phân vị xếp hạng tương quan (EPSS Percentile). | [epss/client.py](src/infrastructure/clients/epss_client.py) |
+| **OTX Provider** | Truy vấn AlienVault OTX để thu thập thông tin về các nhóm tấn công (Threat Actors) liên quan. | [otx/client.py](src/infrastructure/clients/otx_client.py) |
+| **PoC Provider** | Thu thập các liên kết chứa mã khai thác mẫu (PoC) chất lượng từ các kho lưu trữ công cộng. | [poc/client.py](src/infrastructure/clients/poc_client.py) |
 
 ### 2.3 Cơ Chế Tự Phục Hồi Khi API Gặp Lỗi (OTX Fallback Mechanism)
 Do API của NVD thường xuyên gặp lỗi quá tải (HTTP 503 Service Unavailable) hoặc Timeout, hệ thống thiết lập cơ chế **Fallback sang AlienVault OTX** tại phương thức `_build_core_context` của `TriageOrchestrator`:

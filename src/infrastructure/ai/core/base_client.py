@@ -138,11 +138,17 @@ class BaseAIClient:
         max_retries: int = 3,
         override_api_key: str | None = None,
         override_base_url: str | None = None,
+        max_tokens: int = 8192,
+        response_format_json: bool = False,
     ) -> str:
         """Call the LLM using httpx directly.
 
         If `override_api_key`/`override_base_url` are provided, use those instead
         of the default client (used by retry path to switch providers).
+
+        Args:
+            max_tokens: Response budget. Default 8192 (Gemini 2.5 Flash limit);
+                raise if Step 4/6 AI sees truncated JSON.
 
         Args:
             system_prompt: System prompt for the LLM.
@@ -212,8 +218,13 @@ class BaseAIClient:
                             {"role": "system", "content": system_prompt},
                             {"role": "user", "content": user_prompt},
                         ],
-                        "max_tokens": 4096,
+                        "max_tokens": max_tokens,
                         "temperature": 0.0,
+                        **(
+                            {"response_format": {"type": "json_object"}}
+                            if response_format_json
+                            else {}
+                        ),
                     },
                     headers={
                         "Authorization": f"Bearer {api_key}",
@@ -239,7 +250,15 @@ class BaseAIClient:
 
                 # Parse response
                 data = response.json()
-                content = data["choices"][0]["message"]["content"]
+                choice = data["choices"][0]
+                content = choice["message"]["content"]
+                finish = choice.get("finish_reason")
+                if finish == "length":
+                    logger.warning(
+                        "[AI] %s response truncated (finish_reason=length, max_tokens hit). "
+                        "Output length: %d chars. Raise max_tokens or shorten prompt.",
+                        model, len(content or ""),
+                    )
                 return content
 
             except httpx.HTTPStatusError as e:

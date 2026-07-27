@@ -156,7 +156,7 @@ class OntologyManager:
         # ATT&CK technique → tactic(s) lookup. Delegate sang MitreAttackWhitelist
         # singleton (STIX dynamic, ~95%+ matrix) thay vì file JSON local.
         # Backward-compat: _technique_to_tactic() vẫn là public API.
-        from app.shared.mitre.loader import MitreAttackWhitelist
+        from src.shared.mitre.loader import MitreAttackWhitelist
         self._attack_whitelist = MitreAttackWhitelist.get()
         logger.debug(
             "OntologyManager initialized (2-layer): %d tactics, %d techniques, "

@@ -21,7 +21,7 @@ Return ONLY this JSON structure:
   "mitre_attack_chain": [
     {
       "technique_id": "T1190",
-      "exact_behavior_anchor": "http_request",
+      "exact_behavior_anchor": "http_request_exploit",
       "textual_evidence": "Quote from CVE description..."
     }
   ],
@@ -38,47 +38,82 @@ For EVERY technique you select, you MUST provide an `exact_behavior_anchor` that
 
 **If no Phase 1 behavior supports a technique, DO NOT include it.**
 
+Only behaviors listed in the vocabulary below are valid.
+Any other string MUST NOT be used as an anchor.
+
 ### Examples:
 
 **For Information Disclosure (CVE-2023-49103):**
-- Phase 1 behaviors: `["http_request", "data_exfiltration"]`
-- ✓ VALID: `{"technique_id": "T1190", "exact_behavior_anchor": "http_request"}`
-- ✗ INVALID: `{"technique_id": "T1203", "exact_behavior_anchor": "memory_corruption"}` - NO memory_corruption in Phase 1
-- ✗ INVALID: `{"technique_id": "T1071", "exact_behavior_anchor": "callback"}` - NO callback in Phase 1
-- ✗ INVALID: `{"technique_id": "T1486", "exact_behavior_anchor": "ransomware"}` - NO ransomware in Phase 1
+- Phase 1 behaviors: `["http_request_exploit", "data_exfiltration"]`
+- VALID: `{"technique_id": "T1190", "exact_behavior_anchor": "http_request_exploit"}`
+- INVALID: `{"technique_id": "T1203", "exact_behavior_anchor": "memory_corruption"}` - NO memory_corruption in Phase 1
+- INVALID: `{"technique_id": "T1071", "exact_behavior_anchor": "callback"}` - NO callback in Phase 1
 
 **For RCE (Log4Shell):**
-- Phase 1 behaviors: `["http_request", "network_callback", "tool_download", "command_execution"]`
-- ✓ VALID: `{"technique_id": "T1190", "exact_behavior_anchor": "http_request"}`
-- ✓ VALID: `{"technique_id": "T1071.001", "exact_behavior_anchor": "network_callback"}`
-- ✓ VALID: `{"technique_id": "T1105", "exact_behavior_anchor": "tool_download"}`
+- Phase 1 behaviors: `["http_request_exploit", "network_callback", "tool_download", "process_creation"]`
+- VALID: `{"technique_id": "T1190", "exact_behavior_anchor": "http_request_exploit"}`
+- VALID: `{"technique_id": "T1071.001", "exact_behavior_anchor": "network_callback"}`
+- VALID: `{"technique_id": "T1105", "exact_behavior_anchor": "tool_download"}`
 
 ---
 
-## PHASE 1 BEHAVIORS MAPPING
+## PHASE 1 BEHAVIORS VOCABULARY
 
-Use these as your anchor vocabulary (must match Phase 1 exactly):
+Only use these behavior names (match Phase 1 exactly):
 
-| Phase 1 Behavior | Appropriate Techniques |
-|-----------------|---------------------|
-| `http_request` | T1190 |
-| `web_request` | T1190 |
-| `process_creation` | T1059, T1203 |
-| `command_execution` | T1059, T1203 |
-| `shell_spawn` | T1059 |
+| Behavior | Maps To |
+|----------|---------|
+| `http_request_exploit` | T1190 |
+| `jndi_injection` | T1190 |
+| `deserialization_trigger` | T1190, T1059 |
+| `sql_injection` | T1190 |
+| `command_injection` | T1190, T1059 |
+| `process_creation` | T1059 |
+| `shell_spawned` | T1059 |
 | `memory_corruption` | T1203 |
 | `buffer_overflow` | T1203 |
-| `network_callback` | T1071, T1071.001, T1105 |
-| `http_callback` | T1071, T1071.001 |
-| `ldap_callback` | T1071, T1071.001, T1105 |
+| `network_callback` | T1071 |
+| `http_callback` | T1071 |
+| `ldap_callback` | T1071 |
+| `outbound_ldap_callback` | T1071 |
 | `tool_download` | T1105 |
 | `file_downloaded` | T1105 |
-| `privilege_escalation` | T1068 |
+| `file_written` | T1105 |
 | `webshell_drop` | T1505.003 |
-| `data_exfiltration` | (no specific ATT&CK - skip) |
-| `sensitive_data_disclosure` | (no specific ATT&CK - skip) |
+| `privilege_escalation` | T1068 |
+| `privilege_escalation_exploit` | T1068 |
+| `local_privilege_escalation` | T1068 |
+| `authentication_bypass` | T1556 |
+| `cryptographic_flaw` | T1556 |
+| `identity_spoofing` | T1556 |
+| `credential_dumping` | T1003 |
+| `data_exfiltration` | T1041 (if network) |
 | `ransomware_behavior` | T1486 |
 | `encryption` | T1486 |
+| `dos_observed` | T1499.004 |
+| `service_crash` | T1499.004 |
+
+---
+
+## CRITICAL ANTI-HALLUCINATION RULES
+
+1. **NEVER infer attacker behaviors not in Phase 1.**
+2. **NEVER add techniques for:**
+   - Persistence (unless `webshell_drop` exists)
+   - Credential Access (unless `credential_dumping` exists)
+   - Lateral Movement (no implicit)
+   - Discovery (no implicit)
+   - Collection (no implicit)
+   - Command & Control (unless `network_callback` exists)
+3. **One behavior may map to multiple techniques, but each technique must have exactly one supporting anchor.**
+4. **If no anchor matches, return empty chain:**
+   ```json
+   {
+     "mitre_attack_chain": [],
+     "attack_confidence": 0.0,
+     "mapping_reasons": ["No Phase 1 behavior matched ATT&CK mapping rules."]
+   }
+   ```
 
 ---
 
@@ -86,37 +121,75 @@ Use these as your anchor vocabulary (must match Phase 1 exactly):
 
 **T1190 (Exploit Public-Facing Application):**
 - Use for: HTTP/Web server exploitation
-- Required anchor: `http_request`, `web_request`
+- Required anchor: `http_request_exploit`
+- Server-side RCE (Apache, Tomcat, Nginx) = T1190, NOT T1203
 
 **T1203 (Exploitation for Client Execution):**
-- Use for: Memory corruption, buffer overflow, deserialization RCE
-- Required anchor: `memory_corruption`, `buffer_overflow`, `command_execution` (server-side)
+- Use ONLY for: Memory corruption, buffer overflow, client-side exploits
+- Required anchor: `memory_corruption`, `buffer_overflow`
+- NEVER use for: Server-side RCE (use T1190 instead)
+- NEVER use `process_creation` as T1203 anchor
 
 **T1059 (Command and Scripting Interpreter):**
-- Use for: Shell spawn, command execution (after RCE)
-- Required anchor: `shell_spawn`, `process_creation`, `command_execution`
+- Use for: Post-exploitation shell spawn, command execution
+- Required anchor: `shell_spawned`, `process_creation`
 
 **T1071 (Application Layer Protocol):**
 - Use for: Callbacks, C2 channels
-- Required anchor: `network_callback`, `http_callback`, `ldap_callback`
+- Required anchor: `network_callback`, `http_callback`, `ldap_callback`, `outbound_ldap_callback`
 
 **T1105 (Ingress Tool Transfer):**
 - Use for: File/tool downloads
-- Required anchor: `tool_download`, `file_downloaded`
+- Required anchor: `tool_download`, `file_downloaded`, `file_written`
+
+**T1068 (Exploitation for Privilege Escalation):**
+- Use for: Kernel exploits, driver vulnerabilities, service privesc
+- Required anchor: `privilege_escalation`, `privilege_escalation_exploit`, `local_privilege_escalation`
+- NOT for: Generic config modification
+
+**T1505.003 (Server Software Component - Web Shell):**
+- Use ONLY when: Phase 1 has `webshell_drop` OR explicit persistence via upload
+- Required anchor: `webshell_drop` (EXACT MATCH)
+- NOT for: Generic file upload without persistence intent
+
+**T1556 (Modify Authentication Process):**
+- Use for: Authentication bypass, cryptographic flaws, identity spoofing
+- Required anchor: `authentication_bypass`, `cryptographic_flaw`, `identity_spoofing`
+- Sub-techniques:
+  - T1556.002 (NTLM) - Zerologon, Netlogon
+  - T1556.003 (Kerberos) - Golden/Silver tickets
+  - T1556.001 (PAM) - Unix/Linux PAM
+  - T1556.004 (Credential Manager) - Windows
+
+**T1078 (Valid Accounts):**
+- Use ONLY if Phase 1 explicitly states attacker obtains/uses valid account
+- NOT the same as authentication bypass
+
+**T1003 (OS Credential Dumping):**
+- Use for: Post-exploitation credential extraction
+- Required anchor: `credential_dumping`
+- Sub-techniques:
+  - T1003.001 (LSASS)
+  - T1003.002 (SAM)
+  - T1003.003 (NTDS)
+  - T1003.008 (/etc/shadow)
 
 **T1486 (Data Encrypted for Impact):**
 - Use for: Ransomware
 - Required anchor: `ransomware_behavior`, `encryption`
 
+**T1499.004 (Endpoint DoS):**
+- Use for: Service crash, DoS
+- Required anchor: `dos_observed`, `service_crash`
+
 ---
 
 ## CONFIDENCE SCALE
 
-attack_confidence:
-- 1.0 = direct evidence from Phase 1
-- 0.8-0.9 = strong evidence
-- 0.5-0.7 = partial evidence
-- <0.5 = weak evidence
+- **1.0** = Every technique has DIRECT mandatory_behavior anchor
+- **0.8** = Technique inferred from explicit CVE wording + anchor
+- **0.5** = Weak mapping (e.g. parent-only without sub-signal)
+- **0.0** = No ATT&CK techniques selected
 
 ---
 
@@ -127,9 +200,9 @@ Explain each technique selection based on Phase 1 evidence.
 Example:
 ```
 "mapping_reasons": [
-  "T1190 selected because Phase 1's mandatory_behaviors include 'http_request'",
-  "No T1203 because Phase 1 has no memory_corruption or buffer_overflow behavior",
-  "No T1071 because Phase 1 has no network_callback behavior"
+  "T1190 selected because Phase 1's mandatory_behaviors include 'http_request_exploit'",
+  "T1059 selected because Phase 1 has 'process_creation' indicating command execution",
+  "No T1203 because Phase 1 has no 'memory_corruption' or 'buffer_overflow'"
 ]
 ```
 

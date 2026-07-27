@@ -360,6 +360,11 @@ class TriageOrchestrator:
                     # to narrow down exploit mechanism for vague CVEs.
                     poc_references=getattr(context.triage, "poc_references", None) or [],
                     threat_actors=getattr(context.triage, "threat_actors", None) or [],
+                    # Context signals from KEV / ransomware intel (advisory).
+                    is_kev=bool(getattr(context.triage, "in_kev", False)),
+                    ransomware_usage=bool(
+                        getattr(context.triage, "ransomware_usage", False)
+                    ),
                 )
 
                 # Nếu AI fail hoàn toàn → fall through

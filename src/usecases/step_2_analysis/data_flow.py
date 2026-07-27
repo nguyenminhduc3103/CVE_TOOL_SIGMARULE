@@ -1,10 +1,8 @@
 """Data flow helpers - thao tác trên dict thuần (không Pydantic).
 
-Orchestrator dùng các helper này để:
-- Convert dict (intermediate AI output) → Pydantic (chỗ duy nhất build
-  TechnicalAnalysis/AttackMapping từ dict).
-- Sanitize None / "none" placeholders trong AI output.
-- Backfill `evasive_indicators` theo CWE family (memory-corruption, code-injection).
+Dùng bởi orchestrator để: convert dict → Pydantic, sanitize placeholder
+("none"/"n/a"/"unknown") trong AI output, backfill `evasive_indicators`
+theo CWE family khi AI trống.
 """
 from __future__ import annotations
 
@@ -20,11 +18,10 @@ from src.domain.models.vulnerability_class import VulnerabilityClass
 
 
 # Pydantic <-> dict conversions
-
 def _ai_dict_to_pydantic(
     data: dict[str, Any], base_tech: TechnicalAnalysis, base_attack: AttackMapping
 ) -> tuple[TechnicalAnalysis, AttackMapping]:
-    """Convert dict (intermediate) sang Pydantic. Chỗ duy nhất build Pydantic từ dict."""
+    """Convert dict (intermediate AI output) → Pydantic. Chỗ duy nhất build Pydantic từ dict."""
     tech_dict = data.get("technical_analysis") or {}
     atk_dict = data.get("attack_mapping") or {}
 
@@ -32,7 +29,7 @@ def _ai_dict_to_pydantic(
     cwe_meta_raw = tech_dict.get("cwe_metadata")
     cwe_meta = None
     if isinstance(cwe_meta_raw, dict):
-        # Normalize cwe_id (singular) -> cwe_ids (list)
+        # Normalize cwe_id (singular) -> cwe_ids (list) — AI đôi khi trả sai dạng
         if "cwe_id" in cwe_meta_raw and "cwe_ids" not in cwe_meta_raw:
             single = cwe_meta_raw.pop("cwe_id")
             cwe_meta_raw["cwe_ids"] = [single] if single else []
@@ -41,7 +38,7 @@ def _ai_dict_to_pydantic(
             cwe_meta_raw["cwe_names"] = [single_name] if single_name else []
         cwe_meta = CWEMetadata(**cwe_meta_raw)
 
-    # AttackFlow: ưu tiên nested (Pydantic AttackFlow), fallback top-level
+    # AttackFlow: ưu tiên nested, fallback top-level
     flow_dict = tech_dict.get("attack_flow") or {}
     attack_flow = AttackFlow(
         entry_vector=flow_dict.get("entry_vector") or tech_dict.get("entry_vector"),
@@ -49,7 +46,7 @@ def _ai_dict_to_pydantic(
         observable_side_effects=flow_dict.get("observable_side_effects") or [],
     )
 
-    # Coerce vulnerability_class
+    # Coerce vulnerability_class — AI có thể trả "VulnerabilityClass.X" hoặc typo
     vc_raw = tech_dict.get("vulnerability_class")
     vc = None
     if vc_raw:
@@ -67,8 +64,8 @@ def _ai_dict_to_pydantic(
             if vc is None:
                 vc = VulnerabilityClass.UNKNOWN
 
-    # Resolve ai_model trước khi construct Pydantic (tech_analysis/attack_mapping
-    # locals không reference được bên trong initializer của chính nó — UnboundLocalError).
+    # Resolve ai_model — phải resolve trước khi construct Pydantic locals
+    # (tech_analysis/attack_mapping không self-reference được trong initializer).
     metadata_raw = tech_dict.get("metadata")
     ai_model = (
         metadata_raw.get("ai_model")
@@ -76,8 +73,6 @@ def _ai_dict_to_pydantic(
         else None
     ) or getattr(base_tech, "ai_model", None) or getattr(base_attack, "ai_model", None)
 
-    # Resolve ai_models_used: ưu tiên base_tech (orchestrator set qua
-    # ai_service.get_models_used()) → fallback base_attack.
     ai_models_used = (
         getattr(base_tech, "ai_models_used", None)
         or getattr(base_attack, "ai_models_used", None)
@@ -112,13 +107,12 @@ def _ai_dict_to_pydantic(
         or getattr(base_tech, "behavior_reason", None),
         cwe_metadata=cwe_meta,
         attack_flow=attack_flow,
-        # === NEW: two-phase fields (Phase 1 output) ===
+        # Two-phase fields (Phase 1 output)
         execution_surface=tech_dict.get("execution_surface"),
         delivery_vector=tech_dict.get("delivery_vector"),
         user_interaction_required=tech_dict.get("user_interaction_required"),
-        # === End two-phase fields ===
         ai_used=True,
-        ai_retry_count=getattr(base_tech, "ai_retry_count", 0),  # PASS THROUGH
+        ai_retry_count=getattr(base_tech, "ai_retry_count", 0),
         ai_model=ai_model,
         ai_models_used=ai_models_used,
     )
@@ -137,15 +131,14 @@ def _ai_dict_to_pydantic(
         dropped_techniques=atk_dict.get("dropped_techniques") or None,
         dropped_subtechniques=atk_dict.get("dropped_subtechniques") or None,
         ai_used=True,
-        ai_retry_count=getattr(base_attack, "ai_retry_count", 0),  # PASS THROUGH
+        ai_retry_count=getattr(base_attack, "ai_retry_count", 0),
         ai_model=ai_model,
         ai_models_used=ai_models_used,
     )
     return tech_analysis, attack_mapping
 
 
-# Sanitize None / "none" placeholders từ AI output
-
+# Sanitize placeholder tokens từ AI output
 _PLACEHOLDER_TOKENS = frozenset({"none", "n/a", "unknown"})
 
 
@@ -155,9 +148,6 @@ def _normalize_none_placeholders(ai_data: dict[str, Any]) -> dict[str, Any]:
     Groq đôi khi trả `techniques = null`, `evasive_indicators = ["none"]`,
     `mapping_reasons = ["none"]`. Normalize để Pydantic build không crash
     và downstream filter không sót.
-
-    Returns:
-        ai_data (modified in-place, cũng return để chain).
     """
     tech = ai_data.get("technical_analysis") or {}
     atk = ai_data.get("attack_mapping") or {}
@@ -186,7 +176,7 @@ def _normalize_none_placeholders(ai_data: dict[str, Any]) -> dict[str, Any]:
         elif raw and str(raw).lower().strip() in _PLACEHOLDER_TOKENS:
             tech[key] = []
 
-    # Backfill evasive_indicators cho memory-corruption / code-injection CWE khi AI trống.
+    # Backfill evasive_indicators cho memory-corruption / code-injection CWE khi AI trống
     cwe_meta = tech.get("cwe_metadata") or {}
     cwe_ids = cwe_meta.get("cwe_ids") or []
     if not tech.get("evasive_indicators"):
@@ -198,15 +188,14 @@ def _normalize_none_placeholders(ai_data: dict[str, Any]) -> dict[str, Any]:
     elif raw and str(raw).lower().strip() in _PLACEHOLDER_TOKENS:
         atk["mapping_reasons"] = []
 
-    # observable_side_effects: không filter "none" (có thể legitimate).
+    # observable_side_effects: không filter "none" (có thể legitimate)
     if flow.get("observable_side_effects") is None:
         flow["observable_side_effects"] = []
 
     return ai_data
 
 
-# Backfill evasive_indicators khi AI trả [] / ["none"] (đã filter ở trên).
-# Áp dụng theo CWE family — memory-corruption HOẶC code-injection.
+# Backfill evasive_indicators theo CWE family khi AI trống
 
 _EVASIVE_DEFAULTS_BY_CWE: dict[str, list[str]] = {
     "CWE-787": ["ROP chains to bypass DEP", "ASLR bypass via info leak",
@@ -242,24 +231,16 @@ _EVASIVE_DEFAULTS_BY_CWE: dict[str, list[str]] = {
     ],
 }
 
-# Canonical CWE family sets. Imported bởi exploit_classifier.py để enforce
-# mandatory `evasive_indicators` (memory-corruption / code-injection) và
-# execution_surface classification (server_side heuristics).
+# Canonical CWE family sets — dùng bởi exploit_classifier + Step 2 validation.
 _MEMORY_CORRUPTION_CWES = frozenset({"CWE-787", "CWE-125", "CWE-416", "CWE-119", "CWE-190"})
 
-# Code-injection family: generic (CWE-94/95/96), expression language (CWE-917),
-# server-side template injection (CWE-1336).
+# Code-injection: generic (94/95/96) + EL injection (917) + template (1336)
 _CODE_INJECTION_CWES = frozenset({
-    "CWE-94",   # Code Injection
-    "CWE-95",   # Eval Injection
-    "CWE-96",   # Static Code Injection
-    "CWE-917",  # Expression Language Injection
-    "CWE-1336", # Template Injection
+    "CWE-94", "CWE-95", "CWE-96", "CWE-917", "CWE-1336",
 })
 
 
 def _default_evasive_indicators_for_cwe(cwe_ids: list[str] | None) -> list[str]:
-    """Backfill evasive_indicators theo CWE family (memory-corruption HOẶC code-injection)."""
     if not cwe_ids:
         return []
     cwe_set = set(cwe_ids)
@@ -271,7 +252,3 @@ def _default_evasive_indicators_for_cwe(cwe_ids: list[str] | None) -> list[str]:
     if cwe_set & _CODE_INJECTION_CWES:
         out.extend(_EVASIVE_DEFAULTS_BY_CWE["_code_injection_default"])
     return out
-
-
-# Backfill evasive_indicators khi AI trả [] / ["none"] (đã filter ở trên).
-# Áp dụng theo CWE family — memory-corruption HOẶC code-injection.

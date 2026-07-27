@@ -182,8 +182,9 @@ class GenericRCETemplate(_BaseTemplate):
         if selections:
             return self._build_detection(selections, "1 of selection_*")
 
-        candidate_logsources = self._list(self._get(telemetry, "candidate_logsources"))
-        primary_logsource = candidate_logsources[0] if candidate_logsources else None
+        # Phase 7 (2026-07): candidate_logsources deprecated → derive từ sigma_logsources
+        sigma_logsources = self._get(telemetry, "sigma_logsources") or []
+        primary_logsource = self._get(sigma_logsources[0], "category") if sigma_logsources else None
         if primary_logsource == "process_creation" and self._field_allowed(telemetry, "CommandLine|contains"):
             return self._build_detection({"selection_process": {"CommandLine|contains": ["${PAYLOAD}"]}}, "1 of selection_*")
         if primary_logsource == "webserver" and self._field_allowed(telemetry, "cs-uri-query|contains"):
