@@ -78,14 +78,7 @@ TECHNIQUE_TO_TACTICS: dict[str, list[str]] = {
 
 
 def _derive_tactics_from_techniques(techniques: list[str]) -> list[str]:
-    """Suy diễn tactics từ techniques.
-
-    Args:
-        techniques: Danh sách technique IDs (vd ['T1190', 'T1203', 'T1071'])
-
-    Returns:
-        Danh sách tactic IDs duy nhất (vd ['TA0001', 'TA0002', 'TA0011'])
-    """
+    """Suy diễn tactics từ techniques (vd T1190/T1203/T1071 → TA0001/TA0002/TA0011)."""
     tactics: list[str] = []
     for tech in techniques:
         mapped = TECHNIQUE_TO_TACTICS.get(tech, [])
@@ -121,12 +114,7 @@ def _apply_intelligent_override(
     attack_mapping: dict,
     phase1_dict: dict | None = None,
 ) -> dict:
-    """Hybrid override — chỉ override khi AI sai rõ ràng.
-
-    Conditions:
-    1. techniques rỗng → FALLBACK_ATTACK_CHAINS, hoặc rule-based từ Phase 1.
-    2. tactics không match techniques → derive lại.
-    """
+    """Hybrid override — chỉ override khi techniques rỗng (→ fallback chain) hoặc tactics không match techniques."""
     if not cve_id:
         return attack_mapping
 
@@ -191,11 +179,7 @@ def _derive_from_phase1_fallback(
     phase1_dict: dict,
     cve_id: str,
 ) -> dict | None:
-    """Derive attack chain từ Phase 1 (rule-based fallback).
-
-    Dựa trên execution_surface, entry_vector, observable_side_effects.
-    Returns None nếu không suy luận được.
-    """
+    """Derive attack chain từ Phase 1 (execution_surface, entry_vector, observable_side_effects). Returns None nếu không suy luận được."""
     if not phase1_dict:
         return None
 
@@ -284,11 +268,7 @@ def _build_rule_based_pydantic(
     ai_model: str | None,
     ai_retry_count: int,
 ) -> tuple[TechnicalAnalysis, AttackMapping]:
-    """Build Pydantic trực tiếp từ rule-based engines (NO dict intermediate).
-
-    Spec CVE-2-Sigma.md: "AI có dự phòng" → rule-based chỉ chạy khi AI fail.
-    Output FINAL — không qua `_ai_dict_to_pydantic`.
-    """
+    """Build Pydantic trực tiếp từ rule-based engines (NO dict intermediate). Chỉ chạy khi AI fail hoàn toàn."""
     from src.usecases.step_2_analysis.rule_based.behavior_analyzer import analyze_behavior
     from src.usecases.step_2_analysis.rule_based.attack_mapper import map_attack
     from src.usecases.step_2_analysis.rule_based.cwe_mapper import map_cwe_profiles
@@ -384,15 +364,7 @@ async def run_step2_tech_analysis(
     is_kev: bool = False,
     ransomware_usage: bool = False,
 ) -> tuple[TechnicalAnalysis | None, AttackMapping | None, dict[str, Any]]:
-    """Run Step 2 bằng 2-phase AI flow.
-    Phase 1 (behavior only) → Phase 2 (ATT&CK mapping với Phase 1 làm anchor).
-    Rule-based fallback chỉ chạy khi Phase 1 hoặc cả 2 phase đều fail.
-
-    `is_kev` / `ransomware_usage` là advisory context signals từ caller
-    (Step 1 triage). Hiện tại chỉ thread xuống logging; Phase 2 prompt vẫn
-    dùng luồng cũ 1-shot (KB lookup table). Tín hiệu sẽ được dùng cho
-    KB-driven prompt ở refactor tiếp theo.
-    """
+    """Run Step 2 bằng 2-phase AI flow (Phase 1 behavior → Phase 2 ATT&CK). Rule-based fallback chỉ chạy khi Phase 1 hoặc cả 2 phase fail."""
     return await _run_step2_two_phase(
         ai_service=ai_service,
         base_client=base_client,
@@ -429,20 +401,11 @@ async def _run_step2_two_phase(
     is_kev: bool = False,
     ransomware_usage: bool = False,
 ) -> tuple[TechnicalAnalysis | None, AttackMapping | None, dict[str, Any]]:
-    """Two-phase flow: Phase 1 behavior → Phase 2 ATT&CK.
-
-    Backward compat: returns same tuple shape as legacy flow.
-    Advisory signals (is_kev, ransomware_usage) accepted but currently
-    unused by prompt — kept on signature so caller doesn't break.
-    """
+    """Two-phase flow: Phase 1 behavior → Phase 2 ATT&CK. Returns same tuple shape as legacy flow; advisory signals unused by prompt."""
     from src.usecases.step_2_analysis.services.phase1_service import AIPhase1Service
     from src.domain.models.execution_surface import DeliveryVector, ExecutionSurface
 
-    # CAPEC hints disabled — `app.shared.mitre.capec_hint` đã xóa từ migration sang `src/`.
-    # Module này chưa được viết lại; default empty dict. AI Phase 1 vẫn hoạt động độc lập.
-    capec_hints_by_cwe: dict[str, list[dict]] = {}
-
-    # ===== PHASE 1: Behavior Analysis (FACTS only) =====
+    # PHASE 1: Behavior Analysis (FACTS only)
     phase1_service = AIPhase1Service(base_client)
     try:
         phase1_dict = await phase1_service.fetch_behavior(
@@ -500,7 +463,6 @@ async def _run_step2_two_phase(
             modified_at=modified_at,
             poc_references=poc_references,
             threat_actors=threat_actors,
-            capec_hints_by_cwe=capec_hints_by_cwe,
             phase1_output=phase1_dict,
         )
     except AIServiceError as exc:
@@ -523,7 +485,6 @@ async def _run_step2_two_phase(
                 modified_at=modified_at,
                 poc_references=poc_references,
                 threat_actors=threat_actors,
-                capec_hints_by_cwe=capec_hints_by_cwe,
                 phase1_output=phase1_dict,
             )
         except AIServiceError as exc2:
@@ -575,7 +536,7 @@ async def _run_step2_two_phase(
     if attack_block:
         phase2_dict["attack_mapping"] = _apply_critical_override(cve_id, attack_block)
 
-    # ===== Combine Phase 1 + Phase 2 =====
+    # Combine Phase 1 + Phase 2
     combined_dict = _combine_phase_outputs(phase1_dict, phase2_dict)
 
     # Track BOTH Phase 1 + Phase 2 models so reports surface which provider
@@ -623,11 +584,7 @@ async def _run_step2_two_phase(
 def _normalize_phase1_dict(
     data: dict[str, Any], cve_id: str, cwe_ids: list[str]
 ) -> dict[str, Any]:
-    """Normalize Phase 1 dict: fill rule-based fallback cho execution_surface /
-    delivery_vector khi AI để unknown.
-
-    Phase 1 dict flat (không có technical_analysis/attack_mapping wrapper).
-    """
+    """Normalize Phase 1 dict: fill rule-based fallback cho execution_surface/delivery_vector khi AI để unknown. Phase 1 dict flat (không có wrapper)."""
     if not isinstance(data, dict):
         data = {}
 
@@ -706,16 +663,7 @@ def _normalize_phase1_dict(
 def _normalize_phase2_dict(
     data: dict[str, Any], cve_id: str
 ) -> dict[str, Any]:
-    """Normalize Phase 2 dict: handle Three formats and wrap for _ai_dict_to_pydantic.
-
-    Phase 2 output can be in THREE formats:
-    1. NEW Evidence-to-TTP Matrix format: {mitre_attack_chain: [{technique_id, exact_behavior_anchor, ...}]}
-    2. Two-Tier format: {primary_techniques, secondary_techniques, ...}
-    3. LEGACY flat format: {tactics, techniques, subtechniques, ...}
-
-    This function converts all to the format expected by _ai_dict_to_pydantic:
-    {"attack_mapping": {tactics, techniques, subtechniques, behavior_anchors, ...}}
-    """
+    """Normalize Phase 2 dict: handle 3 formats (Evidence-to-TTP / Two-Tier / Legacy) and wrap as {attack_mapping: {...}} cho _ai_dict_to_pydantic."""
     if not isinstance(data, dict):
         data = {}
 
@@ -923,22 +871,7 @@ def _validate_evidence_to_ttp(
     phase1: dict[str, Any],
     cve_id: str,
 ) -> dict:
-    """Validate Phase 2 techniques against Phase 1 behavior anchors.
-
-    This implements Consensus Prompting: each technique must cite a behavior
-    anchor from Phase 1's mandatory_behaviors. If no matching anchor exists,
-    the technique is dropped as hallucination.
-
-    Validation is PURE SET MEMBERSHIP - no hardcoded behavior-to-technique mapping.
-
-    Args:
-        attack_mapping: Dict with techniques, subtechniques, behavior_anchors
-        phase1: Phase 1 output with mandatory_behaviors
-        cve_id: CVE ID for logging
-
-    Returns:
-        Dict with invalid techniques removed
-    """
+    """Validate Phase 2 techniques against Phase 1 behavior anchors (Consensus Prompting: pure set membership, no anchor → drop as hallucination)."""
     from src.usecases.step_2_analysis.rule_based.attack_validator import (
         validate_technique_chain_against_phase1,
     )
@@ -1003,18 +936,7 @@ def _enrich_subtechniques(
     attack_mapping: dict,
     phase1: dict[str, Any],
 ) -> dict:
-    """Tự động bổ sung sub-techniques dựa trên observable_side_effects.
-
-    Fallback khi AI chọn T1059 hoặc T1071 nhưng không emit sub-techniques.
-    llama-3.3-70b-versatile tends to be token-conservative.
-
-    Args:
-        attack_mapping: Dict chứa techniques và subtechniques
-        phase1: Phase 1 output với observable_side_effects
-
-    Returns:
-        Dict đã được bổ sung subtechniques
-    """
+    """Tự động bổ sung sub-techniques dựa trên observable_side_effects (fallback khi AI chọn T1059/T1071 nhưng không emit sub-techniques)."""
     techniques = list(attack_mapping.get("techniques") or [])
     subtechniques = list(attack_mapping.get("subtechniques") or [])
     tactics = list(attack_mapping.get("tactics") or [])
@@ -1112,17 +1034,9 @@ def _enrich_subtechniques(
 def _combine_phase_outputs(
     phase1: dict[str, Any], phase2: dict[str, Any]
 ) -> dict[str, Any]:
-    """Combine Phase 1 (behavior) + Phase 2 (attack_mapping) thanh dict giong
-    legacy 1-shot output, de _ai_dict_to_pydantic parse duoc.
-
-    Phase 1 dict hien o top level (family, vulnerability_type, attack_flow, ...).
-    Phase 2 dict da duoc wrap trong `attack_mapping` boi _normalize_phase2_dict.
-    """
+    """Combine Phase 1 (behavior) + Phase 2 (attack_mapping) thành dict legacy để _ai_dict_to_pydantic parse được."""
     combined = {**phase1, **phase2}
-    # Move Phase 1 fields vao technical_analysis wrapper neu can
-    # (existing _ai_dict_to_pydantic expects {technical_analysis: {...},
-    # attack_mapping: {...}}). Phase 1 fields co the o top level hoac
-    # trong technical_analysis - tuy vao implementation. Kiem tra va chuan hoa.
+    # Wrap Phase 1 flat fields vào technical_analysis nếu chưa có (legacy _ai_dict_to_pydantic expects nested).
     if "technical_analysis" not in combined:
         # Phase 1 dict co the o flat shape (khong co technical_analysis wrapper)
         # Extract va wrap

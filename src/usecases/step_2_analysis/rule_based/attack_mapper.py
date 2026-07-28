@@ -13,9 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 BEHAVIOR_ATTACK_GRAPH: dict[str, dict[str, tuple[str, ...]]] = {
-    # =====================================
     # Original behaviors (preserved)
-    # =====================================
     "process_creation": {
         "tactics": ("TA0002",),
         "techniques": ("T1059",),
@@ -76,9 +74,7 @@ BEHAVIOR_ATTACK_GRAPH: dict[str, dict[str, tuple[str, ...]]] = {
         "techniques": ("T1020", "T1114"),
         "subtechniques": (),
     },
-    # =====================================
-    # NEW: Exploit behaviors (→ PRIMARY)
-    # =====================================
+    # Exploit behaviors (→ PRIMARY)
     "jndi_injection": {
         "tactics": ("TA0001", "TA0002"),
         "techniques": ("T1190", "T1203"),
@@ -109,9 +105,7 @@ BEHAVIOR_ATTACK_GRAPH: dict[str, dict[str, tuple[str, ...]]] = {
         "techniques": ("T1190", "T1203"),
         "subtechniques": (),
     },
-    # =====================================
-    # NEW: Post-Exploit behaviors (→ SECONDARY)
-    # =====================================
+    # Post-Exploit behaviors (→ SECONDARY)
     "outbound_ldap_callback": {
         "tactics": ("TA0011",),
         "techniques": ("T1071", "T1105"),
@@ -152,9 +146,7 @@ BEHAVIOR_ATTACK_GRAPH: dict[str, dict[str, tuple[str, ...]]] = {
         "techniques": ("T1059",),
         "subtechniques": ("T1059.004",),
     },
-    # =====================================
-    # NEW: Impact behaviors (→ SECONDARY.impact)
-    # =====================================
+    # Impact behaviors (→ SECONDARY.impact)
     "dos_observed": {
         "tactics": ("TA0040",),
         "techniques": ("T1499",),
@@ -171,9 +163,6 @@ BEHAVIOR_ATTACK_GRAPH: dict[str, dict[str, tuple[str, ...]]] = {
         "subtechniques": (),
     },
 }
-
-ATTACK_TECHNIQUE_MAP = BEHAVIOR_ATTACK_GRAPH
-
 
 VULNERABILITY_CLASS_ATTACK_GRAPH: dict[VulnerabilityClass, tuple[str, ...]] = {
     VulnerabilityClass.DESERIALIZATION: ("T1059", "T1190"),
@@ -211,21 +200,7 @@ def map_attack(
     description: str | None = None,
     cvss_vector: str | None = None,
 ) -> dict[str, list[str] | float]:
-    """Map CVE → ATT&CK tactics/techniques.
-
-    PHASE 3 REFACTOR: Sử dụng OntologyManager (4-layer) làm SINGLE SOURCE
-    OF TRUTH cho expected techniques.
-
-    Trước: fallback_map hardcoded 5 CWE trong hàm này KHÁC với
-    compute_ground_truth() → Source of Truth Mismatch.
-
-    Sau: cả map_attack() và compute_ground_truth() đều dùng
-    OntologyManager.resolve() → cùng expected techniques.
-
-    Behavior/class mappings VẪN dùng (vì chúng capture rule-based
-    inference ngoài ontology) nhưng giờ là BỔ SUNG, không phải
-    thay thế.
-    """
+    """Map CVE → ATT&CK tactics/techniques via OntologyManager (single source of truth) + rule-based behavior/class fallback."""
     tactics: list[str] = []
     techniques: list[str] = []
     subtechniques: list[str] = []
@@ -234,13 +209,7 @@ def map_attack(
     behaviors = ontology_behaviors or []
     cwe_ids = tuple(p.cwe_id for p in cwe_profiles) if cwe_profiles else ()
 
-    # ------------------------------------------------------------------
-    # SINGLE SOURCE OF TRUTH: OntologyManager.resolve()
-    # ------------------------------------------------------------------
-    # Layer 1: CTID direct
-    # Layer 2: CAPEC bridge (CWE → ATT&CK)
-    # Layer 3: Whitelist fallback (8 core CWEs)
-    # Layer 4: UNKNOWN → no techniques from this layer
+    # SINGLE SOURCE OF TRUTH: OntologyManager.resolve() — 4 layers: CTID direct, CAPEC bridge, whitelist fallback, UNKNOWN
     ctx = CveContext(
         cve_id=cve_id or "",
         description=description or "",
@@ -260,18 +229,14 @@ def map_attack(
             cve_id,
         )
 
-    # ------------------------------------------------------------------
-    # Rule-based: vulnerability_class mapping (bổ sung, không thay thế)
-    # ------------------------------------------------------------------
+    # Rule-based: vulnerability_class mapping (bổ sung)
     if vulnerability_class and vulnerability_class in VULNERABILITY_CLASS_ATTACK_GRAPH:
         for technique in VULNERABILITY_CLASS_ATTACK_GRAPH[vulnerability_class]:
             if technique not in techniques:
                 techniques.append(technique)
         mapping_reasons.append(f"vulnerability_class:{vulnerability_class.value}")
 
-    # ------------------------------------------------------------------
     # Rule-based: behaviors → techniques (bổ sung)
-    # ------------------------------------------------------------------
     if behaviors:
         for behavior in behaviors:
             mapped = BEHAVIOR_ATTACK_GRAPH.get(behavior)
@@ -288,16 +253,12 @@ def map_attack(
                     subtechniques.append(t)
             mapping_reasons.append(f"behavior:{behavior}")
 
-    # ------------------------------------------------------------------
     # Safety net: nếu rỗng HOẶC UNKNOWN + remote + pre_auth → T1190
-    # ------------------------------------------------------------------
     if not techniques and classifier.get("remote_exploitable") and classifier.get("pre_auth"):
         techniques.append("T1190")
         mapping_reasons.append("CVSS indicates public-facing pre-auth exploitation")
 
-    # ------------------------------------------------------------------
     # Behavior-technique coherence (bổ sung nếu behavior chỉ ra nhưng thiếu tech)
-    # ------------------------------------------------------------------
     if "process_creation" in behaviors and "T1059" not in techniques:
         techniques.append("T1059")
     if "web_request" in behaviors and "T1190" not in techniques:
@@ -305,9 +266,7 @@ def map_attack(
     if "privilege_escalation" in behaviors and "T1068" not in techniques:
         techniques.append("T1068")
 
-    # Derive tactics từ techniques nếu behaviors không cung cấp
-    # (Layer 2/3 có thể có techniques mà không có tactics rõ ràng)
-    # _technique_to_tactic returns list[str] now (multi-tactic support)
+    # Derive tactics từ techniques nếu behaviors không cung cấp (multi-tactic support)
     if techniques and not tactics:
         mgr = OntologyManager()
         for t in techniques:
@@ -315,9 +274,7 @@ def map_attack(
                 if mapped_tactic not in tactics:
                     tactics.append(mapped_tactic)
 
-    # ------------------------------------------------------------------
     # Confidence scoring (giữ logic cũ)
-    # ------------------------------------------------------------------
     confidence = 0.2 if behaviors else 0.15
     confidence += 0.1 if vulnerability_class and vulnerability_class != VulnerabilityClass.UNKNOWN else 0.0
     confidence += 0.14 * len(set(behaviors))

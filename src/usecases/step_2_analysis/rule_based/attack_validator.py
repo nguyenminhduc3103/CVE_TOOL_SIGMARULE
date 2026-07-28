@@ -1,16 +1,4 @@
-"""MITRE ATT&CK Validator - Safety Net cho Step 2.
-
-Validate TTP IDs (Tactics & Techniques) do AI hoặc rule-based sinh ra theo
-danh sách chuẩn MITRE ATT&CK Enterprise.
-
-Sau refactor Phase 2: whitelist không còn hardcode tĩnh (50% matrix) mà
-đọc từ MITRE STIX qua `MitreAttackWhitelist.get()` (~95%+ matrix, auto-update
-7 ngày). Hardcode chỉ còn làm baseline fallback khi STIX load fail (network
-down, env CVE_TI_MITRE_OFFLINE=1, file corrupt).
-
-Ràng buộc theo tài liệu (dòng 24): "Mã TTP do AI sinh ra phải được đối chiếu
-và xác thực với danh sách chuẩn của MITRE. Mã không hợp lệ sẽ bị loại bỏ."
-"""
+"""MITRE ATT&CK Validator - Safety Net cho Step 2. Đọc whitelist từ MITRE STIX (~95%+ matrix, auto-update 7 ngày); chỉ fallback hardcode khi STIX load fail."""
 from __future__ import annotations
 
 import re
@@ -21,24 +9,16 @@ _TACTIC_PATTERN = re.compile(r"^TA\d{4}$")
 
 
 def _get_whitelist():
-    """Lazy import + accessor. Tránh forcing 30MB STIX parse chỉ vì import
-    module này cho 1 helper function.
-    """
+    """Lazy import + accessor. Tránh forcing 30MB STIX parse chỉ vì import module này cho 1 helper function."""
     from src.shared.mitre.loader import MitreAttackWhitelist
     return MitreAttackWhitelist.get()
 
 
-# Dynamic accessors (replacement cho hardcoded VALID_* frozensets).
-# Backward-compat: caller cũ `value in VALID_TECHNIQUES` vẫn work vì frozenset
-# supports `in`. Caller mới nên dùng `_get_whitelist().is_known(value)`.
+# Dynamic accessors thay cho hardcoded VALID_* frozensets; caller mới nên dùng `_get_whitelist().is_known(value)`.
 
 
 def __getattr__(name: str):
-    """Module-level __getattr__ cho backward-compat lazy access.
-
-    Cho phép `from attack_validator import VALID_TECHNIQUES` giữ working —
-    mỗi access đi qua live MitreAttackWhitelist singleton.
-    """
+    """Module-level __getattr__ cho backward-compat lazy access qua live MitreAttackWhitelist singleton."""
     if name in ("VALID_TACTICS", "VALID_TECHNIQUES", "VALID_SUBTECHNIQUES"):
         wl = _get_whitelist()
         if name == "VALID_TACTICS":
@@ -65,18 +45,7 @@ def _normalize_id(value: object) -> str | None:
 
 
 def is_known_ttp(value: str) -> str | None:
-    """Phân loại một TTP ID (đã normalize) theo dynamic STIX whitelist.
-
-    Returns:
-        - "tactic" : ID khớp _TACTIC_PATTERN và có trong whitelist.
-        - "parent" : base technique (T1059) có trong whitelist.
-        - "sub"    : subtechnique (T1059.001) có trong whitelist HOẶC có parent
-                     technique hợp lệ (parent-child fallback).
-        - None     : ID không hợp lệ về format hoặc không có trong whitelist.
-
-    Lưu ý: "sub" trả về ngay cả khi match qua parent-child fallback vì
-    validate_technique() vẫn pass.
-    """
+    """Phân loại một TTP ID theo dynamic STIX whitelist: 'tactic' / 'parent' / 'sub' (parent-child fallback) / None."""
     if not value:
         return None
     wl = _get_whitelist()
@@ -109,15 +78,7 @@ def validate_tactic(value: object) -> bool:
 
 
 def validate_technique(value: object) -> bool:
-    """Kiểm tra 1 technique ID có hợp lệ không.
-
-    Quy tắc:
-    - Technique (T1059): phải có trong whitelist (STIX dynamic).
-    - Subtechnique (T1059.001): ưu tiên check whitelist. Nếu không có,
-      fallback: chấp nhận nếu parent technique hợp lệ (vd AI trả T1021.003
-      dù chưa list trong whitelist nhưng T1021 hợp lệ → pass). Vẫn reject
-      T9999.001 (parent invalid).
-    """
+    """Kiểm tra 1 technique ID có hợp lệ không (parent whitelist + sub whitelist với parent-child fallback)."""
     normalized = _normalize_id(value)
     if normalized is None:
         return False
@@ -129,16 +90,7 @@ def validate_ttp_list(
     techniques: list[str] | None,
     subtechniques: list[str] | None = None,
 ) -> dict[str, object]:
-    """Validate một list TTP, trả về kết quả tách valid/invalid.
-
-    Returns:
-        {
-            "valid_tactics": [...], "valid_techniques": [...], "valid_subtechniques": [...],
-            "invalid_tactics": [...], "invalid_techniques": [...], "invalid_subtechniques": [...],
-            "warnings": ["invalid_technique_dropped:T9999", ...],
-            "passed": bool (True nếu không có invalid nào),
-        }
-    """
+    """Validate một list TTP, trả về kết quả tách valid/invalid với warnings và passed flag."""
     valid_tactics: list[str] = []
     invalid_tactics: list[str] = []
     valid_techniques: list[str] = []
@@ -260,13 +212,7 @@ FAMILY_ALIASES: dict[str, str] = {
 
 
 def normalize_family(value: object) -> str | None:
-    """Chuẩn hóa family name về 1 giá trị chuẩn (VulnerabilityFamily enum value).
-
-    Returns:
-        - "jndi_injection", "spring4shell", ... nếu match alias
-        - "unknown" nếu không match (default fallback)
-        - None nếu input rỗng
-    """
+    """Chuẩn hóa family name về 1 giá trị chuẩn (VulnerabilityFamily enum value); 'unknown' fallback hoặc None nếu rỗng."""
     if not isinstance(value, str):
         return None
     text = value.strip().lower()
@@ -280,268 +226,17 @@ def normalize_family(value: object) -> str | None:
     # Substring match (first match wins)
     for alias, family in FAMILY_ALIASES.items():
         if alias in text:
-            return FAMILY_ALIASES[alias] if False else family
             return family
 
     # No match -> unknown
     return "unknown"
 
 
-# Semantic validation - filter techniques MÂU THUẪN context CVE.
-# Mục đích: bắt hallucination AI obvious - technique không hợp với CVSS vector
-# hoặc description. KHÔNG dùng ground truth CAPEC (quá rộng).
-#
-# Theo spec (CVE-2-Sigma.md): Step 2 phân tích đúng thì Step 3 mới có ý nghĩa.
-# Validation này giúp Step 2 loại bỏ techniques sai trước khi pass cho Step 3.
-
-# Network-only techniques - chỉ hợp lý khi CVE exploit được từ xa.
-# Dùng frozenset constants (không query STIX) vì đây là semantic, không phải format.
-_NETWORK_ONLY_TECHNIQUES: frozenset[str] = frozenset({
-    "T1190",  # Exploit Public-Facing Application
-    "T1133",  # External Remote Services
-    "T1199",  # Trusted Relationship
-    "T1566",  # Phishing (nếu remote)
-    "T1078",  # Valid Accounts (nếu remote)
-    "T1071",  # Application Layer Protocol (C2 network)
-})
-
-# Phishing-specific techniques - chỉ hợp với social engineering context.
-_PHISHING_TECHNIQUES: frozenset[str] = frozenset({
-    "T1566", "T1566.001", "T1566.002", "T1566.003",
-    "T1598", "T1598.001", "T1598.002", "T1598.003",
-})
+# (validate_against_cve_context removed — unused; replaced by evidence-to-TTP consensus)
 
 
-def _is_local_only(cvss_vector: str | None) -> bool:
-    """CVSS AV:L (Local) - exploit cần local access."""
-    if not cvss_vector:
-        return False
-    return "AV:L" in cvss_vector.upper()
-
-
-def _has_hardware_context(description: str | None) -> bool:
-    """CVE description nhắc tới local/hardware/physical access."""
-    if not description:
-        return False
-    text = description.lower()
-    keywords = (
-        "local ", "locally", "physical access", "physically",
-        "hardware", "usb", "kernel driver", "kernel module",
-        "requires physical", "on the same machine",
-    )
-    return any(kw in text for kw in keywords)
-
-
-def validate_against_cve_context(
-    techniques: list[str] | None,
-    cvss_vector: str | None,
-    description: str | None,
-) -> dict[str, list[str]]:
-    """Filter techniques MÂU THUẪN context CVE (semantic validation).
-
-    3 rule (mở rộng được):
-      Rule 1: Network-only (T1190, T1133, ...) MÂU THUẪN với AV:L.
-      Rule 2: Phishing (T1566, ...) MÂU THUẪN với description local/hardware/physical.
-      Rule 3: T1190 vs explicit local context (explicit cho debug).
-
-    Args:
-        techniques: List technique IDs AI trả (vd ['T1190', 'T1059']).
-        cvss_vector: CVSS vector string (vd 'CVSS:3.1/AV:N/AC:L/...').
-        description: CVE description text.
-
-    Returns:
-        {
-            "kept": [...],
-            "dropped": [...],
-            "dropped_reasons": {tech: reason, ...},
-        }
-    """
-    kept: list[str] = []
-    dropped: list[str] = []
-    dropped_reasons: dict[str, str] = {}
-
-    for tech in techniques or []:
-        if not isinstance(tech, str):
-            continue
-        norm = tech.strip().upper()
-        if not norm.startswith("T"):
-            # Không phải technique ID → giữ nguyên để caller xử lý
-            if norm not in kept:
-                kept.append(norm)
-            continue
-
-        # Rule 1: Network-only vs AV:L
-        if _is_local_only(cvss_vector) and norm in _NETWORK_ONLY_TECHNIQUES:
-            dropped.append(norm)
-            dropped_reasons[norm] = "network_only_vs_AV_L"
-            continue
-
-        # Rule 2: Phishing vs hardware context
-        if _has_hardware_context(description) and norm in _PHISHING_TECHNIQUES:
-            dropped.append(norm)
-            dropped_reasons[norm] = "phishing_vs_hardware_context"
-            continue
-
-        # Rule 3: T1190 vs explicit local context
-        if _has_hardware_context(description) and norm == "T1190":
-            dropped.append(norm)
-            dropped_reasons[norm] = "t1190_vs_local_context"
-            continue
-
-        if norm not in kept:
-            kept.append(norm)
-
-    return {"kept": kept, "dropped": dropped, "dropped_reasons": dropped_reasons}
-
-
-# ==============================================================
-# CONSENSUS PROMPTING: Evidence-to-TTP Matrix Validation
-# ==============================================================
-# Zero-hardcode dynamic validation: techniques must cite Phase 1 behavior anchors.
-# If a technique cannot cite a matching Phase 1 behavior, it's hallucination.
-# This replaces hardcoded negative rules with dynamic evidence checking.
-
-
-def validate_technique_chain_against_phase1(
-    attack_chain: list[dict],
-    phase1_behaviors: list[str],
-) -> dict[str, list[dict] | dict[str, str]]:
-    """Validate techniques have matching behavior anchors from Phase 1.
-
-    This implements the Consensus Prompting pattern: for each technique selected,
-    the AI must cite an exact_behavior_anchor that exists in Phase 1's
-    mandatory_behaviors. If no match exists, the technique is hallucinated.
-
-    Args:
-        attack_chain: List of technique entries with behavior_anchors.
-                      Each entry should have: technique_id, exact_behavior_anchor
-        phase1_behaviors: List of mandatory_behaviors from Phase 1.
-
-    Returns:
-        {
-            "valid_entries": [...],      # Entries with matching anchors
-            "invalid_entries": [...],    # Entries with no matching anchor
-            "dropped_reasons": {tech_id: reason, ...},
-            "kept_technique_ids": [...], # Just the IDs for backward compat
-            "dropped_technique_ids": [...],
-        }
-    """
-    valid_entries = []
-    invalid_entries = []
-    kept_technique_ids = []
-    dropped_technique_ids = []
-    dropped_reasons: dict[str, str] = {}
-
-    # Normalize Phase 1 behaviors for matching
-    # Use lowercase + partial matching for flexibility
-    behavior_set = {b.lower() for b in phase1_behaviors}
-
-    for entry in attack_chain:
-        technique_id = entry.get("technique_id", "")
-        anchor = entry.get("exact_behavior_anchor", "").lower().strip()
-
-        if not technique_id:
-            continue
-
-        # Check if anchor matches any Phase 1 behavior
-        # Match if: anchor is substring of behavior OR behavior is substring of anchor
-        matched = False
-        matched_behavior = None
-        for behavior in behavior_set:
-            if anchor in behavior or behavior in anchor:
-                matched = True
-                matched_behavior = behavior
-                break
-
-        if matched:
-            valid_entries.append(entry)
-            if technique_id not in kept_technique_ids:
-                kept_technique_ids.append(technique_id)
-        else:
-            invalid_entries.append(entry)
-            if technique_id not in dropped_technique_ids:
-                dropped_technique_ids.append(technique_id)
-            dropped_reasons[technique_id] = (
-                f"No Phase 1 behavior matches anchor '{anchor}'. "
-                f"Available behaviors: {list(phase1_behaviors)}"
-            )
-
-    return {
-        "valid_entries": valid_entries,
-        "invalid_entries": invalid_entries,
-        "dropped_reasons": dropped_reasons,
-        "kept_technique_ids": kept_technique_ids,
-        "dropped_technique_ids": dropped_technique_ids,
-    }
-
-
-# ==============================================================
-# BEHAVIOR KEYWORD SETS (Minimal taxonomy for fuzzy matching)
-# flexible anchor matching. The actual validation is pure set membership.
-# ==============================================================
-
-# Keywords that indicate web/HTTP exploitation → T1190
-_WEB_BEHAVIOR_KEYWORDS = frozenset({
-    "http", "web", "request", "url", "endpoint", "api", "html", "php",
-    "server", "apache", "nginx", "iis", "tomcat", "jboss",
-})
-
-# Keywords that indicate data exfiltration → no specific ATT&CK (info disclosure)
-_DATA_EXFIL_KEYWORDS = frozenset({
-    "disclosure", "leak", "exposure", "sensitive", "credential", "password",
-    "secret", "token", "api_key", "config", "information", "read",
-})
-
-# Keywords that indicate command/shell execution → T1059 family
-_EXECUTION_KEYWORDS = frozenset({
-    "command", "shell", "exec", "spawn", "process", "script", "bash",
-    "powershell", "cmd", "python", "perl", "ruby",
-})
-
-# Keywords that indicate memory corruption → T1203
-_MEMORY_CORRUPTION_KEYWORDS = frozenset({
-    "memory", "heap", "stack", "buffer", "overflow", "corruption",
-    "use_after_free", "uaf", "race", "condition",
-})
-
-# Keywords that indicate C2/callback → T1071 family
-_C2_KEYWORDS = frozenset({
-    "callback", "c2", "beacon", "ldap", "dns", "http_callback",
-    "reverse_shell", "outbound", "connection",
-})
-
-# Keywords that indicate file download/tool transfer → T1105
-_DOWNLOAD_KEYWORDS = frozenset({
-    "download", "transfer", "payload", "malware", "tool", "stage",
-})
-
-# Keywords that indicate impact (ransomware/DoS) → T1486, T1499
-_IMPACT_KEYWORDS = frozenset({
-    "ransomware", "encrypt", "destruction", "dos", "denial", "crash",
-    "service_stop", "wipe", "delete",
-})
-
-# Keywords that indicate file operations → T1105 (Ingress Tool Transfer), T1505 (Server Software)
-_FILE_OPERATION_KEYWORDS = frozenset({
-    "file_write", "file_upload", "file_written", "webshell", "upload",
-    "write", "uploaded", "writefile", "uploadfile", "drop", "placed",
-    "file_creation", "script_upload", "malicious_file", "shell_upload",
-})
-
-# Keywords that indicate privilege escalation → T1068 (Exploitation for Privilege Escalation)
-_PRIVILEGE_ESCALATION_KEYWORDS = frozenset({
-    "privilege_escalation", "privilege_escalation_exploit", "local_privilege_escalation",
-    "elevate", "elevation", "system_privileges", "root_access", "admin_access",
-    "service_abuse", "config_modified", "registry_modified", "implant", "inject",
-    "spooler", "printnightmare", "privesc",
-})
-
-# Keywords that indicate cryptographic flaws → T1556 (Modify Authentication Process)
-_CRYPTOGRAPHIC_FLAW_KEYWORDS = frozenset({
-    "cryptographic_flaw", "crypto", "cipher", "encryption", "entropy",
-    "zerologon", "curveball", "spoof", "authentication_bypass", "netlogon",
-    "ms-nrpc", "machine_account_password", "ntlm_relay",
-})
+# CONSENSUS PROMPTING: Evidence-to-TTP Matrix Validation.
+# Zero-hardcode dynamic validation: techniques must cite Phase 1 behavior anchors; no anchor → hallucination.
 
 
 def _validate_file_operation_against_phase1(
@@ -550,14 +245,7 @@ def _validate_file_operation_against_phase1(
     phase1_behaviors: list[str],
     behavior_set: set[str],
 ) -> bool:
-    """Validate file operation, privilege escalation, and cryptographic techniques.
-
-    For T1505 (Web Shell), T1105 (Ingress Tool), T1068 (Privilege Escalation),
-    T1556 (Modify Authentication), check if Phase 1 has evidence of related behaviors.
-
-    Returns:
-        True if technique is valid, False otherwise
-    """
+    """Validate file operation, privilege escalation, and cryptographic techniques via Phase 1 keyword evidence."""
     # T1505 family (Web Shell, Server Software Component)
     if technique_id.startswith("T1505"):
         for behavior in behavior_set:
@@ -620,7 +308,6 @@ def _extract_keywords_from_behaviors(behaviors: list[str]) -> set[str]:
     """Extract individual keywords from behaviors for flexible matching."""
     keywords = set()
     for behavior in behaviors:
-        # Split on common delimiters and extract words
         words = behavior.lower().replace("_", " ").replace("-", " ").split()
         keywords.update(words)
     return keywords
@@ -630,29 +317,7 @@ def validate_technique_chain_against_phase1(
     attack_chain: list[dict],
     phase1_behaviors: list[str],
 ) -> dict[str, list[dict] | dict[str, str]]:
-    """Validate techniques have matching behavior anchors from Phase 1.
-
-    This implements the Consensus Prompting pattern: for each technique selected,
-    the AI must cite an exact_behavior_anchor that exists in Phase 1's
-    mandatory_behaviors. If no match exists, the technique is hallucinated.
-
-    The validation is PURE SET MEMBERSHIP - no hardcoded behavior-to-technique
-    mapping. We only check if the cited anchor exists in Phase 1 behaviors.
-
-    Args:
-        attack_chain: List of technique entries with behavior_anchors.
-                      Each entry should have: technique_id, exact_behavior_anchor
-        phase1_behaviors: List of mandatory_behaviors from Phase 1.
-
-    Returns:
-        {
-            "valid_entries": [...],      # Entries with matching anchors
-            "invalid_entries": [...],    # Entries with no matching anchor
-            "dropped_reasons": {tech_id: reason, ...},
-            "kept_technique_ids": [...], # Just the IDs for backward compat
-            "dropped_technique_ids": [...],
-        }
-    """
+    """Validate techniques have matching behavior anchors from Phase 1 (pure set membership + fuzzy keyword match)."""
     valid_entries = []
     invalid_entries = []
     kept_technique_ids = []

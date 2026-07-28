@@ -1,36 +1,4 @@
-"""Phase 1 AI Service - Behavior Analysis (FACTS ONLY).
-
-REFACTOR MOTIVATION:
-AI cu (1-shot prompt) bi bias: doc CVSS AV:N + PR:N → tu dong chon T1190
-(Exploit Public-Facing Application) cho MOI CVE, ke ca CVE client-side
-nhu MSHTML (CVE-2021-40444). Nguyen nhan: AI bi ep vua phan tich behavior
-vua map ATT&CK trong cung 1 lan suy nghi → output ATT&CK bi anh huong
-boi CVSS heuristic.
-
-GIAI PHAP: tach thanh 2 AI call:
-  - Phase 1 (file nay): CHI phan tich FACTS - execution_surface,
-    delivery_vector, user_interaction_required, entry_vector,
-    execution_mechanism, mandatory_behaviors, ... KHONG co
-    tactics/techniques/subtechniques → khong co co hoi bias.
-  - Phase 2 (xem ai_service.fetch_attack_mapping): nhan Phase 1 output
-    lam canonical anchor, su dung execution_surface de chon ATT&CK
-    technique chinh xac.
-
-Single Responsibility: goi LLM + parse JSON. Output la dict thuan
-(Pydantic conversion lam o orchestrator.py).
-
-MODEL OPTIMIZATION (Phase 1 vs Phase 2):
-  Phase 1 = CLASSIFICATION task (chon execution_surface tu 5 options,
-  delivery_vector tu 7 options, bool user_interaction_required).
-  Reasoning vua du, khong can model 70B. Dung OpenRouter free model de
-  tiet kiem cost:
-    PHASE1_AI_MODEL=meta-llama/llama-3.3-70b-instruct:free
-    PHASE1_AI_BASE_URL=https://openrouter.ai/api/v1
-    PHASE1_AI_API_KEY=sk-or-...
-
-  Phase 2 = REASONING task quan trong (map CVE → ATT&CK taxonomy).
-  Giu model manh (Groq llama-3.3-70b).
-"""
+"""Phase 1 AI Service - Behavior Analysis (FACTS ONLY). Tách riêng khỏi Phase 2 ATT&CK mapping để tránh bias do CVSS heuristic (vd CVE client-side MSHTML)."""
 from __future__ import annotations
 
 import json
@@ -50,23 +18,7 @@ _PROMPTS_DIR = Path(__file__).parent.parent / "prompts"
 
 
 class AIPhase1Service:
-    """Phase 1 AI service - Behavior Analysis only (khong map ATT&CK).
-
-    Two-phase refactor (see module docstring). This service implements
-    Phase 1: extract canonical FACTS about CVE execution mechanism.
-    Output schema includes 3 new fields:
-      - execution_surface (client_side | server_side | local | multi_hop | unknown)
-      - delivery_vector   (email_attachment | email_link | web_download |
-                            network_protocol | physical | local_execution | unknown)
-      - user_interaction_required (bool)
-
-    Model selection (env-driven, no hardcode):
-      - PHASE1_AI_MODEL  → primary model for behavior analysis (default: ANALYZE_AI_MODEL).
-        RECOMMENDED: OpenRouter free model (e.g. llama-3.3-70b-instruct:free).
-      - PHASE1_AI_BASE_URL → API base URL (default: AI_BASE_URL).
-      - PHASE1_AI_API_KEY  → API key (default: AI_API_KEY).
-      Falls back to legacy Groq llama-3.3-70b-versatile if nothing is set.
-    """
+    """Phase 1 AI service - Behavior Analysis only (khong map ATT&CK). Output schema includes execution_surface, delivery_vector, user_interaction_required."""
 
     _SYSTEM_FILE = "analyze_behavior_phase1.system.txt"
     _USER_FILE = "analyze_behavior.user.txt"
@@ -78,28 +30,18 @@ class AIPhase1Service:
         self.client = base_client
         # Resolve Phase 1 model từ settings (PHASE1_AI_MODEL > ANALYZE_AI_MODEL).
         self._MODEL: str = settings.get_phase1_model() or self._DEFAULT_MODEL
-        # Phase 1 system prompt does NOT reference _shared_mitre_rules.md
-        # (no ATT&CK mapping in scope here).
+        # Phase 1 system prompt does NOT reference _shared_mitre_rules.md (no ATT&CK mapping in scope here).
         self.system_prompt_template = (
             _PROMPTS_DIR / self._SYSTEM_FILE
         ).read_text(encoding="utf-8")
         self.user_prompt_template = (
             _PROMPTS_DIR / self._USER_FILE
         ).read_text(encoding="utf-8")
-        self._models_used: list[str] = []
-        # Log model + base_url ở INFO level để user thấy Phase 1 đang dùng model nào
-        # (vd Gemini thay vì Groq) trên console output.
+        # Log model + base_url để user thấy Phase 1 đang dùng model nào (vd Gemini thay vì Groq).
         logger.info(
             "[Phase 1] model=%s base_url=%s",
             self._MODEL, settings.get_phase1_base_url() or "(default - same as Phase 2)",
         )
-
-    def _record_model(self, model: str) -> None:
-        if model and model not in self._models_used:
-            self._models_used.append(model)
-
-    def get_models_used(self) -> list[str]:
-        return list(self._models_used)
 
     async def fetch_behavior(
         self,
@@ -115,39 +57,7 @@ class AIPhase1Service:
         poc_references: list[str] | None = None,
         threat_actors: list[str] | None = None,
     ) -> dict[str, Any]:
-        """Phase 1 AI call - return behavior dict (no ATT&CK mapping).
-
-        Output dict shape (canonical Phase 1 schema):
-          {
-            "family": str | null,
-            "vulnerability_type": str | null,
-            "vulnerability_class": str | null,
-            "exploit_vector": "remote" | "local" | "unknown" | null,
-            "pre_auth": bool | null,
-            "remote_exploitable": bool | null,
-            "exploit_complexity": "low" | "medium" | "high" | null,
-            "execution_surface": "client_side" | "server_side" | "local" |
-                                 "multi_hop" | "unknown" | null,
-            "delivery_vector": "email_attachment" | "email_link" |
-                                "web_download" | "network_protocol" |
-                                "physical" | "local_execution" | "unknown" | null,
-            "user_interaction_required": bool | null,
-            "attack_flow": {"entry_vector", "execution_mechanism",
-                             "observable_side_effects"},
-            "mandatory_behaviors": list[str],
-            "evasive_indicators": list[str],
-            "exploit_requirements": list[str],
-            "cwe_metadata": {"cwe_ids", "cwe_names", "mapping_confidence"} | null,
-            "confidence": float,
-            "reasoning": list[str]
-          }
-
-        KHONG co: tactics, techniques, subtechniques, mapping_reasons,
-        attack_confidence - day la Phase 2 concern.
-
-        Raises:
-            AIServiceError: neu AI fail (rate-limit, timeout, JSON parse fail)
-        """
+        """Phase 1 AI call - return behavior dict (no ATT&CK mapping)."""
         input_payload = {
             "cve_id": cve_id,
             "description": description or "N/A",
@@ -202,7 +112,6 @@ class AIPhase1Service:
                     user_prompt=formatted_user,
                     model=self._MODEL,
                 )
-            self._record_model(self._MODEL)
             cleaned_text = self._clean_json(response_text)
             data = json.loads(cleaned_text)
             validated = Phase1LLMResponse.model_validate(data)
@@ -226,32 +135,6 @@ class AIPhase1Service:
             return text[first : last + 1].strip()
         return text.strip()
 
-    # ------------------------------------------------------------------
-    # Optional prompt blocks (PoC refs, threat actors) - giong AIBehaviorService
-    # ------------------------------------------------------------------
+    # Cap giữ input payload gọn (tránh prompt overflow).
     _MAX_POC_REFS = 3
     _MAX_THREAT_ACTORS = 5
-
-    @classmethod
-    def _format_poc_block(cls, poc_references: list[str]) -> str:
-        if not poc_references:
-            return ""
-        refs = poc_references[:cls._MAX_POC_REFS]
-        lines = ["\nPublic PoC References (use as inspiration for exploit mechanism):"]
-        for url in refs:
-            lines.append(f"  - {url}")
-        if len(poc_references) > cls._MAX_POC_REFS:
-            lines.append(f"  ... ({len(poc_references) - cls._MAX_POC_REFS} more omitted)")
-        return "\n".join(lines) + "\n"
-
-    @classmethod
-    def _format_threat_actors_block(cls, threat_actors: list[str]) -> str:
-        if not threat_actors:
-            return ""
-        actors = threat_actors[:cls._MAX_THREAT_ACTORS]
-        lines = ["\nThreat Actors observed in the wild (from OTX):"]
-        for actor in actors:
-            lines.append(f"  - {actor}")
-        if len(threat_actors) > cls._MAX_THREAT_ACTORS:
-            lines.append(f"  ... ({len(threat_actors) - cls._MAX_THREAT_ACTORS} more omitted)")
-        return "\n".join(lines) + "\n"

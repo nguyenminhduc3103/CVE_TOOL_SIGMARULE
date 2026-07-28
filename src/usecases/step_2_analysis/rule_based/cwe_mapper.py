@@ -100,9 +100,7 @@ CWE_BEHAVIOR_MAP: dict[str, CWEProfile] = {
         vulnerability_type="sql_injection",
         vulnerability_class=VulnerabilityClass.SQL_INJECTION,
         mapping_confidence=0.95,
-        # data_exfiltration: SQLi primary impact IS data theft → move from
-        # likely_outcome (informational) sang mandatory_behaviors (actionable
-        # MITRE mapping T1020/T1114 qua BEHAVIOR_ATTACK_GRAPH).
+        # SQLi primary impact IS data theft → move from likely_outcome (informational) sang mandatory_behaviors (MITRE T1020/T1114).
         mandatory_behaviors=(
             "database_query",
             "http_request",
@@ -143,11 +141,7 @@ CWE_BEHAVIOR_MAP: dict[str, CWEProfile] = {
         vulnerability_type="deserialization",
         vulnerability_class=VulnerabilityClass.DESERIALIZATION,
         mapping_confidence=0.97,
-        # public_facing_exploit: CWE-502 exploit qua HTTP/API endpoint công khai
-        # (Log4Shell, JSON deserialization). Chỉ network_connection/process_creation
-        # không phản ánh attack surface đầu vào.
-        # tool_download: deserialization thường fetch malicious class files
-        # (Log4Shell .class via LDAP/HTTP, gadget chains) → T1105.
+        # public_facing_exploit: CWE-502 qua HTTP/API (Log4Shell). tool_download: fetch malicious class via LDAP/HTTP → T1105.
         mandatory_behaviors=(
             "network_connection",
             "process_creation",

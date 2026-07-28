@@ -62,11 +62,7 @@ class Phase1LLMResponse(BaseModel):
 
 
 class Phase2TechniqueEntry(BaseModel):
-    """One entry in the Evidence-to-TTP Matrix.
-
-    Each technique must cite a behavior anchor from Phase 1's mandatory_behaviors.
-    If no matching behavior exists, the technique should NOT be included.
-    """
+    """One entry in the Evidence-to-TTP Matrix. Each technique must cite a behavior anchor from Phase 1's mandatory_behaviors."""
     technique_id: str = Field(min_length=1)
     exact_behavior_anchor: str = Field(min_length=1, description="MUST match a Phase 1 mandatory_behaviors entry")
     textual_evidence: str = Field(default="", description="Quote from CVE description supporting this mapping")
@@ -92,13 +88,7 @@ class Phase2SecondaryTechniques(BaseModel):
 
 
 class Phase2LLMResponse(BaseModel):
-    """Phase 2 ATT&CK mapping response.
-
-    Supports THREE formats (backward compatible):
-    1. Evidence-to-TTP Matrix (NEW): mitre_attack_chain with behavior anchors
-    2. Two-Tier format: primary_techniques + secondary_techniques
-    3. Legacy flat format: tactics, techniques, subtechniques
-    """
+    """Phase 2 ATT&CK mapping response. Supports Evidence-to-TTP Matrix, Two-Tier, và Legacy flat format."""
     # Format 1: Evidence-to-TTP Matrix (NEW - Preferred)
     mitre_attack_chain: list[Phase2TechniqueEntry] = Field(default_factory=list)
 

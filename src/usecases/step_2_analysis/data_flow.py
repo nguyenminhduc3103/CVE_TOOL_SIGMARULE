@@ -1,9 +1,4 @@
-"""Data flow helpers - thao tác trên dict thuần (không Pydantic).
-
-Dùng bởi orchestrator để: convert dict → Pydantic, sanitize placeholder
-("none"/"n/a"/"unknown") trong AI output, backfill `evasive_indicators`
-theo CWE family khi AI trống.
-"""
+"""Data flow helpers - thao tác trên dict thuần (không Pydantic). Dùng bởi orchestrator để convert dict → Pydantic, sanitize placeholder, backfill `evasive_indicators` theo CWE."""
 from __future__ import annotations
 
 from typing import Any
@@ -143,12 +138,7 @@ _PLACEHOLDER_TOKENS = frozenset({"none", "n/a", "unknown"})
 
 
 def _normalize_none_placeholders(ai_data: dict[str, Any]) -> dict[str, Any]:
-    """Convert None / ["none"] placeholders từ AI thành empty list / None.
-
-    Groq đôi khi trả `techniques = null`, `evasive_indicators = ["none"]`,
-    `mapping_reasons = ["none"]`. Normalize để Pydantic build không crash
-    và downstream filter không sót.
-    """
+    """Convert None / ["none"] placeholders từ AI thành empty list / None để Pydantic build không crash và downstream filter không sót."""
     tech = ai_data.get("technical_analysis") or {}
     atk = ai_data.get("attack_mapping") or {}
     flow = tech.get("attack_flow") or {}

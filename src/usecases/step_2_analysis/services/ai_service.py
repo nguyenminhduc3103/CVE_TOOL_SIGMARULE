@@ -1,10 +1,4 @@
-"""AI Service cho Step 2 — Phase 2 ATT&CK mapping.
-
-Gọi LLM, parse JSON, validate contract, trả dict thuần.
-KHÔNG có fallback logic — orchestrator lo phần đó.
-
-Phase 1 (behavior) handle ở services/phase1_service.py.
-"""
+"""AI Service cho Step 2 — Phase 2 ATT&CK mapping (gọi LLM, parse JSON, validate contract; fallback logic ở orchestrator)."""
 from __future__ import annotations
 
 import json
@@ -24,11 +18,7 @@ _PROMPTS_DIR = Path(__file__).parent.parent / "prompts"
 
 
 class AIBehaviorService:
-    """Service gọi AI Phase 2 — ATT&CK mapping.
-
-    Output: dict thuần (Pydantic conversion làm ở orchestrator).
-    Model: ANALYZE_AI_MODEL env, fallback _DEFAULT_MODEL.
-    """
+    """Service gọi AI Phase 2 — ATT&CK mapping. Output dict thuần (Pydantic ở orchestrator)."""
 
     _PHASE2_SYSTEM_FILE = "analyze_behavior_phase2.system.txt"
     _SHARED_FILE = "_shared_mitre_rules.md"
@@ -63,15 +53,9 @@ class AIBehaviorService:
         modified_at: str,
         poc_references: list[str] | None = None,
         threat_actors: list[str] | None = None,
-        capec_hints_by_cwe: dict[str, list[dict]] | None = None,
         phase1_output: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """Phase 2 AI call — return ATT&CK mapping dict only.
-
-        Phase 1 output embed làm canonical anchor tránh AV:N→T1190 bias.
-        Raises:
-            AIServiceError: nếu AI fail.
-        """
+        """Phase 2 AI call — return ATT&CK mapping dict only. Phase 1 output embed làm canonical anchor tránh AV:N→T1190 bias."""
         phase2_system = self._phase2_system_prompt
 
         description_block = self._build_phase2_description(
@@ -87,8 +71,6 @@ class AIBehaviorService:
             "modified_at": modified_at or "N/A",
             "poc_references": (poc_references or [])[: self._MAX_POC_REFS],
             "threat_actors": (threat_actors or [])[: self._MAX_THREAT_ACTORS],
-            "capec_hints_by_cwe": capec_hints_by_cwe or {},
-            "phase1_output": phase1_output or {},
         }
         formatted_user = self.user_prompt_template.format(
             input_json=json.dumps(input_payload, ensure_ascii=False, indent=2)
@@ -124,67 +106,19 @@ class AIBehaviorService:
             return text[first : last + 1].strip()
         return text.strip()
 
-    # Optional prompt blocks (PoC refs, threat actors, CAPEC hints).
+    # Token caps cho prompt input (giữ cho orchestrator cap values).
     _MAX_POC_REFS = 3
     _MAX_THREAT_ACTORS = 5
     _MAX_DESCRIPTION_CHARS = 1200
 
-    @classmethod
-    def _format_poc_block(cls, poc_references: list[str]) -> str:
-        """Empty khi không có PoC. Block omitted khỏi prompt."""
-        if not poc_references:
-            return ""
-        refs = poc_references[:cls._MAX_POC_REFS]
-        lines = ["\nPublic PoC References (use as inspiration for exploit mechanism):"]
-        for url in refs:
-            lines.append(f"  - {url}")
-        if len(poc_references) > cls._MAX_POC_REFS:
-            lines.append(f"  ... ({len(poc_references) - cls._MAX_POC_REFS} more omitted)")
-        lines.append("")
-        return "\n".join(lines)
-
-    @classmethod
-    def _format_threat_actors_block(cls, threat_actors: list[str]) -> str:
-        """Empty khi OTX không trả actor nào."""
-        if not threat_actors:
-            return ""
-        actors = threat_actors[:cls._MAX_THREAT_ACTORS]
-        lines = ["\nThreat Actors (observed by AlienVault OTX):"]
-        for name in actors:
-            lines.append(f"  - {name}")
-        if len(threat_actors) > cls._MAX_THREAT_ACTORS:
-            lines.append(f"  ... ({len(threat_actors) - cls._MAX_THREAT_ACTORS} more omitted)")
-        lines.append("")
-        return "\n".join(lines)
-
-    @classmethod
-    def _format_capec_hints_block(cls, capec_hints_by_cwe: dict[str, list[dict]]) -> str:
-        """CAPEC hints INSPIRATION ONLY — không phải ground truth."""
-        if not capec_hints_by_cwe:
-            return ""
-        lines = ["\nCAPEC hints (INSPIRATION, NOT requirements — use only if CVE signals support):"]
-        for cwe_id, hints in capec_hints_by_cwe.items():
-            if not hints:
-                continue
-            lines.append(f"  {cwe_id}:")
-            for h in hints:
-                capec_id = h.get("capec_id", "?")
-                name = h.get("name", "")
-                likelihood = h.get("likelihood") or "?"
-                related = h.get("related_techniques") or []
-                related_str = ", ".join(related) if related else "no direct ATT&CK mapping"
-                lines.append(
-                    f"    - {capec_id} ({name}): likelihood={likelihood}, ATT&CK hints=[{related_str}]"
-                )
-        lines.append("")
-        return "\n".join(lines)
-
-    @classmethod
-    def _format_phase1_block(cls, phase1_output: dict[str, Any]) -> str:
-        """Empty string khi phase1_output rỗng (single-shot backward compat)."""
+    @staticmethod
+    def _summarize_phase1(phase1_output: dict[str, Any]) -> str:
+        """Phase 1 → canonical anchor block (focus Phase 2 vào ATT&CK mapping)."""
         if not phase1_output:
-            return ""
+            return "n/a"
 
+        vt = phase1_output.get("vulnerability_type") or "n/a"
+        fam = phase1_output.get("family") or "n/a"
         surface = phase1_output.get("execution_surface") or "unknown"
         delivery = phase1_output.get("delivery_vector") or "unknown"
         ui_required = phase1_output.get("user_interaction_required")
@@ -195,38 +129,29 @@ class AIBehaviorService:
         else:
             ui_str = str(ui_required)
 
-        attack_flow = phase1_output.get("attack_flow") or {}
-        entry = attack_flow.get("entry_vector") or "n/a"
-        exec_mech = attack_flow.get("execution_mechanism") or "n/a"
-
-        lines = [
-            "\n# PHASE 1 OUTPUT (CANONICAL FACTS - USE THESE TO DISAMBIGUATE ATT&CK)",
-            "(Note: AV:N + PR:N in CVSS vector does NOT imply server-side. Use these facts instead.)",
-            f"  execution_surface:        {surface}",
-            f"  delivery_vector:          {delivery}",
-            f"  user_interaction_required: {ui_str}",
-            f"  entry_vector (Phase 1):   {entry}",
-            f"  execution_mechanism (Phase 1): {exec_mech}",
-            "",
-        ]
-        return "\n".join(lines)
-
-    @staticmethod
-    def _summarize_phase1(phase1_output: dict[str, Any]) -> str:
-        """Phase 1 → description ngắn (focus Phase 2 vào ATT&CK mapping)."""
-        if not phase1_output:
-            return "n/a"
-        vt = phase1_output.get("vulnerability_type") or "n/a"
-        fam = phase1_output.get("family") or "n/a"
         af = phase1_output.get("attack_flow") or {}
         entry = af.get("entry_vector") or "n/a"
         exec_mech = af.get("execution_mechanism") or "n/a"
+        effects = af.get("observable_side_effects") or []
+        effects_str = ", ".join(effects) if effects else "n/a"
+
+        mandatory = phase1_output.get("mandatory_behaviors") or []
+        mandatory_str = ", ".join(mandatory) if mandatory else "n/a"
+
         return (
-            f"[Phase 1 summary]\n"
-            f"  vulnerability_type: {vt}\n"
-            f"  family:             {fam}\n"
-            f"  entry_vector:       {entry}\n"
-            f"  execution_mechanism: {exec_mech}"
+            f"[Phase 1 summary — CANONICAL FACTS, USE THESE TO DISAMBIGUATE ATT&CK]\n"
+            f"(Note: AV:N + PR:N in CVSS vector does NOT imply server-side. "
+            f"Use execution_surface / delivery_vector / user_interaction_required "
+            f"instead of CVSS heuristic.)\n"
+            f"  vulnerability_type:       {vt}\n"
+            f"  family:                   {fam}\n"
+            f"  execution_surface:        {surface}\n"
+            f"  delivery_vector:          {delivery}\n"
+            f"  user_interaction_required: {ui_str}\n"
+            f"  mandatory_behaviors:      {mandatory_str}\n"
+            f"  observable_side_effects:  {effects_str}\n"
+            f"  entry_vector:             {entry}\n"
+            f"  execution_mechanism:      {exec_mech}"
         )
 
     @staticmethod
@@ -234,13 +159,7 @@ class AIBehaviorService:
         phase1_output: dict[str, Any] | None,
         nvd_description: str,
     ) -> str:
-        """NVD (primary) + Phase 1 summary (anchor) — WHY:
-        - NVD chứa product/keyword triggers (OGNL, Jinja2, eval) giúp LLM chọn
-          sub-technique đúng (T1059.007 JS, T1059.006 Python). Thiếu → LLM
-          anchor vào T1190 generic, miss T1059.xxx.
-        - Phase 1 tránh AV:N→T1190 bias.
-        NVD rỗng/ngắn → return Phase 1 summary alone.
-        """
+        """NVD (primary) + Phase 1 summary (anchor). NVD chứa product/keyword triggers (OGNL/Jinja2/eval) giúp chọn sub-technique đúng; Phase 1 tránh AV:N→T1190 bias."""
         nvd_truncated = (nvd_description or "N/A")[: AIBehaviorService._MAX_DESCRIPTION_CHARS]
         phase1_summary = AIBehaviorService._summarize_phase1(phase1_output or {})
         if not phase1_summary or phase1_summary.strip() == "n/a":
@@ -249,13 +168,7 @@ class AIBehaviorService:
 
     @staticmethod
     def _condense_shared_rules_for_phase2(full_rules: str) -> str:
-        """Trích phần shared rules CẦN THIẾT cho Phase 2.
-
-        Phase 2 đã có riêng anchor rules + reference examples, KHÔNG cần:
-        5 soft principles, reference examples, CAPEC hints inspiration.
-        GIỮ: MEMORY CORRUPTION (cho CVE-2021-3156/2013-4365),
-        EVASIVE INDICATORS ENFORCEMENT, SUBTECHNIQUE DECISION.
-        """
+        """Trích phần shared rules CẦN THIẾT cho Phase 2: MEMORY CORRUPTION, EVASIVE INDICATORS ENFORCEMENT, SUBTECHNIQUE DECISION."""
         keep_sections = [
             "MEMORY CORRUPTION → execution-aware discriminator",
             "EVASIVE INDICATORS ENFORCEMENT",
