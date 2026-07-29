@@ -77,6 +77,42 @@ TECHNIQUE_TO_TACTICS: dict[str, list[str]] = {
 }
 
 
+SUBTECHNIQUE_KEYWORD_MAP: dict[str, list[dict[str, Any]]] = {
+    "T1059": [
+        {"keywords": ["powershell", "ps1"], "subtech": "T1059.001"},
+        {"keywords": ["cmd", "windows", "batch"], "subtech": "T1059.003"},
+        {"keywords": ["bash", "shell", "unix", "linux", "/bin"], "subtech": "T1059.004"},
+        {"keywords": ["python"], "subtech": "T1059.006"},
+        {"keywords": ["javascript", "nodejs"], "subtech": "T1059.007"},
+    ],
+    "T1071": [
+        {"keywords": ["ldap", "http", "https", "web", "dns", "callback"], "subtech": "T1071.001"},
+        {"keywords": ["ftp", "smtp", "file_transfer"], "subtech": "T1071.002"},
+    ],
+    "T1210": [
+        {"keywords": ["smb"], "subtech": "T1021.002"},
+        {"keywords": ["rdp"], "subtech": "T1021.001"},
+        {"keywords": ["ssh"], "subtech": "T1021.004"},
+    ],
+}
+
+
+def _add_subtechnique(
+    subtechniques: list,
+    tactics: list,
+    subtech_id: str,
+    *,
+    derive_tactic: bool = False,
+) -> bool:
+    """Add a subtechnique once and optionally derive its tactic."""
+    if subtech_id in subtechniques:
+        return False
+    subtechniques.append(subtech_id)
+    if derive_tactic:
+        _ensure_tactics(tactics, subtech_id)
+    return True
+
+
 def _derive_tactics_from_techniques(techniques: list[str]) -> list[str]:
     """Suy diễn tactics từ techniques (vd T1190/T1203/T1071 → TA0001/TA0002/TA0011)."""
     tactics: list[str] = []
@@ -960,64 +996,23 @@ def _enrich_subtechniques(
 
     touched = False
 
-    # T1059 → Sub-techniques dựa trên OS/Interpreter
-    if "T1059" in techniques:
-        if any(kw in combined_text for kw in ["powershell", "ps1"]):
-            if "T1059.001" not in subtechniques:
-                subtechniques.append("T1059.001")
-                touched = True
-        if any(kw in combined_text for kw in ["cmd", "windows", "batch"]):
-            if "T1059.003" not in subtechniques:
-                subtechniques.append("T1059.003")
-                touched = True
-        if any(kw in combined_text for kw in ["bash", "shell", "unix", "linux", "/bin"]):
-            if "T1059.004" not in subtechniques:
-                subtechniques.append("T1059.004")
-                touched = True
-        if "python" in combined_text:
-            if "T1059.006" not in subtechniques:
-                subtechniques.append("T1059.006")
-                touched = True
-        if "javascript" in combined_text or "nodejs" in combined_text:
-            if "T1059.007" not in subtechniques:
-                subtechniques.append("T1059.007")
-                touched = True
-
-    # T1071 → Sub-techniques dựa trên protocol
-    if "T1071" in techniques:
-        if any(kw in combined_text for kw in ["ldap", "http", "https", "web", "dns", "callback"]):
-            if "T1071.001" not in subtechniques:
-                subtechniques.append("T1071.001")
-                # Derive tactic for subtechnique
-                new_tactics = TECHNIQUE_TO_TACTICS.get("T1071.001", [])
-                for t in new_tactics:
-                    if t not in tactics:
-                        tactics.append(t)
-                touched = True
-        if any(kw in combined_text for kw in ["ftp", "smtp", "file_transfer"]):
-            if "T1071.002" not in subtechniques:
-                subtechniques.append("T1071.002")
-                # Derive tactic for subtechnique
-                new_tactics = TECHNIQUE_TO_TACTICS.get("T1071.002", [])
-                for t in new_tactics:
-                    if t not in tactics:
-                        tactics.append(t)
-                touched = True
-
-    # T1210 → SMB/RDP exploitation - map to T1021 sub-techniques
-    if "T1210" in techniques:
-        if "smb" in combined_text:
-            if "T1021.002" not in subtechniques:
-                subtechniques.append("T1021.002")
-                touched = True
-        if "rdp" in combined_text:
-            if "T1021.001" not in subtechniques:
-                subtechniques.append("T1021.001")
-                touched = True
-        if "ssh" in combined_text:
-            if "T1021.004" not in subtechniques:
-                subtechniques.append("T1021.004")
-                touched = True
+    # Subtechnique enrichment via SUBTECHNIQUE_KEYWORD_MAP (parent_tech → keyword → subtech)
+    derive_tactic_parents = {"T1071"}
+    for parent_tech, entries in SUBTECHNIQUE_KEYWORD_MAP.items():
+        if parent_tech not in techniques:
+            continue
+        derive_tactic = parent_tech in derive_tactic_parents
+        for entry in entries:
+            keywords = entry["keywords"]
+            subtech_id = entry["subtech"]
+            if any(kw in combined_text for kw in keywords):
+                if _add_subtechnique(
+                    subtechniques,
+                    tactics,
+                    subtech_id,
+                    derive_tactic=derive_tactic,
+                ):
+                    touched = True
 
     if touched:
         attack_mapping["subtechniques"] = subtechniques
