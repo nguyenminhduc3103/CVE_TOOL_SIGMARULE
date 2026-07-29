@@ -1,10 +1,4 @@
-"""Step6Result domain model — typed result of Step 6 (scope: Planner + Builder only).
-
-Step 6 returns:
-- detection_plan: DetectionPlan — AI artifact, first-class output
-- rules: list[SigmaRule] — Builder artifact (Builder sinh SigmaRule)
-- yaml_output: str — Serializer artifact (Builder dùng SigmaYamlSerializer sinh YAML)
-"""
+"""Step6Result domain model — typed result of Step 6 (Planner + Builder only)."""
 from __future__ import annotations
 
 from pydantic import BaseModel, Field

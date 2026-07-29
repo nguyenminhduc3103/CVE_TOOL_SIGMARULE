@@ -22,7 +22,7 @@ class SigmaRuleGenerator:
         self.output_dir = Path(output_dir)
         self.detection_builder = FamilyDetectionBuilder()
         self.correlation_builder = CorrelationBuilder()
-        self._pending_correlation = None  # Biến tạm để giữ block correlation
+        self._pending_correlation = None  # holds correlation block across generate/save
 
     def generate(
         self,
@@ -47,12 +47,12 @@ class SigmaRuleGenerator:
         related = self._build_related(coverage)
 
         primary_logsource, secondary_logsources = self._select_logsources(telemetry)
-        
-        # 1. Khởi tạo Detection ban đầu
+
+        # 1. Build initial detection
         detection = self.detection_builder.build(analysis, attack, telemetry)
         self._fill_detection_keywords(detection, analysis, core)
-        
-        # 2. Lấy Logic Correlation
+
+        # 2. Resolve correlation logic
         correlation = self.correlation_builder.build(analysis, attack, telemetry, detection)
         detection_confidence = self._adjust_confidence(analysis_confidence, telemetry, family, signature, getattr(correlation, "expression", "") or "")
 
@@ -69,27 +69,26 @@ class SigmaRuleGenerator:
         is_cross_event = getattr(correlation, "is_cross_event", False)
         correlation_block = getattr(correlation, "correlation_block", None)
 
-        # 3. NẾU LÀ CORRELATION ĐA SỰ KIỆN (CROSS-EVENT) -> Tách thành nhiều Rule
+        # 3. Cross-event correlation: split into sub-rules + parent
         if is_cross_event and correlation_block:
             rules_list = []
             rule_ids = []
-            
-            # Tách các sub-rules dựa trên selections
+
             for sel_name, sel_data in detection.selections.items():
-                if not sel_data: continue # Bỏ qua nếu rỗng
-                
+                if not sel_data: continue
+
                 sub_title = f"{title} ({sel_name.split('_')[-1].capitalize()} Component)"
                 sub_id = self._generate_rule_id(cve_id, sub_title, tags)
                 rule_ids.append(sub_id)
-                
-                # Ánh xạ lại logsource cho đúng Taxonomy
+
+                # Map selection name → Sigma category
                 sub_logsource = "process_creation"
                 if "file" in sel_name: sub_logsource = "file_event"
                 if "http" in sel_name or "web" in sel_name: sub_logsource = "webserver"
                 if "network" in sel_name: sub_logsource = "network_connection"
 
                 sub_detection = SigmaDetection(selections={sel_name: sel_data}, condition=sel_name)
-                
+
                 sub_metadata = SigmaMetadata(title=sub_title, id=sub_id, **metadata_base)
                 rules_list.append(SigmaRule(
                     metadata=sub_metadata,
@@ -104,18 +103,18 @@ class SigmaRuleGenerator:
                     x_secondary_logsources=[],
                 ))
 
-            # Tạo Rule Tương quan (Main Correlation Rule)
+            # Parent correlation rule
             corr_title = f"{title} (Correlation)"
             corr_id = self._generate_rule_id(cve_id, corr_title, ["correlation"])
             corr_metadata = SigmaMetadata(title=corr_title, id=corr_id, **metadata_base)
-            
-            # Lắp tên các sub-rule vào block correlation
+
+            # Wire sub-rule IDs into correlation block
             correlation_block.rules = rule_ids
 
             main_corr_rule = SigmaRule(
                 metadata=corr_metadata,
-                logsource={}, # Correlation rule không có logsource cụ thể
-                detection=SigmaDetection(selections={}, condition=""), # Dummy detection
+                logsource={},
+                detection=SigmaDetection(selections={}, condition=""),
                 x_family=family or "generic",
                 x_signature=signature or family or "generic",
                 x_detection_confidence=detection_confidence,
@@ -124,18 +123,18 @@ class SigmaRuleGenerator:
                 x_correlation_reasoning=correlation.reasoning,
                 x_secondary_logsources=secondary_logsources,
             )
-            
-            # Lưu tạm vào biến class để né lỗi Pydantic
+
+            # Stash on instance (Pydantic v1/v2 compat)
             try:
                 self._pending_correlation = correlation_block.model_dump(by_alias=True, exclude_none=True)
             except AttributeError:
                 self._pending_correlation = correlation_block.dict(by_alias=True, exclude_none=True)
-                
+
             rules_list.append(main_corr_rule)
-            
+
             return rules_list
 
-        # 4. NẾU LÀ RULE BÌNH THƯỜNG (SINGLE-EVENT)
+        # 4. Single-event rule
         detection.condition = getattr(correlation, "expression", None) or "1 of selection_*"
         metadata = SigmaMetadata(
             title=title,
@@ -162,16 +161,15 @@ class SigmaRuleGenerator:
         cve_id = self._extract_cve_from_references(rules[0].metadata.references) or "CVE-UNKNOWN"
         self.output_dir.mkdir(parents=True, exist_ok=True)
         output_path = self.output_dir / f"{cve_id}.yml"
-        
+
         yaml_texts = []
         pending_corr = getattr(self, '_pending_correlation', None)
-        
+
         for i, rule in enumerate(rules):
             rule_yaml = rule.to_yaml()
-            
-            # Nếu là rule cuối cùng và hệ thống có chứa luật tương quan (pending_corr)
+
+            # Last rule + pending correlation → inject action/correlation block
             if i == len(rules) - 1 and pending_corr and len(rules) > 1:
-                # Thêm action: correlation (chuẩn SigmaHQ)
                 corr_lines = ["action: correlation", "correlation:"]
                 for k, v in pending_corr.items():
                     if isinstance(v, list):
@@ -181,22 +179,19 @@ class SigmaRuleGenerator:
                     else:
                         corr_lines.append(f"    {k}: {v}")
                 corr_str = "\n".join(corr_lines)
-                
-                # Cắt bỏ block dummy detection và thay bằng correlation block
+
+                # Replace dummy detection with correlation block, strip empty logsource
                 rule_yaml = re.sub(
-                    r'detection:\s*\n(?:\s*(?:condition|selections):[^\n]*\n?)*', 
-                    corr_str + '\n', 
+                    r'detection:\s*\n(?:\s*(?:condition|selections):[^\n]*\n?)*',
+                    corr_str + '\n',
                     rule_yaml
                 )
-                
-                # Dùng Regex cạo sạch dòng logsource rỗng
                 rule_yaml = re.sub(r'logsource:\s*(?:\{\})?\s*\n', '', rule_yaml)
-                
-                self._pending_correlation = None # Reset state
-                
+                self._pending_correlation = None
+
             yaml_texts.append(rule_yaml)
 
-        # Ghi các rule ra file, cách nhau bằng "---" chuẩn YAML multi-document
+        # YAML multi-document (rules separated by "---")
         yaml_content = "\n---\n".join(yaml_texts)
         output_path.write_text(yaml_content, encoding="utf-8")
         return output_path
@@ -254,36 +249,9 @@ class SigmaRuleGenerator:
         subtechniques = self._list(self._get(attack, "subtechniques"))
         return self._unique(techniques + subtechniques)
 
-    def _build_detection(self, behaviors: list[str], telemetry: TelemetryAssessment | dict[str, object] | None) -> dict[str, dict[str, list[str]]]:
-        behavior_map: dict[str, tuple[str, str, str]] = {
-            "web_request": ("selection_web", "cs-uri-query|contains", "${IOC}"),
-            "process_creation": ("selection_process", "CommandLine|contains", "${PAYLOAD}"),
-            "network_connection": ("selection_network", "DestinationHostname|contains", "${C2}"),
-            "tool_download": ("selection_download", "CommandLine|contains", "${PAYLOAD}"),
-            "public_facing_exploit": ("selection_exploit", "cs-uri-query|contains", "${IOC}"),
-        }
-        selections: dict[str, dict[str, list[str]]] = {}
-        for behavior in behaviors:
-            mapping = behavior_map.get(behavior)
-            if not mapping:
-                continue
-            selection_name, field_name, placeholder = mapping
-            selections[selection_name] = {field_name: [placeholder]}
-
-        if selections:
-            return selections
-
-        primary_logsource, _ = self._select_logsources(telemetry)
-        fallback_map = {
-            "process_creation": {"selection_process": {"CommandLine|contains": ["${PAYLOAD}"]}},
-            "webserver": {"selection_web": {"cs-uri-query|contains": ["${IOC}"]}},
-            "network_connection": {"selection_network": {"DestinationHostname|contains": ["${C2}"]}},
-        }
-        return fallback_map.get(primary_logsource, {"selection_generic": {"EventID|contains": ["${IOC}"]}})
-
     def _select_logsources(self, telemetry: TelemetryAssessment | dict[str, object] | None) -> tuple[str, list[str]]:
         priority = ["process_creation", "webserver", "network_connection"]
-        # Phase 7 (2026-07): candidate_logsources đã deprecated → chỉ đọc từ sigma_logsources
+        # candidate_logsources deprecated → only read from sigma_logsources
         categories: list[str] = []
         sigma_logsources = self._get(telemetry, "sigma_logsources") or []
         for item in sigma_logsources:
@@ -312,9 +280,9 @@ class SigmaRuleGenerator:
         analysis: TechnicalAnalysis | dict[str, object] | None,
         core: CoreCVEData,
     ) -> None:
-        # CHỈ lấy extracted_keywords từ analysis, tuyệt đối KHÔNG add cve_id vào đây
+        # Only extracted_keywords from analysis; never add cve_id here.
         keywords = self._unique(self._list(self._get(analysis, "extracted_keywords")))
-        
+
         description = str(self._get(core, "description") or "").lower()
         family = self._normalize_slug(self._get(analysis, "family"))
         web_keyword_map = {
@@ -331,31 +299,30 @@ class SigmaRuleGenerator:
             for field, values in list(selection.items()):
                 if not isinstance(values, list):
                     continue
-                
-                # Sửa lỗi đắp payload: Nếu không có keyword thực tế, xóa placeholder
-                # Sửa lỗi đắp payload: Nếu không có keyword thực tế, xóa placeholder hoặc gán fallback
+
+                # If no real keyword, drop placeholder or use fallback
                 if any("${PAYLOAD}" in str(value) for value in values):
                     if keywords:
                         selection[field] = keywords
-                    elif field == "CommandLine|contains": # THÊM DÒNG NÀY ĐỂ FALLBACK
+                    elif field == "CommandLine|contains":
                         selection[field] = ["cmd.exe", "/bin/sh", "powershell", "curl", "wget"]
                     else:
-                        selection[field] = [] 
-                
-                # Xử lý riêng cho webshell/file_upload
+                        selection[field] = []
+
+                # Special handling for webshell/file_upload
                 elif field == "TargetFilename|contains" and any("${IOC}" in str(value) for value in values):
                     if family == "file_upload" and web_exts:
-                        selection[field] = web_exts # Bỏ việc cộng thêm cve_id vào đây
+                        selection[field] = web_exts
                     elif keywords:
                          selection[field] = keywords
                     else:
                         selection[field] = []
 
-                # Fallback cho trường hợp CommandLine trống ngay từ đầu
+                # Fallback for empty CommandLine
                 elif field == "CommandLine|contains" and not values:
                     selection[field] = keywords if keywords else ["cmd.exe", "/bin/sh", "powershell", "curl", "wget"]
-                        
-            # Dọn dẹp các field rỗng sau khi xóa placeholder
+
+            # Drop empty fields after placeholder removal
             for key in list(selection.keys()):
                 if not selection[key]:
                     del selection[key]
@@ -391,15 +358,6 @@ class SigmaRuleGenerator:
     def _generate_rule_id(self, cve_id: str, title: str, tags: list[str]) -> str:
         basis = f"{cve_id}:{title}:{','.join(tags)}"
         return str(uuid5(NAMESPACE_URL, basis))
-
-    def _combine_confidence(self, analysis_confidence: float | None, telemetry_confidence: float | None) -> float | None:
-        if analysis_confidence is None and telemetry_confidence is None:
-            return None
-        if analysis_confidence is None:
-            return round(float(telemetry_confidence or 0.0), 2)
-        if telemetry_confidence is None:
-            return round(float(analysis_confidence), 2)
-        return round((analysis_confidence + telemetry_confidence) / 2, 2)
 
     def _adjust_confidence(
         self,

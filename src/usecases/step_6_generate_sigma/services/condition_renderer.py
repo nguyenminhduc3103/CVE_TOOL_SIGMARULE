@@ -1,11 +1,7 @@
-"""Condition Renderer — translate `DetectionLogic` into a Sigma condition string.
+"""Condition Renderer — translate DetectionLogic into a Sigma condition string.
 
-    operator="all"      → sel_a and sel_b
-    operator="any"      → sel_a or sel_b
-    operator="at_least" → N of sel_*
-
-Builder NEVER silently weakens "all" to "any". If an operand index is out of range,
-the renderer raises — caller decides whether to retry / fallback / not_ready.
+Operators: all → sel_a and sel_b; any → sel_a or sel_b; at_least → N of sel_*.
+Builder NEVER silently weakens "all" to "any"; raises on out-of-range operands.
 """
 from __future__ import annotations
 
@@ -33,10 +29,7 @@ def render_condition(
     logic: DetectionLogic,
     detections: list,
 ) -> ConditionRenderResult:
-    """Render Sigma condition string from DetectionLogic.
-
-    detection_count >= max(operands) is required (DetectionPlan already validates this).
-    """
+    # detection_count >= max(operands) required (DetectionPlan already validates).
     operand_names = [_operand_name(idx, detections) for idx in logic.operands]
 
     if logic.operator == "all":

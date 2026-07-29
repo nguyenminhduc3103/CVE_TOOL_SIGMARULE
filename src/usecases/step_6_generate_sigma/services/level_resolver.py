@@ -1,14 +1,6 @@
-"""Deterministic Level Resolver — computes Sigma rule level from
-severity + correlation + risk_bias + feasibility + completeness.
+"""Deterministic Level Resolver — computes Sigma rule level from severity + correlation + risk_bias + feasibility + completeness.
 
-AI NEVER emits level. AI emits `risk_bias` ∈ {conservative, neutral, aggressive}.
-Builder then translates:
-    base_level = severity_from_vulnerability_type(role)
-    + correlation_bump if correlation_required
-    + risk_bias_offset
-    CAP by feasibility
-    CAP by completeness (Phase C)
-    clamp to [0..4]
+AI emits risk_bias (conservative/neutral/aggressive); Builder translates.
 """
 from __future__ import annotations
 
@@ -20,7 +12,7 @@ from src.usecases.step_6_generate_sigma._knowledge import loader
 from src.usecases.step_6_generate_sigma.domain.detection_plan import RiskBias
 
 
-# Order: informational=0, low=1, medium=2, high=3, critical=4
+# Level order: informational=0, low=1, medium=2, high=3, critical=4
 LEVEL_ORDER = ["informational", "low", "medium", "high", "critical"]
 
 
@@ -51,7 +43,7 @@ def _resolve_base_level(
     severity: str | None,
     table: dict[str, Any],
 ) -> tuple[str, int]:
-    """Lookup base level from `level_translation.base_by_vuln_type` table."""
+    """Lookup base level from `level_translation.base_by_vuln_type` table; fallback CVSS/severity."""
     base_by_vuln = table.get("base_by_vuln_type", {}) or {}
     vt = _normalize_vuln_type(vulnerability_type)
     if vt and vt in base_by_vuln:
@@ -140,18 +132,18 @@ def resolve_level(
         f"cvss={cvss_score}, severity={severity!r})"
     ]
 
-    # Apply correlation_bump
+    # correlation bump
     bump = int(table.get("correlation_bump", 0)) if correlation_required else 0
     after_bump_idx = min(4, base_idx + bump)
     reasoning.append(f"correlation_bump=+{bump} → {LEVEL_ORDER[after_bump_idx]}")
 
-    # Apply risk_bias offset
+    # risk_bias offset
     bias_map = table.get("risk_bias_offset", {}) or {}
     bias_offset = int(bias_map.get(risk_bias, 0))
     after_bias_idx = max(0, min(4, after_bump_idx + bias_offset))
     reasoning.append(f"risk_bias={risk_bias} ({bias_offset:+d}) → {LEVEL_ORDER[after_bias_idx]}")
 
-    # Apply feasibility cap
+    # feasibility cap
     feas_cap_level, feas_cap_idx = _resolve_feasibility_cap(pipeline_feasibility, table)
     if feas_cap_idx is not None:
         reasoning.append(
@@ -159,7 +151,7 @@ def resolve_level(
         )
         after_bias_idx = min(after_bias_idx, feas_cap_idx)
 
-    # Apply completeness cap
+    # completeness cap
     comp_cap_level, comp_cap_idx = _resolve_completeness_cap(completeness_level, table)
     if comp_cap_idx is not None:
         reasoning.append(f"completeness_cap={comp_cap_level} (completeness={completeness_level})")

@@ -1,29 +1,8 @@
 """Step 6 LLM contract — strict schema for AI Detection Logic Planner output.
 
-AI emits ONLY:
-    detections[].intent (free text)
-    detections[].priority ∈ {critical, high, medium, low}
-    detections[].rationale
-    detections[].selection_hint (optional, evidence-backed only)
-    logic.operator ∈ {all, any, at_least}
-    logic.operands (list of detection-plan indexes)
-    logic.threshold (required when operator=at_least)
-    falsepositives (list of strings)
-    risk_bias ∈ {conservative, neutral, aggressive}
-    rationale (string)
-    planner_confidence (0.0-1.0)
-
-AI must NOT emit:
-    - domain / telemetry category (Step 4 owns that)
-    - logsource (Step 4 sigma_logsources is canonical)
-    - Sigma field names / modifiers (Step 4 KB owns taxonomy)
-    - condition literal string (Builder renders)
-    - level (Builder computes)
-    - title / id / status / author / date / tags / references
-    - UUID, YAML
-
-`Step6LLMResponse` is the strict raw-LLM schema. The post-processed domain
-model is `DetectionPlan` in `domain/detection_plan.py`.
+AI emits ONLY: detections, logic, falsepositives, risk_bias, rationale, planner_confidence.
+AI must NOT emit: domain/logsource/level/title/id/status/author/date/tags/references/condition/UUID/YAML.
+Post-processed domain model is DetectionPlan in domain/detection_plan.py.
 """
 from __future__ import annotations
 
@@ -121,12 +100,8 @@ class Step6LLMResponse(BaseModel):
 
 
 def assert_no_forbidden_fields(raw_dict: dict) -> None:
-    """Defensive guard: reject LLM responses carrying forbidden fields.
-
-    Pydantic's strict schema drops unknown fields by default, but a raw dict
-    could still smuggle them. Use this when receiving AI output to fail loud
-    rather than silently dropping.
-    """
+    # Defensive guard: reject LLM responses carrying forbidden fields.
+    # Use when receiving AI output to fail loud rather than silently dropping.
     present = set(raw_dict.keys()) & _FORBIDDEN_LLM_FIELDS
     if present:
         raise ValueError(

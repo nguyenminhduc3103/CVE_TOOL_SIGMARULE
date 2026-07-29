@@ -1,13 +1,7 @@
 """Rule-based fallback Detection Logic Planner.
 
-Used when:
-- AI is disabled (settings.step6_ai_enabled=False)
-- AI call fails (AIServiceError)
-- planner_confidence < fallback_threshold
-
-This is a SEMANTIC planner — emits DetectionPlan (intent + logic + risk_bias),
-NOT Sigma YAML. The orchestrator's Deterministic Builder still does the actual
-Sigma emission downstream.
+Used when AI disabled / call fails / planner_confidence < threshold.
+Emits DetectionPlan (intent + logic + risk_bias), NOT Sigma YAML.
 """
 from __future__ import annotations
 
@@ -75,13 +69,7 @@ def build_rule_based_plan(
     family_signature: str | None = None,
     fallback_reason: str = "AI unavailable or low confidence",
 ) -> DetectionPlan:
-    """Build a rule-based semantic DetectionPlan.
-
-    Source of intents (priority order):
-        1. families.<signature>.intents (if family known)
-        2. mandatory_behaviors → KB behaviors
-        3. attack_flow.observable_side_effects
-    """
+    # Intent source priority: families.<sig>.intents → mandatory_behaviors → observable_side_effects.
     technical_analysis = technical_analysis or {}
     telemetry = telemetry or {}
 
@@ -114,7 +102,7 @@ def build_rule_based_plan(
         effects = _list(flow.get("observable_side_effects"))
         intents.extend(_observable_effects_to_intents(effects))
 
-    # If still empty, emit a single generic detection
+    # Last resort: single generic detection
     if not intents:
         intents = [
             DetectionIntent(
@@ -125,7 +113,7 @@ def build_rule_based_plan(
             )
         ]
 
-    # Determine operator from correlation_required
+    # Operator from correlation_required
     correlation_required = bool(telemetry.get("correlation_required", False))
     if correlation_required and len(intents) > 1:
         operator = "all"

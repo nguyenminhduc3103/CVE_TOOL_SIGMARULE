@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-# Đã sửa đổi để hỗ trợ chuẩn Multi-event Correlation
+# Multi-event correlation rules. Supports SigmaHQ correlation block format.
 FAMILY_CORRELATION_RULES: dict[str, dict[str, object]] = {
     "spring4shell": {
         "required_selections": ["selection_http", "selection_process"],
@@ -25,8 +25,8 @@ FAMILY_CORRELATION_RULES: dict[str, dict[str, object]] = {
     },
     "printnightmare": {
         "required_selections": ["selection_spoolsv", "selection_dll"],
-        "is_cross_event": False, 
-        "expression": "selection_spoolsv and selection_dll", # Có thể nằm cùng 1 event (ImageLoaded)
+        "is_cross_event": False,
+        "expression": "selection_spoolsv and selection_dll",
         "reasoning": "DLL load from spoolsv.exe is the primary exploitation chain.",
     },
     "struts_ognl": {
@@ -43,13 +43,13 @@ FAMILY_CORRELATION_RULES: dict[str, dict[str, object]] = {
         "timespan": "5m",
         "reasoning": "Web request leads to file access or file disclosure.",
     },
-    "file_upload": {  # Thêm cụm này cho Webshell (CVE-2025-22723)
+    "file_upload": {
         "required_selections": ["selection_file", "selection_process"],
         "is_cross_event": True,
         "correlation_type": "temporal_ordered",
         "timespan": "5m",
         "reasoning": "File drop in webroot followed by process execution (Webshell).",
-    }
+    },
 }
 
 BEHAVIOR_TO_SELECTION: dict[str, str] = {

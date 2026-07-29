@@ -17,7 +17,7 @@ class CorrelationBuilder:
     ) -> CorrelationCondition:
         available = list(detection.selections.keys())
 
-        # 1. Nếu không yêu cầu correlation, trả về mặc định
+        # 1. No correlation required → default
         if not self._correlation_required(telemetry):
             return CorrelationCondition(
                 expression="1 of selection_*",
@@ -29,8 +29,8 @@ class CorrelationBuilder:
 
         family = self._normalize(self._get(analysis, "family"))
         signature = self._normalize(self._get(analysis, "signature"))
-        
-        # 2. Tra cứu luật trong FAMILY_CORRELATION_RULES
+
+        # 2. Lookup family rule
         family_rule = self._resolve_family_rule(family, signature)
 
         if family_rule is not None:
@@ -39,12 +39,12 @@ class CorrelationBuilder:
                 is_cross_event = bool(family_rule.get("is_cross_event", False))
                 reasoning = str(family_rule.get("reasoning", ""))
 
-                # NẾU LÀ ĐA SỰ KIỆN (CROSS-EVENT) -> Tạo Block Correlation chuẩn SigmaHQ
+                # Cross-event → SigmaHQ correlation block (sub-rule IDs filled by generator)
                 if is_cross_event:
                     block = SigmaCorrelationBlock(
                         type=str(family_rule.get("correlation_type", "temporal_ordered")),
                         timespan=str(family_rule.get("timespan", "5m")),
-                        rules=[]  # Sẽ được SigmaRuleGenerator điền tên các rule con vào sau
+                        rules=[],
                     )
                     return CorrelationCondition(
                         is_cross_event=True,
@@ -53,7 +53,7 @@ class CorrelationBuilder:
                         reasoning=reasoning,
                         required_selections=required,
                     )
-                # NẾU LÀ ĐƠN SỰ KIỆN (SINGLE-EVENT) -> Giữ nguyên expression cũ
+                # Single-event → keep expression
                 else:
                     expression = str(family_rule.get("expression", "1 of selection_*"))
                     return CorrelationCondition(
@@ -64,7 +64,7 @@ class CorrelationBuilder:
                         required_selections=required,
                     )
 
-        # 3. Fallback động (Dynamic Fallback) dựa trên behaviors nếu không có family rule
+        # 3. Dynamic fallback based on behaviors
         behaviors = self._list(self._get(analysis, "mandatory_behaviors"))
         selections = [BEHAVIOR_TO_SELECTION[behavior] for behavior in behaviors if behavior in BEHAVIOR_TO_SELECTION]
         selections = [selection for selection in selections if selection in available]
@@ -86,20 +86,19 @@ class CorrelationBuilder:
                 reasoning="Single behavior detected; single-event expression.",
                 required_selections=selections,
             )
-        else:
-            # Nếu có >= 2 hành vi động, tự động coi nó là chuỗi thời gian (temporal_ordered)
-            block = SigmaCorrelationBlock(
-                type="temporal_ordered",
-                timespan="5m",
-                rules=[]
-            )
-            return CorrelationCondition(
-                is_cross_event=True,
-                correlation_block=block,
-                confidence=0.0,
-                reasoning="Dynamic multi-behavior sequence detected; generating cross-event correlation.",
-                required_selections=selections,
-            )
+        # >= 2 behaviors → treat as temporal_ordered cross-event
+        block = SigmaCorrelationBlock(
+            type="temporal_ordered",
+            timespan="5m",
+            rules=[],
+        )
+        return CorrelationCondition(
+            is_cross_event=True,
+            correlation_block=block,
+            confidence=0.0,
+            reasoning="Dynamic multi-behavior sequence detected; generating cross-event correlation.",
+            required_selections=selections,
+        )
 
     def _resolve_family_rule(self, family: str | None, signature: str | None) -> dict[str, object] | None:
         if signature and signature in FAMILY_CORRELATION_RULES:

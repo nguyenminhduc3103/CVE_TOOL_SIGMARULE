@@ -171,10 +171,10 @@ class GenericRCETemplate(_BaseTemplate):
             if not mapping:
                 continue
             selection_name, field_expression, placeholder = mapping
-            
-            # SỬA Ở ĐÂY: Phải check xem field_expression này có HỢP LỆ với logsource hiện tại không
-            # Nếu telemetry đang là process_creation, nó sẽ block TargetFilename của file_write
-            if self._field_allowed(telemetry, field_expression): 
+
+            # Only emit if field_expression is valid for the current logsource
+            # (e.g. process_creation blocks TargetFilename of file_write).
+            if self._field_allowed(telemetry, field_expression):
                 selection = self._selection(telemetry, field_expression, [placeholder])
                 if selection is not None:
                     selections[selection_name] = selection
@@ -182,7 +182,7 @@ class GenericRCETemplate(_BaseTemplate):
         if selections:
             return self._build_detection(selections, "1 of selection_*")
 
-        # Phase 7 (2026-07): candidate_logsources deprecated → derive từ sigma_logsources
+        # candidate_logsources deprecated → derive from sigma_logsources
         sigma_logsources = self._get(telemetry, "sigma_logsources") or []
         primary_logsource = self._get(sigma_logsources[0], "category") if sigma_logsources else None
         if primary_logsource == "process_creation" and self._field_allowed(telemetry, "CommandLine|contains"):

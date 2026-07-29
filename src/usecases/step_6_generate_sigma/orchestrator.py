@@ -1,23 +1,8 @@
 """Step 6 Orchestrator — wires Phase A (Planner) + Phase D (Builder).
 
-Scope (per Step 6 spec):
-  Phase A  Detection Planner (AI)            — DetectionPlan artifact
-  Phase D  Sigma Builder (deterministic)    — SigmaRule + YAML artifacts
-
-Out of scope (other modules will handle):
-  - Semantic Validation
-  - Completeness Validation
-  - Sigma Schema Validation
-  - Quality Assessment
-  - Noise Estimation
-  - Deployment Readiness
-  - Rule Explanation
-  - Reporting / Review
-
-Step 6 consumes:
-  - Step 2: TechnicalAnalysis + AttackMapping
-  - Step 4: TelemetryAssessment (canonical_telemetry, sigma_logsources,
-            validated_fields, correlation_required, pipeline_feasibility)
+Scope: Phase A Detection Planner (AI) + Phase D Sigma Builder (deterministic).
+Out of scope: validation, quality, noise, deployment, explanation, reporting.
+Inputs: Step 2 TechnicalAnalysis/AttackMapping + Step 4 TelemetryAssessment.
 """
 from __future__ import annotations
 
@@ -47,11 +32,10 @@ logger = logging.getLogger(__name__)
 
 
 class Step6Orchestrator:
-    """Connector giữa Step 2/4 inputs và deterministic Sigma pipeline.
+    """Connector between Step 2/4 inputs and deterministic Sigma pipeline.
 
-    Chỉ gồm:
-      - Phase A: AI Detection Planner → DetectionPlan
-      - Phase D: Sigma Builder → SigmaRule + YAML
+    Phase A: AI Detection Planner → DetectionPlan.
+    Phase D: Sigma Builder → SigmaRule + YAML.
     """
 
     def __init__(
@@ -79,7 +63,7 @@ class Step6Orchestrator:
             or self._get_attr(analysis, "family")
         )
 
-        # ===== Phase A — Detection Logic Planner =====
+        # Phase A — Detection Logic Planner
         plan, _plan_source = await self._phase_a_plan(
             cve_id=cve_id,
             analysis=analysis,
@@ -89,7 +73,7 @@ class Step6Orchestrator:
             family_signature=family_signature,
         )
 
-        # ===== Phase D — Deterministic Sigma Builder =====
+        # Phase D — Deterministic Sigma Builder
         rules, yaml_output, _level_resolution = build_sigma_rule(
             plan=plan,
             core=core,
@@ -114,7 +98,7 @@ class Step6Orchestrator:
         references: list[str] | None,
         family_signature: str | None,
     ) -> tuple[DetectionPlan, str]:
-        """Phase A: run AI or fallback to rule-based."""
+        # Phase A: try AI, then rule-based fallback on failure or low confidence.
         thresholds = loader.get_planner_confidence_thresholds() or {}
         fallback_threshold = float(thresholds.get("fallback_threshold", 0.4))
 

@@ -1,29 +1,7 @@
 """Phase D — Deterministic Sigma Rule Builder.
 
-Consumes:
-- DetectionPlan (validated, semantic intent)
-- SemanticValidationResult (passed)
-- CompletenessValidationResult (passed)
-- TelemetryAssessment (canonical_telemetry, sigma_logsources, validated_fields,
-                    correlation_required, pipeline_feasibility)
-- TechnicalAnalysis (description, references, vulnerability_type)
-- Step 6 KB (family signatures, correlation hints, level_translation)
-- CoreCVEData (cve_id, cvss_score, severity)
-
-Produces:
-- list[SigmaRule] (single event or correlation root + sub-rules)
-- yaml_output (string)
-- LevelResolution (deterministic level)
-
-Zero AI involvement. All decisions deterministic:
-- rule kind (single vs correlation) ← telemetry.correlation_required
-- logsource ← Step 4 sigma_logsources (first matching domain)
-- field names ← Step 4 validated_fields
-- values ← AI selection_hint (evidence-backed) OR KB signature
-- condition ← DetectionLogic rendered by condition_renderer
-- level ← LevelResolver (severity + correlation + risk_bias + feasibility + completeness)
-- title / description / tags / references ← deterministic
-- UUID5 ← deterministic cve_id:title:tags
+Consumes: DetectionPlan + TelemetryAssessment + TechnicalAnalysis + KB + CoreCVEData.
+Produces: SigmaRule list + YAML + LevelResolution. Zero AI involvement.
 """
 from __future__ import annotations
 
@@ -125,7 +103,7 @@ def _generate_description(
         f"Behaviors: {', '.join(outcomes) if outcomes else 'n/a'}."
     )
 
-    # Append CVE id (kept out of `tags` because SigmaValidator.TAG_PATTERN rejects cve.*).
+    # Append CVE id (out of `tags` because SigmaValidator.TAG_PATTERN rejects cve.*)
     if cve_id:
         summary = f"{summary} CVE: {cve_id}."
 
@@ -143,10 +121,7 @@ def _generate_description(
 def _build_tags(attack: AttackMapping | dict[str, object] | None, cve_id: str) -> list[str]:
     """Emit only ATT&CK technique tags.
 
-    Per validator contract (SigmaValidator.TAG_PATTERN = ^attack\\.t\\d{4}(?:\\.\\d{3})?$),
-    this builder intentionally does NOT emit `cve.<id>` or `correlation` strings here:
-    - `cve.<id>` → appended to metadata.description (see _generate_description).
-    - `correlation` → conveyed via x_correlation_required / x_correlation_logic flags.
+    Validator rejects cve.*; cve id goes to description, correlation via x_* flags.
     """
     techniques: list[str] = []
     seen: set[str] = set()
@@ -183,16 +158,8 @@ def _build_selections(
 ) -> dict[str, dict[str, list[str]]]:
     """Build Sigma selections dict from DetectionPlan.
 
-    Selection-hint fallback chain (highest priority first; first non-empty wins):
-        1. intent.selection_hint (AI emit)
-        2. stable_features (telemetry)        — exact match, no modifier
-        3. conditional_features (telemetry)   — with `endswith`/`contains`/`startswith`
-        4. required_events (telemetry)        — mapped to EventID field
-        5. validated_fields (telemetry)       — kept as field names only
-        6. wildcard "*"                       — last-resort, logged warning
-
-    Each intent gets at most one resolved selection. Coverage ratio increases
-    naturally because stable/conditional_features typically span many fields.
+    Fallback chain (first non-empty wins): selection_hint → stable_features →
+    conditional_features → required_events → validated_fields → wildcard.
     """
     selections: dict[str, dict[str, list[str]]] = {}
     telemetry = telemetry or {}
@@ -241,14 +208,14 @@ def _build_selections(
                 selections[selection_name] = fields
                 continue
 
-        # 4. required_events mapped to EventID (if any have numeric IDs)
+        # 4. required_events → EventID
         if required_events:
             event_ids = [str(ev) for ev in required_events if str(ev).isdigit()]
             if event_ids:
                 selections[selection_name] = {"EventID": event_ids}
                 continue
 
-        # 5. validated_fields — keep field names only (no value)
+        # 5. validated_fields wildcard
         if validated_fields:
             selections[selection_name] = {
                 f: ["*"] for f in validated_fields[:3]
@@ -259,7 +226,7 @@ def _build_selections(
             )
             continue
 
-        # 6. Last resort: wildcard
+        # 6. last resort: EventID wildcard
         selections[selection_name] = {"EventID": ["*"]}
         logger.warning(
             "selection_hint and all telemetry features empty for intent[%d] '%s'; using wildcard",
@@ -322,7 +289,6 @@ def build_sigma_rule(
     analysis: TechnicalAnalysis | dict[str, object] | None,
     attack: AttackMapping | dict[str, object] | None,
     telemetry: dict[str, Any] | None,
-    semantic_validation: object | None = None,
     completeness_validation: object | None = None,
     family_signature: str | None = None,
 ) -> tuple[list[SigmaRule], str, Any]:
@@ -342,12 +308,11 @@ def build_sigma_rule(
     correlation_required = bool(telemetry.get("correlation_required", False))
     pipeline_feasibility = telemetry.get("pipeline_feasibility") or telemetry.get("telemetry_feasibility_score")
 
-    # Phase C completeness level (for level cap)
+    # completeness level (Phase C) used as Level cap
     completeness_level = None
     if completeness_validation is not None:
         completeness_level = getattr(completeness_validation, "level", None)
 
-    # Level resolution (deterministic)
     level_res = resolve_level(
         vulnerability_type=vuln_type,
         cvss_score=float(cvss_score) if cvss_score is not None else None,
@@ -361,20 +326,19 @@ def build_sigma_rule(
     # Build selections
     selections = _build_selections(plan, telemetry, family_signature or signature)
 
-    # Metadata
+    # Metadata fields
     title = _generate_title(cve_id, family, signature, len(plan.detections), correlation_required)
     description = _generate_description(cve_id, analysis, attack, telemetry, len(plan.detections), correlation_required)
     tags = _build_tags(attack, cve_id)
     references = _generate_references(cve_id, analysis, telemetry)
     date = datetime.now(timezone.utc).strftime("%Y/%m/%d")
 
-    # Decide rule structure
+    # Decide rule structure: cross-event correlation vs single-event
     if correlation_required and len(plan.detections) > 1:
-        # Cross-event: split into sub-rules + parent correlation
         rendered = render_condition(plan.logic, plan.detections)
         block = _family_correlation_block(family_signature or signature, correlation_required)
 
-        # Sub-rules: each intent → sub-rule
+        # Sub-rules: each intent → one sub-rule
         rules_list: list[SigmaRule] = []
         sub_ids: list[str] = []
         selected_logsource = _pick_logsource(plan, telemetry)
@@ -434,8 +398,7 @@ def build_sigma_rule(
             level=level_res.level,
             related=[],
         )
-        # Empty detection for parent (correlation block replaces it),
-        # but logsource MUST still be set (validator requires it).
+        # Parent correlation rule: empty detection (block replaces it), but logsource must be set (validator requires).
         parent_rule = SigmaRule(
             metadata=corr_metadata,
             logsource=dict(selected_logsource) if selected_logsource else _pick_logsource(plan, telemetry),
@@ -459,7 +422,7 @@ def build_sigma_rule(
         yaml = _serialize_rules(rules_list, correlation_block=block)
         return rules_list, yaml, level_res
 
-    # Single-event rule
+    # Single-event rule path
     logsource = _pick_logsource(plan, telemetry)
     rendered = render_condition(plan.logic, plan.detections)
     detection = SigmaDetection(
@@ -503,11 +466,7 @@ def _pick_logsource(
 ) -> dict[str, str]:
     """Pick the best Sigma logsource for the plan.
 
-    Uses intent_mapper to resolve each intent → logsource, then picks the
-    first resolved one. Falls back to first Step 4 sigma_logsource. Final
-    defensive fallback always returns a non-empty ``{category, product}``
-    dict so the resulting SigmaRule passes Phase E validator's
-    `Missing logsource` check.
+    Falls back to first Step 4 sigma_logsource, then default process_creation/windows.
     """
     DEFAULT = {"category": "process_creation", "product": "windows"}
     telemetry = telemetry or {}
@@ -543,20 +502,15 @@ def _serialize_rules(
 ) -> str:
     """Serialize Sigma rules to YAML.
 
-    For correlation set: last rule is the parent correlation rule; we rebuild
-    its YAML from scratch (metadata + correlation block), instead of regex-substituting
-    the empty detection block. This avoids fragile regex parsing on multi-rule output.
+    For correlation sets: rebuild the parent's YAML from scratch to avoid
+    regex-substituting the empty detection block.
     """
     if correlation_block is None or len(rules) < 2:
         return _join_yamls([r.to_yaml() for r in rules])
 
-    # Sub-rules: serialize normally
     yaml_texts: list[str] = [r.to_yaml() for r in rules[:-1]]
-
-    # Parent correlation rule: build YAML from scratch (no detection block, no logsource)
     parent = rules[-1]
     yaml_texts.append(_build_correlation_parent_yaml(parent, correlation_block))
-
     return _join_yamls(yaml_texts)
 
 
@@ -566,9 +520,7 @@ def _build_correlation_parent_yaml(
 ) -> str:
     """Build YAML for a parent correlation rule.
 
-    Output: metadata fields + `action: correlation` + `correlation:` block.
-    No `detection:` block, no `logsource:` block (correlation parents aggregate
-    sub-rules and don't have their own logsource).
+    Metadata + `action: correlation` + `correlation:` block; no detection/logsource.
     """
     serializer = SigmaYamlSerializer()
     lines: list[str] = []

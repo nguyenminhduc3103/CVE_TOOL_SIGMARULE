@@ -1,13 +1,7 @@
 """AI Detection Logic Planner (Step 6 Phase A).
 
-Mirror pattern step_4_telemetry/services/ai_telemetry_service.py:
-  - resolve model + base_url từ settings
-  - gọi LLM với system + user prompt
-  - parse JSON (strip markdown fence)
-  - validate Step6LLMResponse
-  - convert → DetectionPlan domain model
-
-Fail ở bất kỳ bước nào → raise AIServiceError để orchestrator fallback rule-based.
+Mirrors step_4_telemetry/services/ai_telemetry_service.py.
+Any failure → AIServiceError → orchestrator falls back to rule-based.
 """
 from __future__ import annotations
 
@@ -21,7 +15,6 @@ from typing import Any
 from config.settings import settings
 from src.domain.models.attack import AttackMapping, TechnicalAnalysis
 from src.infrastructure.ai.core import AIServiceError, BaseAIClient
-from src.usecases.step_6_generate_sigma._knowledge import loader
 from src.usecases.step_6_generate_sigma.domain.detection_plan import (
     DetectionIntent,
     DetectionLogic,
@@ -67,7 +60,7 @@ class AIDetectionLogicPlanner:
         telemetry: dict[str, Any] | None,
         references: list[str] | None = None,
     ) -> DetectionPlan:
-        # Run AI detection planning; one shot. Parse/validate fail → raise, orchestrator fallback rule-based.
+        # One-shot AI planning; parse/validate fail → raise, orchestrator fallback rule-based.
         input_payload = self._build_input_payload(cve_id, analysis, attack, telemetry, references)
         formatted_user = self._user_prompt_template.format(
             cve_id=cve_id,
@@ -119,7 +112,7 @@ class AIDetectionLogicPlanner:
     def _parse_and_validate(
         self, response_text: str, cve_id: str,
     ) -> tuple[DetectionPlan | None, int]:
-        # Returns (plan, retries); (None, 1) signals caller to retry once.
+        # (plan, retries); (None, 1) signals caller to retry once.
         cleaned = self._clean_json(response_text)
         try:
             data = json.loads(cleaned)
@@ -143,7 +136,7 @@ class AIDetectionLogicPlanner:
             validated = Step6LLMResponse.model_validate(data)
         except Exception as exc:
             logger.warning("[Step 6] Pydantic validation failed for %s: %s; attempting soft-fix", cve_id, exc)
-            # Soft-fix: normalize known small deviations (e.g. risk_bias) before giving up
+            # Soft-fix small deviations (e.g. risk_bias) before giving up
             fixed = self._soft_fix_llm_response(data)
             if fixed is None:
                 logger.error("[Step 6] Soft-fix failed for %s; raising AIServiceError", cve_id)
@@ -158,17 +151,12 @@ class AIDetectionLogicPlanner:
 
     @staticmethod
     def _soft_fix_llm_response(data: dict[str, Any]) -> dict[str, Any] | None:
-        """Coerce small LLM deviations (e.g. risk_bias values) instead of failing whole plan.
-
-        Returns fixed dict or None if soft-fix not applicable.
-        """
+        """Coerce small LLM deviations (e.g. risk_bias values) instead of failing whole plan."""
         if not isinstance(data, dict):
             return None
         rb = data.get("risk_bias")
         if isinstance(rb, str) and rb not in {"conservative", "neutral", "aggressive"}:
-            # AI may emit 'high' / 'low' / 'medium' from Step 2's priority vocabulary.
-            # Normalize to closest valid RiskBias:
-            #   high/medium → aggressive, low → conservative
+            # AI may emit Step 2 priority vocab: high/medium → aggressive, low → conservative.
             ml = rb.lower()
             if ml in {"high", "medium", "moderate", "elevated"}:
                 data["risk_bias"] = "aggressive"
@@ -243,8 +231,6 @@ class AIDetectionLogicPlanner:
 
     def _to_domain(self, llm: Step6LLMResponse) -> DetectionPlan:
         """Convert Step6LLMResponse → DetectionPlan (domain model)."""
-        thresholds = loader.get_planner_confidence_thresholds() or {}
-
         return DetectionPlan(
             detections=[
                 DetectionIntent(
@@ -285,7 +271,7 @@ class AIDetectionLogicPlanner:
 
     @staticmethod
     def _clean_json(text: str) -> str:
-        """Strip markdown fences / leading prose để json.loads parse được."""
+        # Strip markdown fences / leading prose so json.loads can parse.
         text = text.strip()
 
         fenced = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)

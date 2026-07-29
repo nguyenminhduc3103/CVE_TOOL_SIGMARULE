@@ -1,9 +1,7 @@
-"""YAML knowledge base loader cho Step 6 detection KB.
+"""YAML knowledge base loader for Step 6 detection KB.
 
-Cache ở module level — load 1 lần đầu, reuse. KB hiếm khi thay đổi runtime.
-Tests gọi `invalidate_cache()` giữa fixtures để reload từ disk.
-
-Mirror pattern của `step_4_telemetry/_knowledge/loader.py`.
+Module-level lru_cache; tests call `invalidate_cache()` between fixtures.
+Mirrors step_4_telemetry/_knowledge/loader.py.
 """
 from __future__ import annotations
 

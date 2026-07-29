@@ -1,14 +1,6 @@
 """Intent Mapper — maps AI `DetectionIntent.intent` (free text) → Step 4 canonical logsource.
 
-Uses:
-- Step 6 KB `behaviors.<name>.domain_hint` (when intent matches behavior name)
-- Step 6 KB `families.<signature>.intents[].intent` (when family known)
-- Step 4 `TelemetryAssessment.sigma_logsources` (canonical logsource list)
-- Step 4 `TelemetryAssessment.candidate_telemetry_domains` (canonical domain list)
-
-NEVER hardcodes:
-- domain → category mapping (Step 4 KB owns that)
-- process names / ports / fields (Step 4 KB owns that)
+Never hardcodes domain→category, process names, ports, or fields (Step 4 KB owns those).
 """
 from __future__ import annotations
 
@@ -47,15 +39,12 @@ def _resolve_from_step4_logsources(
 ) -> dict[str, str] | None:
     """Pick the best matching Sigma logsource from Step 4's sigma_logsources list.
 
-    Step 4 already filtered to valid options. We pick the first one matching
-    `domain_hint`, else the first one.
+    Falls back to the first logsource if no domain_hint match.
     """
     if not sigma_logsources:
         return None
 
-    # Map domain_hint → category candidates (only categories known to Step 4 KB).
-    # These are Sigma category names — NOT hardcoded detection knowledge.
-    # This is just a lookup index against Step 4 output.
+    # Lookup index against Step 4 output — not hardcoded detection knowledge.
     domain_to_categories = {
         "process": ["process_creation"],
         "network": ["network_connection"],
@@ -84,7 +73,7 @@ def _resolve_from_step4_logsources(
         if category and category in candidates:
             return {"category": ls.get("category"), "product": ls.get("product", "windows")}
 
-    # Fallback: use first Step 4 logsource (Step 4 already picked it)
+    # Fallback: first Step 4 logsource
     first = sigma_logsources[0]
     return {"category": first.get("category", ""), "product": first.get("product", "windows")}
 

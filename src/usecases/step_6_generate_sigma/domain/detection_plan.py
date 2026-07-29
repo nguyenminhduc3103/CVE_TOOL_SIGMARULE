@@ -1,24 +1,8 @@
 """DetectionPlan domain model — semantic output from the AI Detection Logic Planner.
 
-AI emits ONLY:
-    detections: list of {intent, priority, rationale, optional selection_hint}
-    logic: {operator, operands, threshold?}
-    falsepositives: list of strings
-    risk_bias: conservative | neutral | aggressive
-    rationale: string
-    planner_confidence: 0.0-1.0
-
-AI must NOT emit:
-    - domain (Step 4 already chose the telemetry domain)
-    - logsource (Step 4 sigma_logsources is canonical)
-    - Sigma field names / modifiers
-    - condition literal string (Builder renders from DetectionLogic)
-    - level (Builder computes from severity + correlation + risk_bias + feasibility)
-    - title / id / status / author / date / tags / references
-    - UUID, YAML
-
-This module is the AI contract surface. Validation must reject any field outside
-this shape via Step6LLMResponse (models/llm_contract.py).
+AI emits ONLY: detections, logic, falsepositives, risk_bias, rationale, planner_confidence.
+Builder owns level/title/id/date/tags/references/UUID/YAML and renders condition from DetectionLogic.
+This is the AI contract surface; validation via Step6LLMResponse (models/llm_contract.py).
 """
 from __future__ import annotations
 
