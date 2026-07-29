@@ -1,18 +1,4 @@
-"""LLM contract — Step 4 Telemetry Selector.
-
-Refactor 2026-07: AI là semantic emitter — emit domain/tag/canonical field, KHÔNG
-emit vendor-specific names hay exact Sigma schema.
-
-Schema-enforced fields (sigma_logsources, required_fields, validated_fields,
-telemetry_feasibility_score) được code layer (Knowledge Resolver + Sigma Mapper +
-validator + feasibility_engine) sinh downstream.
-
-Contract này KHÔNG chứa:
-  - candidate_logsources, sigma_logsources (→ Knowledge Resolver)
-  - required_fields, validated_fields, invalid_fields (→ field_mapper)
-  - canonical_telemetry, canonical_fields (→ resolver)
-  - telemetry_feasibility_score / breakdown (→ feasibility engine)
-"""
+# Pydantic contract for Step 4 LLM output (semantic emitter schema). Code-layer fields come from resolver + engines.
 from __future__ import annotations
 
 from typing import Literal

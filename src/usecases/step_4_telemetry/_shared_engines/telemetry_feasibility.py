@@ -1,18 +1,4 @@
-"""Rule-based telemetry feasibility engine.
-
-AI KHÔNG tự chấm telemetry_feasibility_score (cảm tính, không reproducible).
-Score tính deterministic từ:
-  - telemetry_found: số SigmaLogsource schema-enforced (0..1)
-  - fields_validated: ratio validated / total candidate fields (0..1)
-  - logsource_mapped: ratio mapped / total candidate terms (0..1)
-  - correlation_clear: 1.0 nếu không cần correlation hoặc đã có strategy (0..1)
-
-Công thức trọng số (sum = 1.0):
-  score = 0.40 * telemetry_found + 0.30 * fields_validated
-        + 0.20 * logsource_mapped + 0.10 * correlation_clear
-
-Trả về (score, breakdown_dict) để audit.
-"""
+# Rule-based telemetry feasibility score (0..1). Weights: telemetry_found 0.40, fields_validated 0.30, logsource_mapped 0.20, correlation_clear 0.10.
 from __future__ import annotations
 
 from typing import Any
@@ -65,7 +51,7 @@ def compute_telemetry_feasibility(
     # logsource_mapped: ratio sigma_logsources vs validated fields coverage
     # (Refactor Phase 7: không còn candidate_logsources → dùng unique categories)
     unique_categories = len({item.category for item in sigma_logsources})
-    logsource_mapped = unique_categories / max(unique_categories, 1) if sigma_logsources else 0.0
+    logsource_mapped = 1.0 if sigma_logsources else 0.0
 
     # correlation_clear
     if correlation_required is None or correlation_required is False:
@@ -91,5 +77,3 @@ def compute_telemetry_feasibility(
         "n_invalid_fields": float(len(invalid_fields)),
     }
     return round(score, 2), breakdown
-
-

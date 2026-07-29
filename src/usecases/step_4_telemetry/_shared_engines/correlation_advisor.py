@@ -1,3 +1,4 @@
+# Rule-based correlation advice: returns (required, notes) based on Sigma logsource mix.
 from __future__ import annotations
 
 

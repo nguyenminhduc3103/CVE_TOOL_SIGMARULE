@@ -1,3 +1,4 @@
+# Sigma category → field whitelist used by taxonomy_validator.
 from __future__ import annotations
 
 
@@ -60,10 +61,4 @@ def map_required_fields(logsources: list[str], behaviors: list[str] | None = Non
     for behavior in behaviors or []:
         fields.extend(behavior_fields.get(behavior, ()))
 
-    unique_fields: list[str] = []
-    seen: set[str] = set()
-    for field in fields:
-        if field not in seen:
-            seen.add(field)
-            unique_fields.append(field)
-    return unique_fields
+    return list(dict.fromkeys(fields))

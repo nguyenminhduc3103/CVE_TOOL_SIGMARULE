@@ -1,12 +1,4 @@
-"""Canonical Telemetry & Field models — engine-agnostic.
-
-Layer này tách Pipeline khỏi vendor/format cụ thể:
-  - CanonicalTelemetry: log source identity (vendor + log_path + events + fields)
-  - CanonicalField: field name semantics với backend aliases
-  - CanonicalTelemetryBundle: output của Knowledge Resolver
-
-Sau này có thể sinh Sigma/ECS/Splunk/Sentinel rule từ cùng Canonical.
-"""
+# Engine-agnostic canonical telemetry + field models (decouples pipeline from Sigma/ECS/Splunk).
 from __future__ import annotations
 
 from pydantic import BaseModel, Field

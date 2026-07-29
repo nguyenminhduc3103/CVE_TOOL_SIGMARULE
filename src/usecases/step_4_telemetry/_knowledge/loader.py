@@ -1,8 +1,4 @@
-"""YAML knowledge base loader với LRU cache.
-
-Cache ở module level — load 1 lần đầu, reuse. KB hiếm khi thay đổi runtime.
-Tests gọi `invalidate_cache()` giữa fixtures để reload từ disk.
-"""
+# YAML knowledge base loader with LRU cache; tests call invalidate_cache() to reload from disk.
 from __future__ import annotations
 
 import functools

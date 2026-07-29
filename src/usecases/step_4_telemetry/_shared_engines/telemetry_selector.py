@@ -1,3 +1,4 @@
+# Rule-based detection axis + confidence fallback when LLM omits detection_axis.
 from __future__ import annotations
 
 

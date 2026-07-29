@@ -1,4 +1,4 @@
-"""Services for Step 4 — Telemetry selector."""
+# Step 4 services (AI telemetry selector).
 from src.usecases.step_4_telemetry.services.ai_telemetry_service import (
     AITelemetrySelector,
 )

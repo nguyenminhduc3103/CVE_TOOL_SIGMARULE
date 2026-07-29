@@ -1,3 +1,4 @@
+# Whitelist fields by Sigma logsource; returns (valid, invalid, warnings).
 from __future__ import annotations
 
 from src.usecases.step_4_telemetry._shared_engines.field_mapper import LOGSOURCE_FIELDS

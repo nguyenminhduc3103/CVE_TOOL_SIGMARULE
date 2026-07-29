@@ -1,12 +1,4 @@
-"""Map Canonical Telemetry → SigmaLogsource + Sigma field names.
-
-L5 — Sigma Mapper là 1 backend trong nhiều backend (Sigma/ECS/Splunk/Sentinel).
-Schema CanonicalTelemetry đủ info để sinh bất kỳ backend nào.
-
-Refactor 2026-07: thay vì hardcode `_SERVICE_TO_LOGSOURCE` (26 keys), map dựa
-trên Canonical Telemetry KB + SIGMA_CATEGORY_MAP (small map vì Sigma taxonomy
-hẹp — nhiều canonical telemetry route về cùng Sigma category).
-"""
+# Map Canonical Telemetry ID → Sigma category (Sigma taxonomy is narrow; service distinguishes).
 from __future__ import annotations
 
 from src.domain.models.telemetry import SigmaLogsource
@@ -17,8 +9,7 @@ from src.usecases.step_4_telemetry._resolver.canonical_model import (
 
 
 # Map Canonical Telemetry ID → Sigma category.
-# Sigma taxonomy hẹp (11 categories) — nhiều canonical telemetry route về
-# cùng category. Service distinguish.
+# Sigma taxonomy is narrow (11 categories) — many canonical telemetry route to same category.
 SIGMA_CATEGORY_MAP: dict[str, str] = {
     "windows_security_audit": "process_creation",
     "sysmon_process": "process_creation",

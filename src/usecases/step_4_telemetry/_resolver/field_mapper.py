@@ -1,11 +1,4 @@
-"""Validate AI-emitted candidate fields against canonical field DB.
-
-L5 (field side) — thay vì whitelist `LOGSOURCE_FIELDS[category]` cứng (chỉ cover
-Sigma taxonomy), match AI field với alias trong canonical_fields.yaml.
-
-AI có thể emit 'TargetAccount' (Windows Security), 'user.target.name' (ECS),
-hoặc 'TargetUserName' (Sigma native) — đều match canonical `target_user`.
-"""
+# Validate AI-emitted candidate fields against canonical field DB (sigma/ecs/splunk aliases).
 from __future__ import annotations
 
 from src.usecases.step_4_telemetry._resolver.canonical_model import CanonicalField

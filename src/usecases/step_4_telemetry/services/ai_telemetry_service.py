@@ -1,23 +1,4 @@
-"""AI Service cho Step 4 — Telemetry Selector.
-
-Refactor 2026-07: AI là semantic emitter, Knowledge Resolver + Sigma Mapper +
-canonical field DB enforce schema.
-
-  AI emit (semantic)              code layer (deterministic)
-  ────────────────────────        ────────────────────────────────────
-  candidate_telemetry_domains →   domain_validator → valid_domains
-  candidate_semantic_tags    →   knowledge_resolver → canonical_telemetry
-  candidate_canonical_fields →   field_mapper → validated_fields
-  telemetry_requirements     →   telemetry_feasibility engine
-  telemetry_confidence       →   passed through as-is (AI self-assessment)
-  stable/conditional/features →   (kept as-is for Step 6)
-
-Single Responsibility: gọi LLM + parse JSON + validate contract. Output là
-TelemetryAssessment với AI-emit + code-layer fields combined.
-
-Fallback: Nếu AI fail (rate-limit, JSON parse, contract validation) → fallback
-sang _shared_engines rule-based ở telemetry_stage.py.
-"""
+# AI service for Step 4 telemetry selection: LLM semantic emitter + code-layer resolver.
 from __future__ import annotations
 
 import json

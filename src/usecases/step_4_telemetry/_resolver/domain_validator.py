@@ -1,12 +1,4 @@
-"""Validate AI-emitted domains against KB whitelist.
-
-L2 — kiểm tra domain có nằm trong 18 canonical domains không. Term không match
-→ invalid + warning. AI emit alias (vd 'authentication') → resolve về canonical
-('identity').
-
-Refactor 2026-07: thay vì silently drop free-form terms (như `_SERVICE_TO_LOGSOURCE`
-cũ), validator trả về warnings để reviewer thấy AI đoán sai ở đâu.
-"""
+# Validate AI-emitted domains against KB whitelist; returns invalid + warnings for reviewer.
 from __future__ import annotations
 
 from src.usecases.step_4_telemetry._knowledge import loader

@@ -1,11 +1,4 @@
-"""Resolve (domain × execution_surface × vendor) → Canonical Telemetry.
-
-L3 — đọc canonical_telemetry.yaml, filter theo context (platform, surface),
-trả về CanonicalTelemetryBundle.
-
-Khi có telemetry mới (vd GCP audit, ETW, AWS GuardDuty) chỉ cần thêm
-entry YAML — KHÔNG sửa code.
-"""
+# Resolve (domain × execution_surface × vendor) → Canonical Telemetry from KB YAML.
 from __future__ import annotations
 
 from src.usecases.step_4_telemetry._knowledge import loader
