@@ -93,117 +93,135 @@ Only use these behavior names (match Phase 1 exactly):
 | `dos_observed` | T1499.004 |
 | `service_crash` | T1499.004 |
 
----
+## EVIDENCE-DRIVEN ATT&CK REASONING
 
-## CRITICAL ANTI-HALLUCINATION RULES
+Phase 1 output (mandatory_behaviors, execution_surface, likely_outcome, privilege_level,
+exploitation_type, affected_component) is your ONLY source of truth. Do NOT infer
+missing behaviors, exploitation stages, persistence, lateral movement, or invent
+techniques. Every selected technique MUST be supported by at least one mandatory behavior.
 
-1. **NEVER infer attacker behaviors not in Phase 1.**
-2. **NEVER add techniques for:**
-   - Persistence (unless `webshell_drop` exists)
-   - Credential Access (unless `credential_dumping` exists)
-   - Lateral Movement (no implicit)
-   - Discovery (no implicit)
-   - Collection (no implicit)
-   - Command & Control (unless `network_callback` exists)
-3. **One behavior may map to multiple techniques, but each technique must have exactly one supporting anchor.**
-4. **If no anchor matches, return empty chain:**
-   ```json
-   {
-     "mitre_attack_chain": [],
-     "attack_confidence": 0.0,
-     "mapping_reasons": ["No Phase 1 behavior matched ATT&CK mapping rules."]
-   }
-   ```
+### REASONING FRAMEWORK (4 steps — internal reasoning, NOT returned)
 
----
+For each candidate technique, internally follow this sequence:
 
-## TECHNIQUE SELECTION GUIDELINES
+**Step 1 — Identify attacker OBJECTIVE**
+Determine the primary attacker objective supported by Phase 1 evidence.
+Examples include (but are not limited to):
+- Remote Code Execution
+- Information Disclosure
+- Authentication Bypass
+- Privilege Escalation
+- Credential Access
+- Data Exfiltration
+- Denial of Service
+- Data Encryption for Impact
+Do not invent objectives unsupported by Phase 1 evidence.
 
-**T1190 (Exploit Public-Facing Application):**
-- Use for: HTTP/Web server exploitation
-- Required anchor: `http_request_exploit`
-- Server-side RCE (Apache, Tomcat, Nginx) = T1190, NOT T1203
+**Step 2 — Determine ATT&CK TACTIC**
+Identify tactic that best matches the objective (e.g. TA0001 Initial Access).
+Tactic is REASONING CONTEXT ONLY — DO NOT return it.
 
-**T1203 (Exploitation for Client Execution):**
-- Use ONLY for: Memory corruption, buffer overflow, client-side exploits
-- Required anchor: `memory_corruption`, `buffer_overflow`
-- NEVER use for: Server-side RCE (use T1190 instead)
-- NEVER use `process_creation` as T1203 anchor
+**Step 3 — Select CANDIDATE TECHNIQUES**
+Correlate all available Phase 1 evidence before selecting any technique.
+Multiple behaviors may collectively support one or more ATT&CK techniques.
+Do not evaluate each mandatory_behavior independently if the combined evidence provides a more accurate ATT&CK mapping.
 
-**T1059 (Command and Scripting Interpreter):**
-- Use for: Post-exploitation shell spawn, command execution
-- Required anchor: `shell_spawned`, `process_creation`
+**Step 4 — VALIDATE every technique**
+Every selected technique MUST satisfy ALL:
+- supported by a mandatory_behavior from Phase 1
+- behavior is in approved vocabulary (see table above)
+- ATT&CK mapping rule explicitly allows the mapping
 
-**T1071 (Application Layer Protocol):**
-- Use for: Callbacks, C2 channels
-- Required anchor: `network_callback`, `http_callback`, `ldap_callback`, `outbound_ldap_callback`
+Each selected technique MUST reference exactly one supporting mandatory_behavior
+as `exact_behavior_anchor`. The same behavior may support multiple techniques
+if explicitly allowed by the mapping rules.
 
-**T1105 (Ingress Tool Transfer):**
-- Use for: File/tool downloads
-- Required anchor: `tool_download`, `file_downloaded`, `file_written`
+If any validation fails, REJECT the technique.
 
-**T1068 (Exploitation for Privilege Escalation):**
-- Use for: Kernel exploits, driver vulnerabilities, service privesc
-- Required anchor: `privilege_escalation`, `privilege_escalation_exploit`, `local_privilege_escalation`
-- NOT for: Generic config modification
+### MULTI-EVIDENCE CORRELATION
 
-**T1505.003 (Server Software Component - Web Shell):**
-- Use ONLY when: Phase 1 has `webshell_drop` OR explicit persistence via upload
-- Required anchor: `webshell_drop` (EXACT MATCH)
-- NOT for: Generic file upload without persistence intent
+Example:
+```
+mandatory_behaviors: ["http_request_exploit", "shell_spawned", "tool_download"]
+Reasoning: HTTP exploitation → RCE → Command execution → Ingress Tool Transfer
+Result: T1190 + T1059 + T1105
+```
 
-**T1556 (Modify Authentication Process):**
-- Use for: Authentication bypass, cryptographic flaws, identity spoofing
-- Required anchor: `authentication_bypass`, `cryptographic_flaw`, `identity_spoofing`
-- Sub-techniques:
-  - T1556.002 (NTLM) - Zerologon, Netlogon
-  - T1556.003 (Kerberos) - Golden/Silver tickets
-  - T1556.001 (PAM) - Unix/Linux PAM
-  - T1556.004 (Credential Manager) - Windows
+Do NOT infer T1505.003 (Web Shell) unless `webshell_drop` is in mandatory_behaviors.
 
-**T1078 (Valid Accounts):**
-- Use ONLY if Phase 1 explicitly states attacker obtains/uses valid account
-- NOT the same as authentication bypass
+### TECHNIQUE SELECTION PRINCIPLE
 
-**T1003 (OS Credential Dumping):**
-- Use for: Post-exploitation credential extraction
-- Required anchor: `credential_dumping`
-- Sub-techniques:
-  - T1003.001 (LSASS)
-  - T1003.002 (SAM)
-  - T1003.003 (NTDS)
-  - T1003.008 (/etc/shadow)
+Prefer the most specific ATT&CK technique supported by the evidence.
+Do not emit broader or additional techniques when a more specific technique already
+fully represents the observed behavior.
+If multiple techniques represent different stages of the observed attack and each
+has an explicit mandatory_behavior anchor, emit all applicable techniques.
 
-**T1486 (Data Encrypted for Impact):**
-- Use for: Ransomware
-- Required anchor: `ransomware_behavior`, `encryption`
+### ANTI-HALLUCINATION RULES
 
-**T1499.004 (Endpoint DoS):**
-- Use for: Service crash, DoS
-- Required anchor: `dos_observed`, `service_crash`
+Do NOT infer the following tactics/techniques unless corresponding mandatory_behavior exists:
+- **Discovery** (T1087, T1082, T1057, T1018, ...)
+- **Persistence** (T1505, T1543, T1547, ...) — requires explicit persistence behavior
+- **Collection** (T1005, T1560, ...)
+- **Lateral Movement** (T1021, T1570, ...)
+- **Defense Evasion** (T1027, T1036, T1070, ...)
+- **Credential Access** (T1003, T1110, T1555, ...)
+- **Command & Control** (T1071, ...) — unless `network_callback` exists
+
+When evidence is insufficient, omit the technique instead of selecting the closest
+ATT&CK match. Never invent a technique to fill an apparent gap.
+
+### EVIDENCE CITATION (per technique)
+
+Every emitted technique requires exactly ONE evidence anchor.
+
+Anchor MUST:
+- exist in Phase 1 mandatory_behaviors
+- exactly match approved vocabulary
+- directly support the selected technique
+
+No inferred anchors.
+
+### OUTPUT FORMAT
+
+For each technique, emit `mapping_reasons` as a CONCISE evidence summary:
+
+```
+"mapping_reasons": [
+  "T1190 selected because the mandatory behavior 'http_request_exploit' indicates exploitation of a public-facing application.",
+  "T1059 selected because 'shell_spawned' indicates successful command execution.",
+  "No T1505.003 because 'webshell_drop' is absent from Phase 1 mandatory_behaviors."
+]
+```
+
+These are SUMMARIES of evidence used for mapping.
+They are NOT chain-of-thought or internal reasoning traces.
+The 4-step reasoning is INTERNAL — do NOT expose it in output.
+
+`mapping_reasons` should describe only the observable evidence used for mapping.
+Do not describe hidden reasoning, intermediate analysis, or attack planning.
 
 ---
 
 ## CONFIDENCE SCALE
 
 - **1.0** = Every technique has DIRECT mandatory_behavior anchor
-- **0.8** = Technique inferred from explicit CVE wording + anchor
+- **0.8** = Technique supported by explicit Phase 1 evidence, but mapped through broader ATT&CK semantics rather than a one-to-one behavior mapping
 - **0.5** = Weak mapping (e.g. parent-only without sub-signal)
 - **0.0** = No ATT&CK techniques selected
 
 ---
 
-## MAPPING REASONS
+## EMPTY CHAIN FALLBACK
 
-Explain each technique selection based on Phase 1 evidence.
+If no Phase 1 behavior matches any mapping rule, return empty chain:
 
-Example:
-```
-"mapping_reasons": [
-  "T1190 selected because Phase 1's mandatory_behaviors include 'http_request_exploit'",
-  "T1059 selected because Phase 1 has 'process_creation' indicating command execution",
-  "No T1203 because Phase 1 has no 'memory_corruption' or 'buffer_overflow'"
-]
+```json
+{
+  "mitre_attack_chain": [],
+  "attack_confidence": 0.0,
+  "mapping_reasons": ["No Phase 1 behavior matched ATT&CK mapping rules."]
+}
 ```
 
 ---
