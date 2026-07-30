@@ -213,35 +213,18 @@ async def run_interactive_pipeline(cve_id: str) -> bool:
         print("  No analysis produced.")
     else:
         a = enriched.analysis
-        print(f"  Family:             {a.family}")
-        print(f"  Signature:          {a.signature}")
-        print(f"  Vulnerability type: {a.vulnerability_type}")
-        print(f"  Vulnerability class:{a.vulnerability_class}")
+        # Round-2: 2-group layout — CVSS Deterministic + AI Behavior Analysis
+        _section("CVSS Deterministic (from CVSS parser)")
         print(f"  Exploit vector:     {a.exploit_vector}")
         print(f"  Pre-auth:           {a.pre_auth}")
         print(f"  Remote exploitable: {a.remote_exploitable}")
         print(f"  Exploit complexity: {a.exploit_complexity}")
+        print(f"  User interaction:   {a.user_interaction_required}")
+
+        _section("AI Behavior Analysis")
         print(f"  Confidence:         {a.confidence}")
-        print(f"  Analysis confidence:{a.analysis_confidence}")
-        print(f"  Likely outcome:     {a.likely_outcome}")
-        print(f"  Extracted keywords: {a.extracted_keywords or []}")
-
-        print(f"  CWE metadata:")
-        if a.cwe_metadata:
-            print(f"    cwe_ids:           {a.cwe_metadata.cwe_ids or []}")
-            print(f"    cwe_names:         {a.cwe_metadata.cwe_names or []}")
-            print(f"    mapping_confidence:{a.cwe_metadata.mapping_confidence}")
-        else:
-            print("    - none")
-
-        print(f"  Attack flow:")
-        if a.attack_flow:
-            print(f"    entry_vector:           {a.attack_flow.entry_vector}")
-            print(f"    execution_mechanism:    {a.attack_flow.execution_mechanism}")
-            print(f"    observable_side_effects:")
-            _print_list(a.attack_flow.observable_side_effects or [], indent="      ")
-        else:
-            print("    - none")
+        print(f"  Execution surface:  {a.execution_surface if a.execution_surface else 'n/a'}")
+        print(f"  Delivery vector:    {a.delivery_vector if a.delivery_vector else 'n/a'}")
 
         print(f"  Mandatory behaviors ({len(a.mandatory_behaviors or [])}):")
         _print_list(a.mandatory_behaviors or [])
@@ -251,15 +234,7 @@ async def run_interactive_pipeline(cve_id: str) -> bool:
         _print_list(a.exploit_requirements or [])
         print(f"  Reasoning ({len(a.reasoning or [])} items):")
         _print_list(a.reasoning or [])
-        print(f"  Classification reason ({len(a.classification_reason or [])}):")
-        _print_list(a.classification_reason or [])
-        print(f"  Behavior reason ({len(a.behavior_reason or [])}):")
-        _print_list(a.behavior_reason or [])
 
-        # Two-phase fields (Phase 1 output).
-        print(f"  Execution surface:   {a.execution_surface if a.execution_surface else 'n/a'}")
-        print(f"  Delivery vector:     {a.delivery_vector if a.delivery_vector else 'n/a'}")
-        print(f"  User interaction:    {a.user_interaction_required}")
         print(f"  AI used/model(s):    {a.ai_used} / {a.ai_model} / {a.ai_models_used or []}")
 
     # =========================================================================

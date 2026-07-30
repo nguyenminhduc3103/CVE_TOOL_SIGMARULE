@@ -75,21 +75,21 @@ async def main(cve_id: str) -> None:
     # 4. KHỐI ANALYSIS (Sau này AI sẽ fill vào)
     print("[ANALYSIS]")
     if enriched.analysis:
-        print(f"Type: {getattr(enriched.analysis, 'vulnerability_type', 'None')}")
+        # Round-2: 2-group layout — CVSS Deterministic + AI Behavior Analysis
+        print("[CVSS Deterministic (from CVSS parser)]")
         print(f"Exploit vector: {getattr(enriched.analysis, 'exploit_vector', 'None')}")
         print(f"Remote exploitable: {getattr(enriched.analysis, 'remote_exploitable', 'None')}")
         print(f"Pre-auth: {getattr(enriched.analysis, 'pre_auth', 'None')}")
         print(f"Exploit complexity: {getattr(enriched.analysis, 'exploit_complexity', 'None')}")
+        print(f"User interaction: {getattr(enriched.analysis, 'user_interaction_required', 'None')}")
+        print()
+        print("[AI Behavior Analysis]")
+        print(f"Execution surface: {getattr(enriched.analysis, 'execution_surface', 'None')}")
+        print(f"Delivery vector: {getattr(enriched.analysis, 'delivery_vector', 'None')}")
         print(f"Confidence: {getattr(enriched.analysis, 'confidence', 'None')}")
-        print(f"Analysis confidence: {getattr(enriched.analysis, 'analysis_confidence', 'None')}")
-        print(f"Likely outcome: {getattr(enriched.analysis, 'likely_outcome', 'None')}")
-        
-        print("Classification reason (Lý do phân loại):")
-        _print_list(getattr(enriched.analysis, 'classification_reason', None))
+
         print()
-        print("Behavior reason (Chuỗi hành vi):")
-        _print_list(getattr(enriched.analysis, 'behavior_reason', None))
-        print()
+
         print("Mandatory behaviors (Hành vi bắt buộc):")
         _print_list(getattr(enriched.analysis, 'mandatory_behaviors', None))
         print()

@@ -160,17 +160,15 @@ class AITelemetrySelector:
         attack: AttackMapping,
     ) -> dict[str, Any]:
         """Build JSON payload for user prompt. Truncate description tránh tràn TPM."""
-        flow = analysis.attack_flow if analysis else None
-        description = (analysis.vulnerability_type or "") if analysis else ""
-        if flow and flow.observable_side_effects:
-            description = (description + "\n" + " | ".join(flow.observable_side_effects))[: self._MAX_DESCRIPTION_CHARS]
+        description_parts: list[str] = []
+        if analysis:
+            description_parts.extend(analysis.mandatory_behaviors or [])
+            description_parts.extend(analysis.evasive_indicators or [])
+            description_parts.extend(analysis.exploit_requirements or [])
+        description = " | ".join(description_parts)[: self._MAX_DESCRIPTION_CHARS] if description_parts else ""
 
         return {
             "cve_id": cve_id,
-            "vulnerability_class": (
-                analysis.vulnerability_class.value if analysis and analysis.vulnerability_class else None
-            ),
-            "vulnerability_type": analysis.vulnerability_type if analysis else None,
             "execution_surface": analysis.execution_surface if analysis else None,
             "delivery_vector": analysis.delivery_vector if analysis else None,
             "user_interaction_required": (
@@ -179,16 +177,6 @@ class AITelemetrySelector:
             "mandatory_behaviors": (analysis.mandatory_behaviors or []) if analysis else [],
             "evasive_indicators": (analysis.evasive_indicators or []) if analysis else [],
             "exploit_requirements": (analysis.exploit_requirements or []) if analysis else [],
-            "cwe_ids": (
-                analysis.cwe_metadata.cwe_ids if analysis and analysis.cwe_metadata else None
-            ),
-            "attack_flow": {
-                "entry_vector": flow.entry_vector if flow else None,
-                "execution_mechanism": flow.execution_mechanism if flow else None,
-                "observable_side_effects": (
-                    flow.observable_side_effects if flow else None
-                ),
-            } if flow else None,
             "attck_tactics": (attack.tactics or []) if attack else [],
             "attck_techniques": (attack.techniques or []) if attack else [],
             "attck_subtechniques": (attack.subtechniques or []) if attack else [],
@@ -380,32 +368,24 @@ class AITelemetrySelector:
         """Infer attacker_platforms từ Step 2.
 
         Heuristic:
-          - vulnerability_class contains 'cloud' → ['aws', 'azure']
-          - attack_flow.execution_mechanism contains 'container'/'kubernetes' → thêm
+          - execution_surface contains 'multi_hop'/'cloud' → ['aws', 'azure']
+          - mandatory_behaviors contain 'container'/'kubernetes' → thêm
           - Default: ['windows']
         """
         platforms: list[str] = []
         if analysis:
-            vclass = ""
-            if analysis.vulnerability_class:
-                vclass = (
-                    analysis.vulnerability_class.value
-                    if hasattr(analysis.vulnerability_class, "value")
-                    else str(analysis.vulnerability_class)
-                )
-            vclass_l = vclass.lower()
-            if "cloud" in vclass_l:
+            surface = (analysis.execution_surface or "").lower()
+            behaviors_text = " ".join(analysis.mandatory_behaviors or []).lower()
+            if "multi_hop" in surface or "cloud" in behaviors_text:
                 platforms.extend(["aws", "azure"])
-            if analysis.attack_flow:
-                mechanism = (analysis.attack_flow.execution_mechanism or "").lower()
-                if "container" in mechanism or "docker" in mechanism:
-                    platforms.append("container")
-                if "kubernetes" in mechanism or "k8s" in mechanism:
-                    platforms.extend(["kubernetes"])
-                if "linux" in mechanism:
-                    platforms.append("linux")
-                if "windows" in mechanism:
-                    platforms.append("windows")
+            if "container" in behaviors_text or "docker" in behaviors_text:
+                platforms.append("container")
+            if "kubernetes" in behaviors_text or "k8s" in behaviors_text:
+                platforms.extend(["kubernetes"])
+            if "linux" in behaviors_text:
+                platforms.append("linux")
+            if "windows" in behaviors_text:
+                platforms.append("windows")
         # Default to Windows cho CVE phổ biến nhất
         if not platforms:
             platforms = ["windows"]

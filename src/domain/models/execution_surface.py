@@ -68,6 +68,15 @@ class ExecutionSurface(str, Enum):
     - CVSS AV:N nhung primitive la injection vao build/deploy pipeline
     """
 
+    FIRMWARE = "firmware"
+    """Code chay trong firmware/embedded device (UEFI/BIOS/bootloader/IoT/router).
+    Vi du: RouterOS command injection, UEFI SMM privilege escalation, IoT device
+    RCE qua admin interface, PLC/SCADA exploit. Dac trung:
+    - Target la embedded firmware khong co general-purpose OS
+    - CVSS thuong AV:N (admin web interface) hoac AV:L (local firmware update)
+    - Exploit primitive injection vao firmware image upload hoac admin commands
+    """
+
     UNKNOWN = "unknown"
     """Khong du thong tin de classify. Caller nen fallback rule-based classifier."""
 
@@ -93,6 +102,14 @@ class DeliveryVector(str, Enum):
     WEB_DOWNLOAD = "web_download"
     """Payload download tu website (drive-by, malicious ad). Vi du: browser
     exploit, fake software update. → T1189 (Drive-by Compromise).
+    """
+
+    FILE_OPEN = "file_open"
+    """Payload la file binary/document user mo local (firmware image, document,
+    executable, ROM). Phan biet voi web_download (downloaded tu website) va
+    email_attachment (delivered qua email). Vi du: firmware image upload qua
+    web interface, malicious PDF local, USB-borne executable. Thuong ket hop
+    voi execution_surface=firmware hoac execution_surface=client_side.
     """
 
     NETWORK_PROTOCOL = "network_protocol"

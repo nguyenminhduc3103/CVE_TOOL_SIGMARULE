@@ -209,37 +209,23 @@ def print_step2_analysis(enriched: Any) -> None:
 
     _section_header(f"STEP 2 — TECH ANALYSIS · {enriched.core.cve_id}", _C.MAGENTA)
 
-    _subsection("Behavior Analysis")
-    print(_kv("Family:", a.family or "(none)"))
-    print(_kv("Vuln Type:", a.vulnerability_type or "(none)"))
-    print(_kv("Vuln Class:", a.vulnerability_class or "(none)"))
+    # Round-2: 2-group layout — CVSS Deterministic + AI Behavior Analysis
+    _subsection("CVSS Deterministic (from CVSS parser)")
     print(_kv("Exploit Vector:", a.exploit_vector or "(none)"))
     print(_kv("Pre-auth:", _status(bool(a.pre_auth), str(a.pre_auth))))
     print(_kv("Remote Expl.:", _status(bool(a.remote_exploitable), str(a.remote_exploitable))))
     print(_kv("Complexity:", a.exploit_complexity or "(none)"))
+    print(_kv("User Interaction:", _status(bool(a.user_interaction_required), str(a.user_interaction_required))))
+
+    _subsection("AI Behavior Analysis")
     print(_kv("Exec Surface:", a.execution_surface or "(none)"))
     print(_kv("Delivery:", a.delivery_vector or "(none)"))
-    print(_kv("User Interaction:", _status(bool(a.user_interaction_required), str(a.user_interaction_required))))
     print(_kv("Confidence:", f"{_confidence_color(a.confidence)}{a.confidence:.2f}{_C.RESET}"))
 
     _list_value("Mandatory Behaviors:", a.mandatory_behaviors or [])
     _list_value("Evasive Indicators:", a.evasive_indicators or [])
     _list_value("Exploit Requirements:", a.exploit_requirements or [])
     _list_value("Reasoning:", a.reasoning or [])
-
-    if a.cwe_metadata:
-        _subsection("CWE Metadata")
-        # cwe_metadata có thể là Pydantic model hoặc dict (tùy context).
-        cwe_meta = a.cwe_metadata
-        cwe_ids_list = getattr(cwe_meta, "cwe_ids", None) or (cwe_meta.get("cwe_ids") if isinstance(cwe_meta, dict) else None) or []
-        cwe_names_list = getattr(cwe_meta, "cwe_names", None) or (cwe_meta.get("cwe_names") if isinstance(cwe_meta, dict) else None) or []
-        map_conf = getattr(cwe_meta, "mapping_confidence", None)
-        if map_conf is None and isinstance(cwe_meta, dict):
-            map_conf = cwe_meta.get("mapping_confidence")
-        print(_kv("CWE IDs:", ", ".join(cwe_ids_list) or "(none)"))
-        print(_kv("CWE Names:", ", ".join(cwe_names_list) or "(none)"))
-        if map_conf is not None:
-            print(_kv("Map Confidence:", f"{map_conf:.2f}"))
 
     # ATT&CK
     atk = getattr(enriched, "attack", None)

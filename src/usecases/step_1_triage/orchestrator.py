@@ -47,6 +47,41 @@ def _err_line(exc: BaseException) -> str:
     return text.splitlines()[0]
 
 
+def _poc_details_from_nuclei(nuclei_raw: dict | None) -> dict:
+    """Extract PoC details từ nuclei crawl evidence cho Phase 1 input.
+
+    Returns dict với keys `poc_description` + `poc_request_info` (caller unpack **).
+    - documentation text (type="documentation" record's `request` field) → poc_description
+    - network entry (type="network" record's `request_info`) → poc_request_info
+
+    Returns {} nếu nuclei_raw empty/malformed để caller pass qua **kwargs mà không error.
+    """
+    if not nuclei_raw or not isinstance(nuclei_raw, dict):
+        return {}
+    evidence = nuclei_raw.get("evidence") or []
+    if not isinstance(evidence, list):
+        return {}
+    doc_text: str | None = None
+    req_info: dict | None = None
+    for rec in evidence:
+        if not isinstance(rec, dict):
+            continue
+        rtype = rec.get("type")
+        if rtype == "documentation" and doc_text is None:
+            txt = (rec.get("request") or "").strip()
+            doc_text = txt or None
+        elif rtype == "network" and req_info is None:
+            ri = rec.get("request_info") or {}
+            if isinstance(ri, dict) and ri:
+                req_info = ri
+    out: dict = {}
+    if doc_text is not None:
+        out["poc_description"] = doc_text
+    if req_info is not None:
+        out["poc_request_info"] = req_info
+    return out
+
+
 class TriageOrchestrator:
     def __init__(self) -> None:
         self.nvd = NVDProvider()
@@ -340,7 +375,7 @@ class TriageOrchestrator:
 
     async def _run_analysis_stage(self, context: EnrichedCVEContext, capability):
         from config.settings import settings
-        from src.usecases.step_2_analysis.rule_based.attack_validator import filter_attack_mapping, normalize_family
+        from src.usecases.step_2_analysis.rule_based.attack_validator import filter_attack_mapping
         # NEW: import từ clean architecture folder
         from src.infrastructure.ai.core import AIServiceError, BaseAIClient
         from src.usecases.step_2_analysis.services.ai_service import AIBehaviorService
@@ -369,23 +404,9 @@ class TriageOrchestrator:
                     cvss_score=context.core.cvss_score or 0.0,
                     cvss_vector=context.core.cvss_vector or "",
                     cwe_ids=context.core.cwe_ids or [],
-                    cpes=context.core.cpes or [],
-                    references=context.core.references or [],
-                    published_at=(
-                        context.core.published_at.isoformat()
-                        if context.core.published_at
-                        else ""
-                    ),
-                    modified_at=(
-                        context.core.modified_at.isoformat()
-                        if context.core.modified_at
-                        else ""
-                    ),
-                    # Phase 6: pass PoC refs + threat actors from Step 1 triage
-                    # context. AI uses these as INSPIRATION (not ground truth)
-                    # to narrow down exploit mechanism for vague CVEs.
-                    poc_references=getattr(context.triage, "poc_references", None) or [],
-                    threat_actors=getattr(context.triage, "threat_actors", None) or [],
+                    # PoC details: extracted từ nuclei crawl evidence (Step 1 đã crawl)
+                    # documentation → poc_description, network → poc_request_info
+                    **_poc_details_from_nuclei(getattr(context, "nuclei_evidence", None)),
                     # Context signals from KEV / ransomware intel (advisory).
                     is_kev=bool(getattr(context.triage, "in_kev", False)),
                     ransomware_usage=bool(
@@ -410,11 +431,6 @@ class TriageOrchestrator:
                 attack_mapping.dropped_tactics = validation["invalid_tactics"] or None
                 attack_mapping.dropped_techniques = validation["invalid_techniques"] or None
                 attack_mapping.dropped_subtechniques = validation["invalid_subtechniques"] or None
-
-                # Normalize family name về enum chuẩn (e.g. "Apache Log4j2" -> "jndi_injection")
-                normalized_fam = normalize_family(tech_analysis.family)
-                if normalized_fam:
-                    tech_analysis.family = normalized_fam
 
                 self.logger.info(
                     "[ORCHESTRATOR] analysis_stage_ai_success",

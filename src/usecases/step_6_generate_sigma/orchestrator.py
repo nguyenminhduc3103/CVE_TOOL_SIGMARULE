@@ -59,8 +59,7 @@ class Step6Orchestrator:
         telemetry = telemetry or {}
         cve_id = getattr(core, "cve_id", None) or "CVE-UNKNOWN"
         family_signature = (
-            self._get_attr(analysis, "signature")
-            or self._get_attr(analysis, "family")
+            self._get_attr(analysis, "execution_surface")
         )
 
         # Phase A — Detection Logic Planner
@@ -164,10 +163,11 @@ class Step6Orchestrator:
             return obj
         result: dict[str, Any] = {}
         for attr in (
-            "mandatory_behaviors", "attack_flow", "family", "signature",
-            "vulnerability_class", "vulnerability_type", "execution_surface",
-            "delivery_vector", "exploit_vector", "user_interaction",
-            "exploit_complexity", "cwe_metadata", "cwe", "references",
+            "mandatory_behaviors", "evasive_indicators", "exploit_requirements",
+            "reasoning", "execution_surface", "delivery_vector",
+            "exploit_vector", "user_interaction_required",
+            "exploit_complexity", "pre_auth", "remote_exploitable",
+            "confidence", "references",
         ):
             if hasattr(obj, attr):
                 v = getattr(obj, attr)

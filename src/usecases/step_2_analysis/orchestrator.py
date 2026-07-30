@@ -224,13 +224,16 @@ def _derive_from_phase1_fallback(
 
     exec_surface = str(phase1_dict.get("execution_surface", "")).lower()
     delivery = str(phase1_dict.get("delivery_vector", "")).lower()
-    flow = phase1_dict.get("attack_flow") or {}
-    entry_vec = str(flow.get("entry_vector", "")).lower()
-    exec_mech = str(flow.get("execution_mechanism", "")).lower()
-    effects = flow.get("observable_side_effects") or []
-    effects_text = " ".join(effects).lower()
+    # Phase 1 dict không còn attack_flow — concat từ behavior lists
+    # str() each item để defensive: list có thể chứa dict (không hợp lệ nhưng không crash pipeline)
+    behaviors = phase1_dict.get("mandatory_behaviors") or []
+    evasive = phase1_dict.get("evasive_indicators") or []
+    requirements = phase1_dict.get("exploit_requirements") or []
+    behaviors_text = " ".join(str(b) for b in behaviors).lower()
+    evasive_text = " ".join(str(e) for e in evasive).lower()
+    requirements_text = " ".join(str(r) for r in requirements).lower()
 
-    combined_text = f"{exec_surface} {delivery} {entry_vec} {exec_mech} {effects_text}"
+    combined_text = f"{exec_surface} {delivery} {behaviors_text} {evasive_text} {requirements_text}"
 
     # Derive từ execution_surface
     if exec_surface == "server_side":
@@ -297,34 +300,40 @@ def _build_rule_based_pydantic(
     *,
     cve_id: str,
     description: str,
-    references: list[str],
-    cpes: list[str],
     cvss_vector: str,
     cwe_ids: list[str],
+    references: list[str] | None = None,
+    cpes: list[str] | None = None,
     ai_model: str | None,
     ai_retry_count: int,
 ) -> tuple[TechnicalAnalysis, AttackMapping]:
-    """Build Pydantic trực tiếp từ rule-based engines (NO dict intermediate). Chỉ chạy khi AI fail hoàn toàn."""
+    """Build Pydantic trực tiếp từ rule-based engines (NO dict intermediate). Chỉ chạy khi AI fail hoàn toàn.
+
+    Round-2: 5 CVSS-deterministic fields (exploit_vector, pre_auth,
+    remote_exploitable, exploit_complexity, user_interaction_required) fill
+    bằng CVSS parser — không cần AI. references/cpes là optional (chỉ dùng cho
+    rule-based behavior heuristic fall-back dò poC tooling/exploit artifact).
+    """
     from src.usecases.step_2_analysis.rule_based.behavior_analyzer import analyze_behavior
     from src.usecases.step_2_analysis.rule_based.attack_mapper import map_attack
     from src.usecases.step_2_analysis.rule_based.cwe_mapper import map_cwe_profiles
     from src.usecases.step_2_analysis.rule_based.exploit_classifier import classify_exploit_vector
 
     cwe_profiles_list = map_cwe_profiles(cwe_ids) or []
-    classifier_real = classify_exploit_vector(cvss_vector)
+    cvss_det = classify_exploit_vector(cvss_vector)
     classifier = {
-        "exploit_vector": None,
-        "pre_auth": classifier_real.get("pre_auth"),
-        "remote_exploitable": classifier_real.get("remote_exploitable"),
-        "exploit_complexity": classifier_real.get("exploit_complexity"),
+        "exploit_vector": cvss_det["exploit_vector"],
+        "pre_auth": cvss_det["pre_auth"],
+        "remote_exploitable": cvss_det["remote_exploitable"],
+        "exploit_complexity": cvss_det["exploit_complexity"],
     }
 
     try:
         behavior = analyze_behavior(
             cve_id=cve_id,
             description=description,
-            references=references,
-            cpes=cpes,
+            references=references or [],
+            cpes=cpes or [],
             cwe_ids=cwe_ids,
             cvss_vector=cvss_vector,
             cwe_profiles=cwe_profiles_list,
@@ -345,22 +354,34 @@ def _build_rule_based_pydantic(
         behavior = {}
         attack_rb = {}
 
+    # Rule-based fill cho 3 canonical fields (Phase 2 anchor)
+    from src.domain.models.execution_surface import ExecutionSurface
+    from src.usecases.step_2_analysis.rule_based.exploit_classifier import (
+        classify_delivery_vector,
+        classify_execution_surface,
+    )
+
+    surface_enum = classify_execution_surface(cvss_vector, description, cwe_ids)
+    execution_surface_value = surface_enum.value if surface_enum.value != "unknown" else None
+    delivery_vector_value: str | None = None
+
+    if execution_surface_value:
+        delivery_enum = classify_delivery_vector(cvss_vector, description, ExecutionSurface(execution_surface_value))
+        if delivery_enum.value != "unknown":
+            delivery_vector_value = delivery_enum.value
+
     tech = TechnicalAnalysis(
-        family=behavior.get("family"),
-        signature=behavior.get("signature"),
-        vulnerability_type=behavior.get("vulnerability_type"),
-        vulnerability_class=behavior.get("vulnerability_class"),
-        exploit_vector=behavior.get("exploit_vector"),
-        pre_auth=classifier.get("pre_auth"),
-        remote_exploitable=classifier.get("remote_exploitable"),
-        exploit_complexity=behavior.get("exploit_complexity") or classifier.get("exploit_complexity"),
-        confidence=behavior.get("analysis_confidence") or 0.85,
-        likely_outcome=behavior.get("likely_outcome"),
+        exploit_vector=classifier["exploit_vector"],
+        pre_auth=classifier["pre_auth"],
+        remote_exploitable=classifier["remote_exploitable"],
+        exploit_complexity=behavior.get("exploit_complexity") or classifier["exploit_complexity"],
+        confidence=behavior.get("confidence") or 0.85,
         mandatory_behaviors=behavior.get("mandatory_behaviors"),
         evasive_indicators=behavior.get("evasive_indicators"),
         exploit_requirements=behavior.get("exploit_requirements"),
-        cwe_metadata=behavior.get("cwe_metadata"),
-        attack_flow=None,
+        execution_surface=execution_surface_value,
+        delivery_vector=delivery_vector_value,
+        user_interaction_required=cvss_det["user_interaction_required"],
         ai_used=False,
         ai_retry_count=ai_retry_count,
         ai_model=ai_model,
@@ -391,16 +412,18 @@ async def run_step2_tech_analysis(
     cvss_score: float,
     cvss_vector: str,
     cwe_ids: list[str],
-    cpes: list[str],
-    references: list[str],
-    published_at: str,
-    modified_at: str,
-    poc_references: list[str] | None = None,
-    threat_actors: list[str] | None = None,
+    poc_description: str | None = None,
+    poc_request_info: dict | None = None,
     is_kev: bool = False,
     ransomware_usage: bool = False,
 ) -> tuple[TechnicalAnalysis | None, AttackMapping | None, dict[str, Any]]:
-    """Run Step 2 bằng 2-phase AI flow (Phase 1 behavior → Phase 2 ATT&CK). Rule-based fallback chỉ chạy khi Phase 1 hoặc cả 2 phase fail."""
+    """Run Step 2 bằng 2-phase AI flow (Phase 1 behavior → Phase 2 ATT&CK). Rule-based fallback chỉ chạy khi Phase 1 hoặc cả 2 phase fail.
+
+    Input payload đã thu gọn (round-2): 5 base + 2 PoC details. Bỏ cpes, references,
+    published_at, modified_at, poc_references (URL list), threat_actors.
+    Phase 2 vẫn nhận đủ context (synthetic defaults cho fields đã bỏ) vì Phase 2
+    prompt vẫn dùng 11 params.
+    """
     return await _run_step2_two_phase(
         ai_service=ai_service,
         base_client=base_client,
@@ -409,12 +432,8 @@ async def run_step2_tech_analysis(
         cvss_score=cvss_score,
         cvss_vector=cvss_vector,
         cwe_ids=cwe_ids,
-        cpes=cpes,
-        references=references,
-        published_at=published_at,
-        modified_at=modified_at,
-        poc_references=poc_references,
-        threat_actors=threat_actors,
+        poc_description=poc_description,
+        poc_request_info=poc_request_info,
         is_kev=is_kev,
         ransomware_usage=ransomware_usage,
     )
@@ -428,18 +447,24 @@ async def _run_step2_two_phase(
     cvss_score: float,
     cvss_vector: str,
     cwe_ids: list[str],
-    cpes: list[str],
-    references: list[str],
-    published_at: str,
-    modified_at: str,
-    poc_references: list[str] | None = None,
-    threat_actors: list[str] | None = None,
+    poc_description: str | None = None,
+    poc_request_info: dict | None = None,
     is_kev: bool = False,
     ransomware_usage: bool = False,
 ) -> tuple[TechnicalAnalysis | None, AttackMapping | None, dict[str, Any]]:
-    """Two-phase flow: Phase 1 behavior → Phase 2 ATT&CK. Returns same tuple shape as legacy flow; advisory signals unused by prompt."""
+    """Two-phase flow: Phase 1 behavior → Phase 2 ATT&CK.
+
+    Round-2: Phase 1 input đã thu gọn 7 fields (5 base + 2 PoC details). 5 fields
+    CVSS-deterministic (exploit_vector, pre_auth, remote_exploitable,
+    exploit_complexity, user_interaction_required) fill bằng CVSS parser
+    TRƯỚC khi pass to AI — AI không reason, không trả về.
+    """
     from src.usecases.step_2_analysis.services.phase1_service import AIPhase1Service
     from src.domain.models.execution_surface import DeliveryVector, ExecutionSurface
+    from src.usecases.step_2_analysis.rule_based.exploit_classifier import classify_exploit_vector
+
+    # Fill 5 CVSS-deterministic fields TRƯỚC khi pass to AI (AI không reason chúng)
+    cvss_deterministic = classify_exploit_vector(cvss_vector)
 
     # PHASE 1: Behavior Analysis (FACTS only)
     phase1_service = AIPhase1Service(base_client)
@@ -450,12 +475,8 @@ async def _run_step2_two_phase(
             cvss_score=cvss_score,
             cvss_vector=cvss_vector,
             cwe_ids=cwe_ids,
-            cpes=cpes,
-            references=references,
-            published_at=published_at,
-            modified_at=modified_at,
-            poc_references=poc_references,
-            threat_actors=threat_actors,
+            poc_description=poc_description,
+            poc_request_info=poc_request_info,
         )
     except AIServiceError as exc:
         logger.warning(
@@ -467,8 +488,6 @@ async def _run_step2_two_phase(
         tech, attack = _build_rule_based_pydantic(
             cve_id=cve_id,
             description=description,
-            references=references,
-            cpes=cpes,
             cvss_vector=cvss_vector,
             cwe_ids=cwe_ids,
             ai_model=None,
@@ -480,11 +499,19 @@ async def _run_step2_two_phase(
             "reason": "phase1_ai_service_error",
         }
 
-    # Phase 1 SUCCESS - chuan hoa dict + apply rule-based fallback cho 3 field moi
+    # Phase 1 SUCCESS - merge 5 CVSS-deterministic fields (đã fill trước khi gọi AI),
+    # sau đó apply rule-based fallback cho execution_surface/delivery_vector khi AI để unknown.
+    phase1_dict["exploit_vector"] = cvss_deterministic["exploit_vector"]
+    phase1_dict["pre_auth"] = cvss_deterministic["pre_auth"]
+    phase1_dict["remote_exploitable"] = cvss_deterministic["remote_exploitable"]
+    phase1_dict["exploit_complexity"] = cvss_deterministic["exploit_complexity"]
+    phase1_dict["user_interaction_required"] = cvss_deterministic["user_interaction_required"]
     phase1_dict = _normalize_phase1_dict(phase1_dict, cve_id, cwe_ids)
     phase1_dict = _normalize_none_placeholders(phase1_dict)
 
     # ===== PHASE 2: ATT&CK Mapping (using Phase 1 anchor) =====
+    # Phase 2 service signature giữ 11 params (backward-compat) — pass synthetic defaults
+    # cho fields đã bỏ khỏi Phase 1 input (cpes, references, dates, threat_actors, poc_references).
     retries_used: int = 0
     try:
         phase2_dict = await ai_service.fetch_attack_mapping(
@@ -493,12 +520,12 @@ async def _run_step2_two_phase(
             cvss_score=cvss_score,
             cvss_vector=cvss_vector,
             cwe_ids=cwe_ids,
-            cpes=cpes,
-            references=references,
-            published_at=published_at,
-            modified_at=modified_at,
-            poc_references=poc_references,
-            threat_actors=threat_actors,
+            cpes=[],
+            references=[],
+            published_at="",
+            modified_at="",
+            poc_references=None,
+            threat_actors=None,
             phase1_output=phase1_dict,
         )
     except AIServiceError as exc:
@@ -515,12 +542,12 @@ async def _run_step2_two_phase(
                 cvss_score=cvss_score,
                 cvss_vector=cvss_vector,
                 cwe_ids=cwe_ids,
-                cpes=cpes,
-                references=references,
-                published_at=published_at,
-                modified_at=modified_at,
-                poc_references=poc_references,
-                threat_actors=threat_actors,
+                cpes=[],
+                references=[],
+                published_at="",
+                modified_at="",
+                poc_references=None,
+                threat_actors=None,
                 phase1_output=phase1_dict,
             )
         except AIServiceError as exc2:
@@ -531,8 +558,6 @@ async def _run_step2_two_phase(
             tech, attack = _build_rule_based_pydantic(
                 cve_id=cve_id,
                 description=description,
-                references=references,
-                cpes=cpes,
                 cvss_vector=cvss_vector,
                 cwe_ids=cwe_ids,
                 ai_model=ai_service._MODEL,
@@ -586,13 +611,12 @@ async def _run_step2_two_phase(
             models_used.append(m)
     ai_model = phase2_model  # legacy field = Phase 2 (primary analyze call)
     base_tech = TechnicalAnalysis(
-        confidence=phase1_dict.get("confidence") or 0.85,
+        exploit_vector=phase1_dict.get("exploit_vector"),
         pre_auth=phase1_dict.get("pre_auth"),
         remote_exploitable=phase1_dict.get("remote_exploitable"),
-        extracted_keywords=phase1_dict.get("extracted_keywords"),
-        analysis_confidence=phase1_dict.get("analysis_confidence"),
-        classification_reason=phase1_dict.get("classification_reason"),
-        behavior_reason=phase1_dict.get("behavior_reason"),
+        exploit_complexity=phase1_dict.get("exploit_complexity"),
+        user_interaction_required=phase1_dict.get("user_interaction_required"),
+        confidence=phase1_dict.get("confidence") or 0.85,
         ai_used=True,
         ai_retry_count=retries_used,
         ai_model=ai_model,
@@ -620,13 +644,12 @@ async def _run_step2_two_phase(
 def _normalize_phase1_dict(
     data: dict[str, Any], cve_id: str, cwe_ids: list[str]
 ) -> dict[str, Any]:
-    """Normalize Phase 1 dict: fill rule-based fallback cho execution_surface/delivery_vector khi AI để unknown. Phase 1 dict flat (không có wrapper)."""
+    """Normalize Phase 1 dict: fill rule-based fallback cho execution_surface/delivery_vector khi AI để unknown."""
     if not isinstance(data, dict):
         data = {}
 
     # Lấy description gốc cho rule-based fallback
-    desc = data.get("attack_flow", {}).get("entry_vector", "") if isinstance(data.get("attack_flow"), dict) else ""
-    rule_explanation_desc = data.get("description") or desc
+    rule_explanation_desc = data.get("description") or ""
     cvss_vector = data.get("cvss_vector")
 
     from src.usecases.step_2_analysis.rule_based.exploit_classifier import (
@@ -654,44 +677,6 @@ def _normalize_phase1_dict(
                     "[Step 2 - Two-Phase] %s delivery_vector filled by rule-based: %s",
                     cve_id, rule_delivery.value,
                 )
-
-    # Backfill reasoning fields when model omits them.
-    classification_reason = data.get("classification_reason")
-    if not isinstance(classification_reason, list) or not classification_reason:
-        fallback_classification: list[str] = []
-        if data.get("vulnerability_class"):
-            fallback_classification.append(
-                f"vulnerability_class:{data.get('vulnerability_class')}"
-            )
-        if data.get("vulnerability_type"):
-            fallback_classification.append(
-                f"vulnerability_type:{data.get('vulnerability_type')}"
-            )
-        if data.get("execution_surface"):
-            fallback_classification.append(
-                f"execution_surface:{data.get('execution_surface')}"
-            )
-        if data.get("delivery_vector"):
-            fallback_classification.append(
-                f"delivery_vector:{data.get('delivery_vector')}"
-            )
-        if data.get("pre_auth") is not None:
-            fallback_classification.append(f"pre_auth:{data.get('pre_auth')}")
-        if data.get("remote_exploitable") is not None:
-            fallback_classification.append(
-                f"remote_exploitable:{data.get('remote_exploitable')}"
-            )
-        data["classification_reason"] = fallback_classification
-
-    behavior_reason = data.get("behavior_reason")
-    if not isinstance(behavior_reason, list) or not behavior_reason:
-        fallback_behavior: list[str] = []
-        for behavior in data.get("mandatory_behaviors") or []:
-            fallback_behavior.append(f"mandatory_behavior:{behavior}")
-        data["behavior_reason"] = fallback_behavior
-
-    if data.get("analysis_confidence") is None and data.get("confidence") is not None:
-        data["analysis_confidence"] = data.get("confidence")
 
     return data
 
@@ -814,10 +799,19 @@ def _enrich_phase2_with_protocol_context(
     flow = phase1.get("attack_flow") if isinstance(phase1, dict) else {}
     if not isinstance(flow, dict):
         flow = {}
+    # Phase 1 dict không còn attack_flow — dùng mandatory_behaviors/evasive_indicators/exploit_requirements làm evidence
+    behavior_lists = [
+        phase1.get("mandatory_behaviors") or [],
+        phase1.get("evasive_indicators") or [],
+        phase1.get("exploit_requirements") or [],
+    ] if isinstance(phase1, dict) else []
     evidence_text = " ".join(
         [
             str(flow.get("entry_vector") or ""),
             str(flow.get("execution_mechanism") or ""),
+            " ".join(str(x) for x in behavior_lists[0]) if behavior_lists else "",
+            " ".join(str(x) for x in behavior_lists[1]) if len(behavior_lists) > 1 else "",
+            " ".join(str(x) for x in behavior_lists[2]) if len(behavior_lists) > 2 else "",
         ]
     ).lower()
     if not evidence_text:
@@ -977,19 +971,22 @@ def _enrich_subtechniques(
     subtechniques = list(attack_mapping.get("subtechniques") or [])
     tactics = list(attack_mapping.get("tactics") or [])
 
-    # Lấy observable_side_effects từ Phase 1
+    # Lấy evidence text từ Phase 1 (không còn attack_flow — dùng behavior lists)
     flow = phase1.get("attack_flow", {}) if isinstance(phase1, dict) else {}
     if isinstance(flow, dict):
-        effects = flow.get("observable_side_effects") or []
         entry_vec = flow.get("entry_vector") or ""
         exec_mech = flow.get("execution_mechanism") or ""
     else:
-        effects = []
         entry_vec = ""
         exec_mech = ""
 
-    effects_text = " ".join(effects).lower() if effects else ""
-    combined_text = f"{effects_text} {entry_vec} {exec_mech}".lower()
+    behavior_lists = (
+        (phase1.get("mandatory_behaviors") or [])
+        + (phase1.get("evasive_indicators") or [])
+        + (phase1.get("exploit_requirements") or [])
+    ) if isinstance(phase1, dict) else []
+    behavior_text = " ".join(str(x) for x in behavior_lists).lower()
+    combined_text = f"{behavior_text} {entry_vec} {exec_mech}".lower()
 
     # Lấy execution_surface từ Phase 1
     exec_surface = phase1.get("execution_surface", "") if isinstance(phase1, dict) else ""
@@ -1037,15 +1034,11 @@ def _combine_phase_outputs(
         # Extract va wrap
         tech_fields = {
             k: combined.pop(k) for k in [
-                "family", "signature", "extracted_keywords",
-                "vulnerability_type", "vulnerability_class",
                 "exploit_vector", "pre_auth", "remote_exploitable",
                 "exploit_complexity", "confidence", "execution_surface",
                 "delivery_vector", "user_interaction_required",
-                "attack_flow", "mandatory_behaviors", "evasive_indicators",
-                "exploit_requirements", "cwe_metadata", "reasoning",
-                "likely_outcome", "analysis_confidence",
-                "classification_reason", "behavior_reason",
+                "mandatory_behaviors", "evasive_indicators",
+                "exploit_requirements", "reasoning",
             ] if k in combined
         }
         combined["technical_analysis"] = tech_fields

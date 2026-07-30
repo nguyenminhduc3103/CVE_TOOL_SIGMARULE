@@ -53,9 +53,13 @@ def log4shell_analysis():
     from src.domain.models.attack import TechnicalAnalysis
 
     return TechnicalAnalysis(
-        family="log4shell",
-        signature="log4shell",
-        vulnerability_type="rce",
+        exploit_vector="remote_network",
+        pre_auth=True,
+        remote_exploitable=True,
+        exploit_complexity="low",
+        execution_surface="server_side",
+        delivery_vector="network_protocol",
+        mandatory_behaviors=["jndi_injection", "outbound_ldap_callback", "remote_class_loading", "process_creation"],
     )
 
 

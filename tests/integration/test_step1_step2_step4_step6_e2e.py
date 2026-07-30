@@ -178,9 +178,14 @@ async def _run_step1_and_2(cve_id: str) -> tuple | None:
         print("  No analysis produced.")
         return None
     a = enriched.analysis
-    print(f"  Family:             {a.family}")
-    print(f"  Vulnerability type: {a.vulnerability_type}")
-    print(f"  Vulnerability class:{a.vulnerability_class}")
+    # Round-2: 2-group layout
+    _section("CVSS Deterministic (from CVSS parser)")
+    print(f"  Exploit vector:     {a.exploit_vector}")
+    print(f"  Pre-auth:           {a.pre_auth}")
+    print(f"  Remote exploitable: {a.remote_exploitable}")
+    print(f"  Complexity:         {a.exploit_complexity}")
+    print(f"  User interaction:   {a.user_interaction_required}")
+    _section("AI Behavior Analysis")
     print(f"  Execution surface:  {a.execution_surface if a.execution_surface else 'n/a'}")
     print(f"  Delivery vector:    {a.delivery_vector if a.delivery_vector else 'n/a'}")
     print(f"  Mandatory behaviors ({len(a.mandatory_behaviors or [])}):")

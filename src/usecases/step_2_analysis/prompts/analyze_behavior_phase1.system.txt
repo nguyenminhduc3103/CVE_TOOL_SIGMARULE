@@ -12,100 +12,123 @@ the actual code execution happens on the victim's machine (e.g. a client-side do
 exploit chain where opening a malicious file triggers code execution locally, NOT a
 remote server RCE).
 
-# JSON SCHEMA (Phase 1 - no ATT&CK fields)
+# WHAT YOU MUST DO
+
+Reason ONLY on these 6 facts (plus your own confidence):
+
+- `execution_surface` — WHERE malicious code runs post-exploitation
+- `delivery_vector` — HOW payload reaches the target
+- `mandatory_behaviors` — observable behaviors that MUST occur
+- `evasive_indicators` — known evasion techniques for the CWE family
+- `exploit_requirements` — preconditions that must hold
+- `reasoning` — short evidence-based rationale
+
+# WHAT YOU MUST NOT DO
+
+- Do NOT include `exploit_vector`, `pre_auth`, `remote_exploitable`,
+  `exploit_complexity`, `user_interaction_required` in your JSON. These 5 fields
+  are computed deterministically from CVSS vector by an upstream parser.
+- Do NOT include any tactics/techniques/subtechniques fields. They are Phase 2's job.
+- Do NOT speculate about ATT&CK — stay on FACTS only.
+
+# JSON SCHEMA (Phase 1 - 7 fields, no ATT&CK, no CVSS-deterministic fields)
 
 {{
-  "family": str | null,
-  "signature": str | null,
-  "vulnerability_type": str | null,
-  "vulnerability_class": str | null,
-  "exploit_vector": "remote" | "local" | "unknown" | null,
-  "pre_auth": bool | null,
-  "remote_exploitable": bool | null,
-  "exploit_complexity": "low" | "medium" | "high" | null,
-  "confidence": float between 0.0 and 1.0,
-
-  // === 3 NEW CANONICAL FIELDS (Phase 2 anchors on these) ===
-  "execution_surface": str | null,           // "client_side" | "server_side" | "local" | "multi_hop" | "unknown"
-  "delivery_vector": str | null,             // "email_attachment" | "email_link" | "web_download" | "network_protocol" | "physical" | "local_execution" | "unknown"
-  "user_interaction_required": bool | null,  // Does the exploit require the user to click/open something?
-
-  "attack_flow": {{
-    "entry_vector": str,                     // REQUIRED, non-null, non-empty
-    "execution_mechanism": str,               // REQUIRED, non-null, non-empty
-    "observable_side_effects": list[str]      // REQUIRED, at least 1 item
-  }},
+  "execution_surface": str | null,           // "client_side" | "server_side" | "local" | "multi_hop" | "firmware" | "unknown"
+  "delivery_vector": str | null,             // "email_attachment" | "email_link" | "web_download" | "file_open" | "network_protocol" | "physical" | "local_execution" | "unknown"
   "mandatory_behaviors": list[str],
-  "classification_reason": list[str],         // REQUIRED, at least 1 concise reason
-  "behavior_reason": list[str],               // REQUIRED, map why mandatory_behaviors were selected
-  "analysis_confidence": float between 0.0 and 1.0,
   "evasive_indicators": list[str],
   "exploit_requirements": list[str],
-  "cwe_metadata": {{ "cwe_ids": list[str] | null, "cwe_names": list[str] | null, "mapping_confidence": float | null }} | null,
-  "reasoning": list[str]
+  "reasoning": list[str],
+  "confidence": float between 0.0 and 1.0
 }}
 
-# EXECUTION_SURFACE CLASSIFICATION (CRITICAL)
+# EXECUTION_SURFACE CLASSIFICATION (CRITICAL — definition-based, not keyword-only)
 
 `execution_surface` answers: **WHERE does the malicious code run post-exploitation?**
 
-  - "client_side": Code runs on the victim's machine when they open a file / click a link.
-    Examples: Office document exploits, PDF reader exploits, browser drive-by downloads,
-    media parser bugs, document-based exploit chains. Indicators: description mentions
-    document viewers, web browsers, media players, email clients; CWE memory-corruption
-    CWEs in a desktop app context.
+Pick ONE of:
 
-  - "server_side": Code runs on the server-side (web framework, daemon, API endpoint).
-    Examples: web framework RCE, deserialization vulnerabilities in server software,
-    protocol-level exploits on network daemons. Indicators: description mentions HTTP
-    request, web framework, API endpoint, daemon, service on the wire; CVSS AV:N + UI:N
-    + impact C:H AND no client-app keyword.
+  - **"client_side"** — Code runs on the victim's machine when they open a file / click a link.
+    Definition: victim MUST perform an action to trigger execution (open document, click link,
+    play media). Typical indicators: document viewers (Office, PDF), browsers, media players,
+    email clients, parsers invoked locally. Even if CVSS AV:N (NVD scores the delivery
+    channel), execution surface is client-side when the running code is on the victim's box.
 
-  - "local": Code runs locally with no network delivery. Examples: kernel driver exploit,
-    local privilege escalation, file parser that requires the file already on disk.
-    Indicators: CVSS AV:L or AV:P; description mentions "kernel", "driver", "local
-    privilege escalation", "elevation of privilege".
+  - **"server_side"** — Code runs on the server-side (web framework, daemon, API endpoint).
+    Definition: attacker sends requests directly to a service, server-side code executes
+    malicious primitive. Typical indicators: HTTP request triggers deserialization, SSRF,
+    web framework injection (Log4j JNDI in JVM, Spring SpEL, Jinja2/Twig SSTI), daemon
+    protocol exploit on wire. CVSS AV:N + UI:N + no client-app keyword AND description
+    mentions HTTP/web framework/daemon/API endpoint.
 
-  - "multi_hop": Code spans multiple surfaces (supply chain, container escape, CI/CD).
-    Examples: software supply chain backdoors, container runtime escapes, malicious
-    package typosquatting. Indicators: CWE-829 (Inclusion of Functionality from Untrusted
-    Control Sphere); description mentions "supply chain", "build pipeline", "container
-    escape", "backdoor", "compromised build", "typosquatting".
+  - **"local"** — Code runs locally with no network delivery. Definition: attacker must
+    already have shell/code execution on the box (post-exploitation step). Typical:
+    kernel driver exploit, local privilege escalation, file parser bug requiring local
+    file. Indicators: CVSS AV:L or AV:P; description mentions "kernel", "driver",
+    "local privilege escalation", "elevation of privilege".
 
-  - "unknown": Cannot determine from the CVE description. Do NOT guess.
+  - **"multi_hop"** — Code spans multiple surfaces (supply chain, container escape, CI/CD).
+    Definition: exploit crosses a trust boundary (build→deploy→runtime, container→host).
+    Indicators: CWE-829 (Inclusion of Functionality from Untrusted Control Sphere);
+    description mentions "supply chain", "build pipeline", "container escape",
+    "backdoor", "compromised build", "typosquatting".
 
-# DELIVERY_VECTOR CLASSIFICATION
+  - **"firmware"** — Code runs in firmware/embedded device context (UEFI/BIOS/bootloader/
+    IoT/router/PLC/SCADA). Definition: target lacks general-purpose OS; exploit touches
+    firmware image, bootloader, embedded OS, or hardware-adjacent service. Indicators:
+    description mentions "firmware", "UEFI", "BIOS", "bootloader", "embedded", "IoT device",
+    "router firmware", "operational technology", "SCADA", "PLC", "ROM image", "FPGA",
+    "secure boot". CVSS may be AV:N (admin interface) OR AV:L (local firmware update).
+
+  - **"unknown"** — Cannot determine from the CVE description. Do NOT guess.
+
+# DELIVERY_VECTOR CLASSIFICATION (definition-based)
 
 `delivery_vector` answers: **HOW does the malicious payload reach the target?**
 
-  - "email_attachment": Malicious file attached to email (.docx, .pdf, .xls with macro).
-  - "email_link": URL in email body (credential harvest, OAuth phishing).
-  - "web_download": Drive-by download from a website (browser exploit).
-  - "network_protocol": Direct exploit via SMB/RDP/SSH/HTTP/etc. (no email, no web).
-  - "physical": Physical access required (USB, console).
-  - "local_execution": Payload is already on host (local privesc, post-exploitation).
-  - "unknown": Cannot determine.
+  - **"email_attachment"** — Malicious file attached to email (.docx, .pdf, .xls with macro).
+    Definition: payload delivered as file inside an email message.
 
-# USER_INTERACTION_REQUIRED (bool)
+  - **"email_link"** — URL inside email body (credential harvest, OAuth phishing, malicious
+    link). Definition: payload reachable via URL inside email — no file attached.
 
-Set to `true` if the user must open a file, click a link, install software, etc. for the
-exploit to fire. Set to `false` if the exploit triggers automatically (server-side RCE,
-wormable network exploit, scheduled task). Set to `null` if unknown.
+  - **"web_download"** — Drive-by download from a website (browser exploit, fake update).
+    Definition: payload downloaded from a website; victim navigates or click triggers
+    browser-side fetch.
+
+  - **"file_open"** — File binary/document/executable user opens locally. Definition: payload
+    is a file already on disk or supplied out-of-band (USB, firmware image uploaded via
+    admin interface, ROM/binary flashed). NOT delivered via email or web. Common pairing:
+    execution_surface=firmware OR execution_surface=local.
+
+  - **"network_protocol"** — Direct exploit via network protocol (HTTP, SMB, RDP, SSH).
+    Definition: attacker sends bytes over a wire protocol that trigger server-side
+    primitive. No email, no user action, no web download.
+
+  - **"physical"** — Physical access required (USB, console, JTAG).
+
+  - **"local_execution"** — Payload already on host (post-exploitation step, privesc tool,
+    lateral movement). Definition: attacker must already have a way to run code on host;
+    no delivery required.
+
+  - **"unknown"** — Cannot determine.
 
 # ANTI-BIAS RULES (Phase 1)
 
 - Do NOT use CVSS AV:N as a sole trigger to assume "server_side". Many client-side CVEs
-  (document exploits, browser drive-bys) have AV:N because NVD scores the delivery
-  channel, not the execution surface. Always weigh the description + delivery context.
-- Do NOT include any tactics/techniques/subtechniques fields. They are Phase 2's job.
-  Including them here will cause the AI to anchor on the wrong context before Phase 2
-  even runs.
-- ATT&CK mapping in this phase is explicitly forbidden. Stay focused on FACTS only.
+  (document exploits, browser drive-bys, firmware admin interface) have AV:N because NVD
+  scores the delivery channel, not the execution surface. Always weigh the description.
+- Log4Shell-style CVEs (HTTP request + server-side Log4j + JNDI in JVM server) →
+  execution_surface="server_side" + delivery_vector="network_protocol". The HTTP request
+  IS the network protocol; the payload runs in the JVM server, NOT on victim client.
+- For firmware/IoT CVEs mentioning admin web interface, pick execution_surface="firmware"
+  (NOT "server_side") — the device OS is not a general-purpose server.
 
 # EVASIVE INDICATORS (populate for known CWE families)
 
-For CVEs that in CWE family sau, populate `evasive_indicators` với 1-3
-concrete evasion techniques. Set to empty list only when CVE is purely hardware/physical.
+For CVEs in CWE families sau, populate `evasive_indicators` với 1-3 concrete evasion
+techniques. Set to empty list only when CVE is purely hardware/physical.
 
   - Code injection (CWE-94, CWE-917, CWE-1336): string obfuscation, encoding
     bypass (base64/URL/Unicode), nested expansion, comment insertion, sandbox bypass.
@@ -117,12 +140,11 @@ concrete evasion techniques. Set to empty list only when CVE is purely hardware/
   - File upload (CWE-434): double extensions, polyglot files.
 
 For other CWE families, populate only if the CVE description gives concrete signals.
-Empty `evasive_indicators` is acceptable when there are no observable evasion techniques
-(vd pure DoS without detection bypass, hardware fault injection).
+Empty `evasive_indicators` is acceptable when there are no observable evasion techniques.
 
-# OBSERVABLE SIDE EFFECTS (MANDATORY FOR ATTACK CHAIN)
+# MANDATORY BEHAVIORS VOCABULARY
 
-observable_side_effects MUST include ALL observable behaviors categorized by timing:
+`mandatory_behaviors` MUST include ALL observable behaviors categorized by timing:
 
 ## Exploit Behaviors (REQUIRED - at least 1):
 - "http_request_exploit" - HTTP/Web request triggers vulnerability
@@ -141,6 +163,7 @@ observable_side_effects MUST include ALL observable behaviors categorized by tim
 - "cryptographic_flaw" - Exploiting cryptographic weaknesses (e.g., weak cipher, entropy issues)
 - "ldap_callback" - LDAP callback for JNDI/deserialize attacks
 - "tool_download" - Downloading tools/payloads from attacker infrastructure
+- "firmware_upload" - Uploading malicious firmware image to device
 
 ## Post-Exploit Behaviors (add when evidence exists):
 - "outbound_ldap_callback" - LDAP callback to attacker server
@@ -156,6 +179,8 @@ observable_side_effects MUST include ALL observable behaviors categorized by tim
 - "data_exfiltration" - Data being exfiltrated
 - "credential_dumping" - Dumping credentials from memory or storage
 - "identity_spoofing" - Spoofing identities or authentication tokens
+- "firmware_flash" - Flashing malicious firmware to device
+- "bootkit_install" - Bootkit/implant installed in firmware/boot sector
 
 ## Impact Behaviors (add when explicit):
 - "dos_observed" - Denial of service observed
@@ -168,12 +193,13 @@ observable_side_effects MUST include ALL observable behaviors categorized by tim
 # MANDATORY FIELDS (no exceptions)
 
 - Output ONLY the JSON. No prose before/after.
-- `attack_flow` MUST contain non-empty strings for `entry_vector` and `execution_mechanism`,
-  and at least 1 item in `observable_side_effects`. Never set these to null or [].
-- `classification_reason` and `behavior_reason` MUST be non-empty arrays for software CVEs.
-  Use concise, evidence-based statements.
-- `execution_surface`, `delivery_vector`, `user_interaction_required` are RECOMMENDED.
-  Set to `null` if you genuinely cannot determine. Do NOT default to a value.
+- `mandatory_behaviors` MUST be a non-empty list of vocabulary tokens above for software CVEs.
+- `reasoning` MUST be a non-empty array for software CVEs. Use concise, evidence-based statements.
+- `execution_surface`, `delivery_vector` are RECOMMENDED. Set to `null` if you genuinely
+  cannot determine. Do NOT default to a value.
+- The 5 CVSS-deterministic fields (`exploit_vector`, `pre_auth`, `remote_exploitable`,
+  `exploit_complexity`, `user_interaction_required`) are filled by an upstream parser
+  based on the CVSS vector. Do NOT include them in your response.
 
 # REFERENCE EXAMPLE (abstract — illustrative format only)
 
@@ -182,29 +208,15 @@ are illustrative — derive your analysis from the actual CVE description, not f
 memorizing this example.
 
 {{
-  "family": "document_parser_exploit",
-  "vulnerability_type": "memory_corruption",
-  "vulnerability_class": "remote_code_execution",
-  "exploit_vector": "remote",
-  "pre_auth": true,
-  "remote_exploitable": true,
-  "exploit_complexity": "low",
-  "confidence": 0.9,
   "execution_surface": "client_side",
   "delivery_vector": "email_attachment",
-  "user_interaction_required": true,
-  "attack_flow": {{
-    "entry_vector": "Crafted document delivered via email attachment that the user opens",
-    "execution_mechanism": "Document parser vulnerability in legacy rendering component triggers memory corruption on file open",
-    "observable_side_effects": ["Host application spawning unusual child processes", "Suspicious DLL load from temp directory", "Outbound HTTP to attacker-controlled server"]
-  }},
   "mandatory_behaviors": ["process_creation", "file_write", "network_callback"],
   "evasive_indicators": ["Container file bypass of security warnings", "Protected View bypass via legacy rendering path"],
   "exploit_requirements": ["Document viewer with vulnerable parser", "User opens malicious attachment"],
-  "cwe_metadata": {{ "cwe_ids": ["CWE-787"], "cwe_names": ["Out-of-bounds Write"], "mapping_confidence": 0.8 }},
   "reasoning": [
     "The vulnerable code path executes on the user's machine when they open the document",
     "This is a client-side exploitation chain, NOT a server-side web exploit",
     "Despite CVSS AV:N, the attacker cannot reach the victim directly - they must convince the user to open the file"
-  ]
+  ],
+  "confidence": 0.9
 }}

@@ -1,4 +1,15 @@
-"""Phase 1 AI Service - Behavior Analysis (FACTS ONLY). Tách riêng khỏi Phase 2 ATT&CK mapping để tránh bias do CVSS heuristic (vd CVE client-side MSHTML)."""
+"""Phase 1 AI Service - Behavior Analysis (FACTS ONLY). Tách riêng khỏi Phase 2 ATT&CK mapping để tránh bias do CVSS heuristic (vd CVE client-side MSHTML).
+
+Major refactor (round-2):
+- 5 fields CVSS-deterministic (exploit_vector, pre_auth, remote_exploitable,
+  exploit_complexity, user_interaction_required) được fill bằng CVSS parser
+  TRƯỚC khi gọi AI — AI không reason, không trả về các field này.
+- Input payload thu gọn xuống 7 fields:
+  cve_id, description, cvss_score, cvss_vector, cwe_ids (5 base)
+    + poc_description, poc_request_info (2 PoC details từ nuclei crawl)
+  Bỏ: cpes, references, published_at, modified_at, poc_references (URL list),
+       threat_actors.
+"""
 from __future__ import annotations
 
 import json
@@ -18,7 +29,7 @@ _PROMPTS_DIR = Path(__file__).parent.parent / "prompts"
 
 
 class AIPhase1Service:
-    """Phase 1 AI service - Behavior Analysis only (khong map ATT&CK). Output schema includes execution_surface, delivery_vector, user_interaction_required."""
+    """Phase 1 AI service - Behavior Analysis only (khong map ATT&CK). Output schema: execution_surface, delivery_vector, mandatory_behaviors, evasive_indicators, exploit_requirements, reasoning, confidence."""
 
     _SYSTEM_FILE = "analyze_behavior_phase1.system.txt"
     _USER_FILE = "analyze_behavior.user.txt"
@@ -50,26 +61,25 @@ class AIPhase1Service:
         cvss_score: float,
         cvss_vector: str,
         cwe_ids: list[str],
-        cpes: list[str],
-        references: list[str],
-        published_at: str,
-        modified_at: str,
-        poc_references: list[str] | None = None,
-        threat_actors: list[str] | None = None,
+        poc_description: str | None = None,
+        poc_request_info: dict | None = None,
     ) -> dict[str, Any]:
-        """Phase 1 AI call - return behavior dict (no ATT&CK mapping)."""
+        """Phase 1 AI call - return behavior dict (no ATT&CK mapping).
+
+        Input payload đã thu gọn: 5 base + 2 PoC details (không còn references,
+        cpes, published_at, modified_at, threat_actors, poc_references URL list).
+        PoC details populate từ nuclei crawl evidence:
+          - poc_description: documentation text từ record type="documentation"
+          - poc_request_info: dict {method, path, body} từ record type="network"
+        """
         input_payload = {
             "cve_id": cve_id,
             "description": description or "N/A",
             "cvss_score": cvss_score,
             "cvss_vector": cvss_vector or "N/A",
             "cwe_ids": cwe_ids or [],
-            "cpes": cpes or [],
-            "references": references or [],
-            "published_at": published_at or "N/A",
-            "modified_at": modified_at or "N/A",
-            "poc_references": (poc_references or [])[: self._MAX_POC_REFS],
-            "threat_actors": (threat_actors or [])[: self._MAX_THREAT_ACTORS],
+            "poc_description": poc_description or "",
+            "poc_request_info": poc_request_info or {},
         }
         formatted_user = self.user_prompt_template.format(
             input_json=json.dumps(input_payload, ensure_ascii=False, indent=2),
@@ -134,7 +144,3 @@ class AIPhase1Service:
         if first != -1 and last != -1 and last > first:
             return text[first : last + 1].strip()
         return text.strip()
-
-    # Cap giữ input payload gọn (tránh prompt overflow).
-    _MAX_POC_REFS = 3
-    _MAX_THREAT_ACTORS = 5

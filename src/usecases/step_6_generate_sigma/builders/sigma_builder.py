@@ -429,9 +429,12 @@ def build_sigma_rule(
     cve_id = _get_attr(core, "cve_id") or "CVE-UNKNOWN"
     cvss_score = _get_attr(core, "cvss_score")
     severity = _get_attr(core, "severity")
-    vuln_type = _get_attr(analysis, "vulnerability_type")
-    family = _normalize_slug(_get_attr(analysis, "family"))
-    signature = _normalize_slug(_get_attr(analysis, "signature")) or family_signature
+    # Phase 1 dict removed vulnerability_type; dùng mandatory_behaviors[0] như semantic slug
+    behaviors = _get_attr(analysis, "mandatory_behaviors") or []
+    vuln_type = behaviors[0] if behaviors else None
+    family_signature = family_signature  # passed in: dùng execution_surface từ orchestrator
+    family = _normalize_slug(family_signature) if family_signature else None
+    signature = family
 
     telemetry = telemetry or {}
     correlation_required = bool(telemetry.get("correlation_required", False))

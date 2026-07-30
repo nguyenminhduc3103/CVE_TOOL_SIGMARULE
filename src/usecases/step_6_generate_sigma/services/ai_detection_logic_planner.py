@@ -182,32 +182,13 @@ class AIDetectionLogicPlanner:
                 return obj.get(key, default)
             return getattr(obj, key, default)
 
-        flow = _get(analysis, "attack_flow", {}) or {}
-        if not isinstance(flow, dict):
-            flow = {
-                "entry_vector": getattr(flow, "entry_vector", None),
-                "execution_mechanism": getattr(flow, "execution_mechanism", None),
-                "observable_side_effects": getattr(flow, "observable_side_effects", None),
-            }
-
         telemetry = telemetry or {}
 
         return {
-            "family": _get(analysis, "family"),
-            "signature": _get(analysis, "signature"),
-            "vulnerability_class": (
-                _get(analysis, "vulnerability_class").value
-                if _get(analysis, "vulnerability_class") and hasattr(_get(analysis, "vulnerability_class"), "value")
-                else _get(analysis, "vulnerability_class")
-            ),
-            "vulnerability_type": _get(analysis, "vulnerability_type"),
             "mandatory_behaviors": _get(analysis, "mandatory_behaviors", []) or [],
-            "attack_flow": {
-                "entry_vector": flow.get("entry_vector"),
-                "execution_mechanism": flow.get("execution_mechanism"),
-                "observable_side_effects": flow.get("observable_side_effects"),
-            },
-            "cwe": _get(analysis, "cwe"),
+            "evasive_indicators": _get(analysis, "evasive_indicators", []) or [],
+            "exploit_requirements": _get(analysis, "exploit_requirements", []) or [],
+            "reasoning": _get(analysis, "reasoning", []) or [],
             "execution_surface": (
                 _get(analysis, "execution_surface").value
                 if _get(analysis, "execution_surface") and hasattr(_get(analysis, "execution_surface"), "value")
@@ -215,7 +196,7 @@ class AIDetectionLogicPlanner:
             ),
             "delivery_vector": _get(analysis, "delivery_vector"),
             "exploit_vector": _get(analysis, "exploit_vector"),
-            "user_interaction": _get(analysis, "user_interaction"),
+            "user_interaction": _get(analysis, "user_interaction_required"),
             "exploit_complexity": _get(analysis, "exploit_complexity"),
             "candidate_telemetry_domains": telemetry.get("candidate_telemetry_domains", []) or [],
             "canonical_telemetry": telemetry.get("canonical_telemetry", []) or [],
