@@ -234,6 +234,11 @@ class TelemetryAssessment(BaseModel):
     validated_fields: list[str] | None = None
     invalid_fields: list[str] | None = None
     taxonomy_warnings: list[str] | None = None
+    field_name_map: dict[str, str] | None = Field(
+        default=None,
+        description="Mapping {canonical_field: sigma_field_name} produced by Step 4 sigma_mapper. "
+                    "Used by Step 6 to translate AI selection_hint keys to Sigma field names.",
+    )
     telemetry_feasibility_score: float | None = Field(
         default=None,
         ge=0.0, le=1.0,

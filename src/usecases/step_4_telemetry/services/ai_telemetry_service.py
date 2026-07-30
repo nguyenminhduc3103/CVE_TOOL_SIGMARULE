@@ -340,6 +340,7 @@ class AITelemetrySelector:
             validated_fields=validated_fields or None,
             invalid_fields=invalid_fields or None,
             taxonomy_warnings=all_warnings or None,
+            field_name_map=field_name_map or None,
             telemetry_feasibility_score=feasibility_score,
             telemetry_feasibility_breakdown=feasibility_breakdown,
             # DEPRECATED backward-compat (set None in new code)

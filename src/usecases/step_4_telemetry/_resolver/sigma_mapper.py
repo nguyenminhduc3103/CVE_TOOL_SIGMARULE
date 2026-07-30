@@ -72,11 +72,24 @@ def map_to_sigma(
         logsources.append(ls)
         events.extend(ct.events)
 
-    # Field name mapping — canonical → sigma backend name
+    # Field name mapping — both canonical AND aliases → sigma backend name.
+    # This lets Step 6 translate AI selection_hint keys (which may be free-text
+    # vendor names like 'Uri', 'TargetUserName', or canonical names like
+    # 'uri_query', 'target_user') to the Sigma backend field name.
     field_map: dict[str, str] = {}
     for cf in canonical_fields:
         sigma_name = cf.backends.get("sigma")
-        if sigma_name:
-            field_map[cf.canonical] = sigma_name
+        if not sigma_name:
+            continue
+        field_map[cf.canonical] = sigma_name
+        # Lower-canonical lookup
+        field_map.setdefault(cf.canonical.lower(), sigma_name)
+        # Sigma-name itself is idempotent
+        field_map.setdefault(sigma_name, sigma_name)
+        field_map.setdefault(sigma_name.lower(), sigma_name)
+        # Aliases (vendor / free-text names)
+        for alias in cf.aliases or []:
+            field_map.setdefault(alias, sigma_name)
+            field_map.setdefault(alias.lower(), sigma_name)
 
     return logsources, events, field_map

@@ -1,36 +1,36 @@
 version: 1
 
 # Step 6 Detection Knowledge Base
-# ─────────────────────────────────────────────────────────────────────────────
-# Scope: ONLY detection knowledge that Step 4 cannot know.
-#   - family signatures (CVE-family-specific IOC patterns)
-#   - intent → telemetry_domain hints (NOT taxonomy; Step 4 KB owns that)
-#   - correlation hints (timespan / group-by defaults per family)
-#   - level translation table (deterministic)
-#   - explanation text templates
-#
-# Out of scope (lives in Step 4 KB):
-#   - Sigma category whitelist
-#   - field alias map
-#   - modifier whitelist per category
-#   - logsource mapping table
-#
 # Update this file to onboard a new CVE family — do not change code.
 
 families:
   log4shell:
     signature: log4shell
+    aliases:
+      - jndi_injection
+      - log4j
+      - log4j2
+      - log4shell_rce
+      - cve_2021_44228
+      - "apache log4j2 jndi rce (log4shell)"
+      - "apache log4j2 jndi rce"
+      - "log4j2 jndi rce"
+      - "log4j2 rce"
+      - "log4j jndi rce"
+      - "log4j rce"
     intents:
       - intent: jndi_payload_lookup
+        domain_hint: http
         evidence_refs:
           - mandatory_behaviors: process_creation
         values_from:
           - kb: signatures.log4shell.payload_markers
       - intent: outbound_ldap_rmi
+        domain_hint: network
         evidence_refs:
           - attack_flow.observable_side_effects
         values_from:
-          - kb: signatures.log4shell.payload_markers
+          - kb: signatures.log4shell.outbound_ports
     correlation:
       type: temporal_ordered
       timespan: 5m
@@ -41,11 +41,13 @@ families:
     signature: spring4shell
     intents:
       - intent: classloader_exploit_request
+        domain_hint: http
         evidence_refs:
           - attack_flow.observable_side_effects
         values_from:
           - kb: signatures.spring4shell.payload_markers
       - intent: post_exploit_command_execution
+        domain_hint: process
         evidence_refs:
           - mandatory_behaviors: process_creation
     correlation:
@@ -60,6 +62,7 @@ families:
     signature: printnightmare
     intents:
       - intent: spoolsv_dll_load
+        domain_hint: process
         evidence_refs:
           - mandatory_behaviors: process_creation
     correlation:
@@ -99,9 +102,30 @@ signatures:
       - "jndi:"
       - "ldap:"
       - "rmi:"
+      - "${${lower:j}ndi:"
+      - "${${::-j}${::-n}${::-d}${::-i}:"
+      - "${jndi:ldap:"
+      - "${jndi:rmi:"
+      - "${${upper:ı}ndi:"
+      - "/${"
+      - "${env:"
     sources:
       - cve_evidence
       - lab_log
+      - obfuscation_corpus
+
+  log4shell.outbound_ports:
+    ports:
+      - 389      # LDAP cleartext
+      - 636      # LDAPS
+      - 3268     # Global Catalog
+      - 3269     # GC over SSL
+      - 1099     # Java RMI
+      - 1389     # LDAP alt
+      - 1059     # IIOP (Corba)
+      - 1100     # IIOP alt
+      - 53       # DNS callback
+    rationale: "Ports observed in Log4Shell callback channels (LDAP, RMI, IIOP, DNS)."
 
   spring4shell.payload_markers:
     markers:

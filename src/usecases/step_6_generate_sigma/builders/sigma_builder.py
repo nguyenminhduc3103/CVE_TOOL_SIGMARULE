@@ -33,6 +33,8 @@ from src.usecases.step_6_generate_sigma.services.condition_renderer import (
     render_condition,
 )
 from src.usecases.step_6_generate_sigma.services.intent_mapper import (
+    IntentResolution,
+    _intent_slug,
     map_all_intents,
 )
 from src.usecases.step_6_generate_sigma.services.level_resolver import (
@@ -151,6 +153,128 @@ def _generate_rule_id(cve_id: str, title: str, tags: list[str]) -> str:
     return str(uuid5(NAMESPACE_URL, basis))
 
 
+# Built-in fallback alias map for common vendor field names that the AI may
+# emit without a corresponding Step 4 ``field_name_map`` entry. Step 4's map
+# takes precedence when present; this is the safety net.
+_BUILTIN_FIELD_ALIASES: dict[str, str] = {
+    # Web / HTTP
+    "uri": "cs-uri-stem",
+    "request": "cs-uri-stem",
+    "request_uri": "cs-uri-stem",
+    "uri_query": "cs-uri-query",
+    "cs_uri_stem": "cs-uri-stem",
+    "cs_uri_query": "cs-uri-query",
+    "cs_uri_stem_query": "cs-uri-stem",
+    "url": "cs-uri-stem",
+    "url_original": "url.original",
+    "request_method": "cs-method",
+    "http_method": "cs-method",
+    "method": "cs-method",
+    "useragent": "UserAgent",
+    "user_agent": "UserAgent",
+    # Network
+    "destinationport": "DestinationPort",
+    "dest_port": "DestinationPort",
+    "destination_port": "DestinationPort",
+    "destinationip": "DestinationIp",
+    "destination_ip": "DestinationIp",
+    "dest_ip": "DestinationIp",
+    "sourceip": "SourceIp",
+    "source_ip": "SourceIp",
+    "src_ip": "SourceIp",
+    "sourceport": "SourcePort",
+    "source_port": "SourcePort",
+    "src_port": "SourcePort",
+    # Process
+    "image": "Image",
+    "process_image": "Image",
+    "commandline": "CommandLine",
+    "cmd": "CommandLine",
+    "command_line": "CommandLine",
+    "parentimage": "ParentImage",
+    "parent_image": "ParentImage",
+    "parentcommandline": "ParentCommandLine",
+    "parent_command_line": "ParentCommandLine",
+    # DNS
+    "queryname": "QueryName",
+    "query_name": "QueryName",
+    "dns_query": "QueryName",
+    # Auth / Identity
+    "targetusername": "TargetUserName",
+    "target_user": "TargetUserName",
+    "subjectusername": "SubjectUserName",
+    "subject_user": "SubjectUserName",
+    # File / Registry
+    "targetfilename": "TargetFilename",
+    "target_filename": "TargetFilename",
+    "targetobject": "TargetObject",
+    "target_object": "TargetObject",
+}
+
+
+def _resolve_intent_field_alias(
+    key: str,
+    field_name_map: dict[str, str] | None,
+) -> str:
+    """Translate a selection_hint key (e.g. ``Uri``, ``DestinationPort|contains``)
+    to the Sigma field name produced by Step 4 (e.g. ``cs-uri-stem``).
+
+    Modifier suffixes (``|contains``, ``|endswith``, ``|startswith``, ``|re``) are
+    stripped first; lookup is case-insensitive; the modifier is re-applied.
+
+    Lookup priority:
+      1. Step 4's ``field_name_map`` (canonical source of truth).
+      2. Built-in ``_BUILTIN_FIELD_ALIASES`` fallback for common vendor names
+         when Step 4 didn't produce a ``field_name_map``.
+
+    Idempotent: a miss returns the input unchanged so AI-emitted Sigma-form keys
+    pass through.
+    """
+    field_part, _, modifier = key.partition("|")
+    if not field_part:
+        return key
+
+    target: str | None = None
+    if field_name_map:
+        target = (
+            field_name_map.get(field_part)
+            or field_name_map.get(field_part.lower())
+        )
+    if not target:
+        builtin = _BUILTIN_FIELD_ALIASES
+        target = builtin.get(field_part) or builtin.get(field_part.lower())
+    new_field = target or field_part
+    return f"{new_field}|{modifier}" if modifier else new_field
+
+
+def _pick_logsource_for_intent(
+    intent_text: str,
+    resolutions: list[IntentResolution],
+    telemetry: dict[str, Any],
+    plan: DetectionPlan,
+) -> dict[str, str]:
+    """Per-intent Sigma logsource.
+
+    Resolution order:
+      1. ``IntentResolution`` matching ``intent_text`` (per-intent, set via
+         family KB ``domain_hint``).
+      2. ``_pick_logsource`` fallback (first resolved, then first
+         ``sigma_logsources[0]``).
+      3. ``{"category": "process_creation", "product": "windows"}``.
+    """
+    DEFAULT = {"category": "process_creation", "product": "windows"}
+    slug = _intent_slug(intent_text)
+    for res in resolutions:
+        if _intent_slug(getattr(res, "intent", "")) != slug:
+            continue
+        if not getattr(res, "resolved", False):
+            continue
+        ls = getattr(res, "canonical_logsource", None)
+        if ls and ls.get("category"):
+            return dict(ls)
+    return _pick_logsource(plan, telemetry) or DEFAULT
+
+
 def _build_selections(
     plan: DetectionPlan,
     telemetry: dict[str, Any] | None,
@@ -163,6 +287,7 @@ def _build_selections(
     """
     selections: dict[str, dict[str, list[str]]] = {}
     telemetry = telemetry or {}
+    field_name_map = telemetry.get("field_name_map") or {}
     stable_features = telemetry.get("stable_features") or []
     conditional_features = telemetry.get("conditional_features") or []
     required_events = telemetry.get("required_events") or []
@@ -170,14 +295,17 @@ def _build_selections(
 
     for idx, intent in enumerate(plan.detections):
         selection_name = f"sel_{idx}"
-        # 1. AI selection_hint (preferred)
+        # 1. AI selection_hint (preferred) — keys translated via Step 4 field_name_map.
+        # Colliding keys (different AI keys → same Sigma field) merge value lists.
         if intent.selection_hint:
-            selections[selection_name] = {
-                k: [str(v) for v in vs] for k, vs in intent.selection_hint.items()
-            }
+            merged: dict[str, list[str]] = {}
+            for k, vs in intent.selection_hint.items():
+                aliased = _resolve_intent_field_alias(k, field_name_map)
+                merged.setdefault(aliased, []).extend(str(v) for v in vs)
+            selections[selection_name] = merged
             continue
 
-        # 2. stable_features — exact match
+        # 2. stable_features — exact match (canonical field → Sigma alias)
         if stable_features:
             fields: dict[str, list[str]] = {}
             for feat in stable_features:
@@ -186,12 +314,12 @@ def _build_selections(
                     continue
                 vals = _feature_values(feat)
                 if vals:
-                    fields[field] = vals
+                    fields[_resolve_intent_field_alias(field, field_name_map)] = vals
             if fields:
                 selections[selection_name] = fields
                 continue
 
-        # 3. conditional_features — with modifier
+        # 3. conditional_features — with modifier (canonical field → Sigma alias first)
         if conditional_features:
             fields = {}
             for feat in conditional_features:
@@ -202,7 +330,8 @@ def _build_selections(
                 if not vals:
                     continue
                 modifier = _infer_modifier(feat)
-                key = f"{field}|{modifier}" if modifier else field
+                aliased = _resolve_intent_field_alias(field, field_name_map)
+                key = f"{aliased}|{modifier}" if modifier else aliased
                 fields[key] = vals
             if fields:
                 selections[selection_name] = fields
@@ -338,10 +467,21 @@ def build_sigma_rule(
         rendered = render_condition(plan.logic, plan.detections)
         block = _family_correlation_block(family_signature or signature, correlation_required)
 
-        # Sub-rules: each intent → one sub-rule
+        # Sub-rules: each intent → one sub-rule (per-intent logsource via IntentMapper)
         rules_list: list[SigmaRule] = []
         sub_ids: list[str] = []
-        selected_logsource = _pick_logsource(plan, telemetry)
+        resolutions = map_all_intents(
+            plan.detections,
+            telemetry,
+            family_signature or signature,
+            family,
+        )
+        selected_logsource = _pick_logsource(
+            plan,
+            telemetry,
+            family_signature or signature,
+            family,
+        )
 
         for idx, intent in enumerate(plan.detections):
             sub_title = f"{title} (Component {idx})"
@@ -365,10 +505,13 @@ def build_sigma_rule(
                 level=level_res.level,
                 related=[],
             )
+            sub_logsource = _pick_logsource_for_intent(
+                intent.intent, resolutions, telemetry, plan,
+            )
             rules_list.append(
                 SigmaRule(
                     metadata=sub_metadata,
-                    logsource=dict(selected_logsource) if selected_logsource else {},
+                    logsource=sub_logsource,
                     detection=sub_detection,
                     x_family=family or "generic",
                     x_signature=signature or family or "generic",
@@ -423,7 +566,9 @@ def build_sigma_rule(
         return rules_list, yaml, level_res
 
     # Single-event rule path
-    logsource = _pick_logsource(plan, telemetry)
+    logsource = _pick_logsource(
+        plan, telemetry, family_signature or signature, family,
+    )
     rendered = render_condition(plan.logic, plan.detections)
     detection = SigmaDetection(
         selections=selections,
@@ -463,16 +608,20 @@ def build_sigma_rule(
 def _pick_logsource(
     plan: DetectionPlan,
     telemetry: dict[str, Any] | None,
+    family_signature: str | None = None,
+    family: str | None = None,
 ) -> dict[str, str]:
     """Pick the best Sigma logsource for the plan.
 
     Falls back to first Step 4 sigma_logsource, then default process_creation/windows.
+    ``family_signature`` / ``family`` thread through to ``map_all_intents`` so
+    family-based intent resolution can match the KB.
     """
     DEFAULT = {"category": "process_creation", "product": "windows"}
     telemetry = telemetry or {}
 
     try:
-        resolutions = map_all_intents(plan.detections, telemetry)
+        resolutions = map_all_intents(plan.detections, telemetry, family_signature, family)
         for res in resolutions:
             if getattr(res, "resolved", False) and getattr(res, "canonical_logsource", None):
                 ls = dict(res.canonical_logsource)

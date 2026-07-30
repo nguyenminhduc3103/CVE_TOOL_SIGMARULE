@@ -368,6 +368,16 @@ def print_step6_sigma(result: Any, enriched: Any) -> None:
 
     print(f"\n  {_C.BOLD}YAML size:        {_C.RESET}{len(result.yaml_output):,} bytes")
 
+    # Full YAML output (pretty-printed)
+    print(f"\n{_C.BOLD}┌─ Full YAML Rules{_C.RESET}")
+    for line in result.yaml_output.splitlines():
+        if line.strip() == "---":
+            print(f"  {_C.DIM}───{_C.RESET}")
+        elif line.strip():
+            print(f"  {_C.DIM}{line}{_C.RESET}")
+        else:
+            print()
+
     # YAML parse check
     yaml_status = "FAILED"
     n_docs = 0
