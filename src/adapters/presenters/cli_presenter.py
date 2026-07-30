@@ -15,7 +15,17 @@ from __future__ import annotations
 
 import os
 import sys
+from pathlib import Path
 from typing import Any
+
+# can be set in the project's .env file and reach os.getenv below.
+try:
+    from dotenv import load_dotenv
+
+    _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
+    load_dotenv(_PROJECT_ROOT / ".env", override=False)
+except Exception:
+    pass
 
 
 # --- ANSI helpers --------------------------------------------------------
@@ -39,6 +49,11 @@ def _enable_vt100() -> None:
 _ENABLE_COLOR = os.getenv("NO_COLOR", "") == ""
 if _ENABLE_COLOR:
     _enable_vt100()
+
+
+# Full-output mode: opt-in qua CVE_TI_FULL_OUTPUT=1 (env / .env).
+# Tắt mọi truncate site trong file này. Default OFF = output như cũ.
+_FULL_OUTPUT = os.getenv("CVE_TI_FULL_OUTPUT", "0").lower() in ("1", "true", "yes")
 
 
 class _C:
@@ -90,8 +105,8 @@ def _list_value(key: str, items: list | None, indent: int = 2) -> None:
     print(f"{pad}{_C.BOLD}{key:<22}{_C.RESET}{len(items)} item(s)")
     for idx, item in enumerate(items, 1):
         item_str = str(item)
-        # Truncate quá dài
-        if len(item_str) > 70:
+        # Truncate quá dài (disabled in full-output mode)
+        if not _FULL_OUTPUT and len(item_str) > 70:
             item_str = item_str[:67] + "..."
         print(f"{pad}  {_C.DIM}{idx:>3}.{_C.RESET} {item_str}")
 
@@ -171,7 +186,8 @@ def print_step1_triage(enriched: Any) -> None:
     reason = (triage.decision_reason or "").strip()
     if reason:
         print(f"  {_C.BOLD}{'Reason:':<22}{_C.RESET}")
-        for line in reason.splitlines()[:5]:
+        reason_lines = reason.splitlines() if _FULL_OUTPUT else reason.splitlines()[:5]
+        for line in reason_lines:
             print(f"  {line}")
 
     # Provider status
@@ -307,7 +323,10 @@ def _format_features(features: list | None) -> list[str] | None:
         else:
             line = field
         if rationale:
-            line += f"  ({rationale[:50]})" if len(rationale) > 50 else f"  ({rationale})"
+            if _FULL_OUTPUT or len(rationale) <= 50:
+                line += f"  ({rationale})"
+            else:
+                line += f"  ({rationale[:50]})"
         lines.append(line)
     return lines
 
@@ -340,7 +359,10 @@ def print_step6_sigma(result: Any, enriched: Any) -> None:
             print(f"    {_C.DIM}{idx:>3}.{_C.RESET} {priority_color}{priority:<10}{_C.RESET} {intent_name}")
             rationale = getattr(intent, "rationale", "")
             if rationale:
-                rationale_short = rationale[:100] + "..." if len(rationale) > 100 else rationale
+                if _FULL_OUTPUT or len(rationale) <= 100:
+                    rationale_short = rationale
+                else:
+                    rationale_short = rationale[:100] + "..."
                 print(f"             {_C.DIM}↳ {rationale_short}{_C.RESET}")
 
     if getattr(plan, "logic", None):
@@ -354,7 +376,8 @@ def print_step6_sigma(result: Any, enriched: Any) -> None:
 
     if getattr(plan, "rationale", None):
         print(f"  {_C.BOLD}{'Plan rationale:':<22}{_C.RESET}")
-        for line in plan.rationale.splitlines()[:5]:
+        plan_rationale_lines = plan.rationale.splitlines() if _FULL_OUTPUT else plan.rationale.splitlines()[:5]
+        for line in plan_rationale_lines:
             print(f"    {_C.DIM}{line}{_C.RESET}")
 
     _subsection("Sigma Rules")
@@ -393,9 +416,11 @@ def print_step6_sigma(result: Any, enriched: Any) -> None:
 
 
 def _truncate(text: str | None, max_len: int = 200, suffix: str = "…") -> str:
-    """Truncate text với suffix nếu vượt max_len."""
+    """Truncate text với suffix nếu vượt max_len. No-op khi _FULL_OUTPUT."""
     if not text:
         return ""
+    if _FULL_OUTPUT:
+        return str(text).strip()
     s = str(text).strip()
     if len(s) <= max_len:
         return s
@@ -470,16 +495,16 @@ def _print_rule_detail(idx: int, rule: Any) -> None:
     if rule_refs:
         # Show count + first 2 refs inline
         print(_kv("references:", f"{len(rule_refs)} url(s)", indent=7))
-        for r_idx, ref in enumerate(rule_refs[:3], 1):
+        for r_idx, ref in enumerate(rule_refs, 1):
             ref_short = _truncate(ref, 70)
             print(f"           {_C.DIM}{r_idx}.{_C.RESET} {ref_short}")
-        if len(rule_refs) > 3:
+        if not _FULL_OUTPUT and len(rule_refs) > 3:
             print(f"           {_C.DIM}… (+{len(rule_refs) - 3} more){_C.RESET}")
     if rule_fps:
         print(_kv("false positives:", f"{len(rule_fps)} item(s)", indent=7))
-        for fp_idx, fp in enumerate(rule_fps[:3], 1):
+        for fp_idx, fp in enumerate(rule_fps, 1):
             print(f"           {_C.DIM}{fp_idx}.{_C.RESET} {_truncate(fp, 70)}")
-        if len(rule_fps) > 3:
+        if not _FULL_OUTPUT and len(rule_fps) > 3:
             print(f"           {_C.DIM}… (+{len(rule_fps) - 3} more){_C.RESET}")
     if rule_related:
         print(_kv("related:", f"{len(rule_related)} link(s)", indent=7))
@@ -503,9 +528,9 @@ def _print_rule_detail(idx: int, rule: Any) -> None:
         for sel_name, sel_fields in selections.items():
             n_fields = len(sel_fields)
             field_names = list(sel_fields.keys())
-            shown = field_names[:5]
+            shown = field_names if _FULL_OUTPUT else field_names[:5]
             fields_str = ", ".join(shown)
-            if len(field_names) > 5:
+            if not _FULL_OUTPUT and len(field_names) > 5:
                 fields_str += f" {_C.DIM}(+{len(field_names) - 5} more){_C.RESET}"
             print(f"           {_C.DIM}{sel_name:<20}{_C.RESET} "
                   f"{n_fields} field(s): {fields_str}")

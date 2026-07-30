@@ -1,7 +1,0 @@
-CVE: {cve_id}
-
-README_MARKDOWN (may be truncated to first {max_chars} chars):
-{readme_text}
-
-Find ALL distinct evidence records in this README that demonstrate exploitation,
-reproduction, or detection of this CVE. Return a single JSON object as specified.

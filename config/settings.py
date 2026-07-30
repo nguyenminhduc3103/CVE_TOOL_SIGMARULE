@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     kev_api_url: str = "https://www.cisa.gov/known-exploited-vulnerabilities"
     epss_api_url: str = "https://epss.example"
 
-    # OpenCTI Integration
+    # --- OpenCTI Integration ---
     opencti_url: str = "http://localhost:8080"
     opencti_cookie: str | None = None
     opencti_token: str | None = None
@@ -16,95 +16,71 @@ class Settings(BaseSettings):
     opencti_username: str | None = None
     opencti_password: str | None = None
 
-    # AlienVault OTX Integration
+    # --- AlienVault OTX Integration ---
     otx_api_url: str = "https://otx.alienvault.com"
     otx_api_key: str | None = None
 
     # --- AI service (V1: OpenAI-compatible: Groq / Anthropic / Ollama) ---
     ai_enabled: bool = False
     ai_api_key: str | None = None
-    # New: comma-separated list of keys for round-robin rotation (Groq free tier).
-    # If set (non-empty), takes precedence over ai_api_key. Falls back otherwise.
+    # Comma-separated keys for round-robin; takes precedence over ai_api_key
     ai_api_keys: str | None = None
     ai_base_url: str | None = None
 
-    # --- Response cache (NVD / KEV / EPSS, 24h TTL) ---
-    # Stdlib-only file cache; can be disabled per-process via CVE_TI_CACHE=0.
+    # --- Response cache (NVD/KEV/EPSS, 24h TTL; disable via CVE_TI_CACHE=0) ---
     cache_enabled: bool = True
     cache_ttl_seconds: int = 86400  # 24h
     cache_dir: str = ".cache/cve_responses"
-    # Primary (Phase 2 analyze) model name. Backed by env ANALYZE_AI_MODEL.
-    # Falls back to the legacy `ai_model` field if a caller still sets the old key.
+
+    # --- Phase 2 analyze model (env ANALYZE_AI_MODEL; legacy AI_MODEL fallback) ---
     ai_model: str = "llama-3.3-70b-versatile"
     analyze_ai_model: str | None = None
 
-    # --- Two-phase Step 2 (Phase 1 + Phase 2) ---
-    # Step 2 chạy 2-phase flow: Phase 1 (behavior classification) → Phase 2
-    # (ATT&CK mapping). Phase 1 là CLASSIFICATION task: extract
-    # `execution_surface`, `delivery_vector`, `user_interaction_required`
-    # từ CVE description. Reasoning vừa đủ - không cần model 70B. Dùng
-    # OpenRouter free model (Llama 3.3 70B free, Qwen, DeepSeek, Mistral)
-    # hoặc Google AI Studio free tier để tiết kiệm cost. Falls back to
-    # analyze_ai_model nếu không set (backward compat).
+    # --- Two-phase Step 2 (Phase 1: classification; Phase 2: ATT&CK mapping) ---
+    # Phase 1 extracts execution_surface / delivery_vector / user_interaction_required.
+    # Phase 2 (ATT&CK) reuses analyze_ai_model — strong reasoning required.
     phase1_ai_model: str | None = None
     phase1_ai_base_url: str | None = None
     phase1_ai_api_key: str | None = None
-    phase1_ai_keys: str | None = None  # comma-separated cho round-robin
-    # Phase 2 (ATT&CK mapping) uses analyze_ai_model (default Groq llama-3.3-70b).
-    # Phase 2 là REASONING task quan trọng nhất - giữ model mạnh.
+    phase1_ai_keys: str | None = None  # comma-separated for round-robin
 
-    # --- Step 4 (Telemetry Selector) ---
-    # Step 4 chọn Sigma logsource + fields + detection_features cho Step 6.
-    # Step 4 là CLASSIFICATION + constrained emission task (chọn từ whitelist
-    # Sigma taxonomy). Output gồm:
-    #   - AI emit (loose): candidate_logsources, candidate_fields, detection_axis,
-    #     rule_strategy, telemetry_gaps, observable_detection_features.
-    #   - Code layer (deterministic): sigma_logsources, required_fields,
-    #     telemetry_feasibility_score (rule-based).
-    # RECOMMEND: Gemini 2.5 Flash (1M TPM free tier) — quota rộng, JSON mode
-    # native, taxonomy adherence tốt. Backward compat: fallback về Phase 1
-    # model nếu không set (vì cùng provider Gemini trong default config).
+    # --- Step 4 (Telemetry Selector) — Gemini 2.5 Flash recommended ---
+    # CLASSIFICATION + constrained emission: choose from Sigma taxonomy whitelist.
     step4_ai_model: str | None = None
     step4_ai_base_url: str | None = None
     step4_ai_api_key: str | None = None
-    step4_ai_keys: str | None = None  # comma-separated cho round-robin
+    step4_ai_keys: str | None = None  # comma-separated
 
-    # --- Step 6 (Sigma Rule Generation) ---
-    # Step 6 Detection Logic Planner (AI). Mirror pattern Step 4:
-    # AI emits semantic intent only; codes layer handles Sigma emission.
-    # RECOMMEND: same provider as Step 4 (Gemini 2.5 Flash) for consistency.
+    # --- Step 6 (Sigma Rule Generation) — mirror Step 4 pattern ---
+    # AI emits semantic intent; code layer handles Sigma emission.
     step6_ai_model: str | None = None
     step6_ai_base_url: str | None = None
     step6_ai_api_key: str | None = None
     step6_ai_keys: str | None = None
-    # Enable/disable AI path for Step 6. When False, orchestrator always uses
-    # rule-based fallback planner. Default True.
+    # False → orchestrator uses rule-based fallback planner
     step6_ai_enabled: bool = True
 
     # --- Telemetry Discovery (Step 1.3) ---
-    # Enable/disable telemetry discovery stage
     telemetry_discovery_enabled: bool = True
-    # Timeout per source in seconds
-    telemetry_discovery_timeout: int = 30
-    # Cache TTL for raw log samples (7 days)
-    telemetry_cache_ttl_seconds: int = 604800
-    # Minimum sources required to proceed (default: 1)
+    telemetry_discovery_timeout: int = 30  # per source
+    telemetry_cache_ttl_seconds: int = 604800  # 7 days
     telemetry_gate_min_sources: int = 1
-    # Block pipeline when no sufficient telemetry (default: True per user decision)
+    # True → block pipeline when insufficient telemetry
     telemetry_gate_blocking: bool = True
 
+    # --- Nuclei evidence crawl (Step 1 ingestion) ---
+    nuclei_crawl_enabled: bool = True
+    nuclei_evidence_cache_dir: str = ".cache/nuclei_evidence"
+    nuclei_crawl_max_evidence: int = 50
+    # Timeout owned by tools.crawl_evidence.crawl() — no setting needed
+
     # --- MITRE STIX cache (7-day TTL, dynamic ATT&CK whitelist) ---
-    # Path to the directory where the MITRE ATT&CK STIX bundle is cached.
-    # The file `enterprise-attack.json` is downloaded by
-    # `src.shared.mitre.fetch_stix` and consumed by `loader.py`.
-    # Cache is per-host; safe to delete to force a refresh.
+    # `enterprise-attack.json` downloaded by src.shared.mitre.fetch_stix;
+    # used by loader.py. Delete to force refresh.
     mitre_cache_dir: str = ".cache/mitre_attack"
-    # 7 days (604800s). STIX bundle is updated ~quarterly by MITRE; 7 days
-    # gives a comfortable margin without thrashing on every run.
+    # 7d — STIX bundle updates ~quarterly
     mitre_cache_ttl_seconds: int = 604800
-    # Disable network + dynamic STIX load; force use of the hardcoded
-    # baseline whitelist (14 tactics / 99 techniques / 110 subtechniques)
-    # in attack_validator.py. Useful for air-gapped envs and tests.
+    # True → skip network STIX; use hardcoded baseline whitelist in attack_validator
     mitre_offline: bool = False
 
     def get_analyze_model(self) -> str:

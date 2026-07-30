@@ -1,21 +1,25 @@
 """Evidence Crawler — tools/crawl_evidence.py.
 
-Crawl evidence cho 1 CVE từ nomi-sec/PoC-in-GitHub (curated list).
-Output JSON v2.0: list evidence_records (multi-record normalized) + references
-(URL only) + metadata (schema_version + extraction_stats).
+Crawl nuclei-templates PoC YAML for a single CVE.
+Source: projectdiscovery/nuclei-templates (raw GitHub).
+No AI — pure YAML parse.
 
-Pipeline extract:
-  1. AI classify README → list CrawlEvidenceRecord (multi-type: network /
-     poc_script / payload / scan_result / log_snippet / file_reference /
-     config / documentation).
-  2. Regex supplement (extract_steps_section_records) → 1 documentation record
-     + log_snippet / file_reference từ code fences.
-  3. Cả hai cùng tồn tại (không dedup) — mỗi record tự gắn extraction_method.
+Output JSON v3.2 — two record kinds only:
 
-STANDALONE CLI — KHÔNG wired vào Step 1.4 / Step 4 / Step 6.
+  * ``documentation``: ``request`` is the joined ``info.description +
+    info.impact`` text (the "what & why").
+  * ``network``: ``request_info`` is ``{method, path, headers, body,
+    raw_block_count}`` parsed from the http[] step (the "how").
+
+No provenance/observable/auxiliary fields — keeps the output focused on
+the two sub-systems threat intel cares about: explanation + exploit code.
+
+Top-level wrapper: {cve_id, evidence[], references[]}.
+
+STANDALONE CLI — NOT wired into Step 1.4 / Step 4 / Step 6.
 
 Usage:
-    python tools/crawl_evidence.py --cve CVE-2021-44228
+    python tools/crawl_evidence.py --cve CVE-2026-0926
     python tools/crawl_evidence.py --cve CVE-2021-44228 --output out.json
 """
 from __future__ import annotations
@@ -26,417 +30,70 @@ import json
 import logging
 import re
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 # Allow import từ repo root.
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO_ROOT))
 
 import httpx  # noqa: E402
-from pydantic import BaseModel, Field, field_validator, model_validator  # noqa: E402
-
-from config.settings import settings  # noqa: E402
+import yaml  # noqa: E402
+from pydantic import BaseModel, model_validator  # noqa: E402
 
 
 logger = logging.getLogger(__name__)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# nomi-sec source
+# nuclei-templates source
 # ─────────────────────────────────────────────────────────────────────────────
 
-NOMISEC_RAW = "https://raw.githubusercontent.com/nomi-sec/PoC-in-GitHub/master"
+NUCLEI_RAW = (
+    "https://raw.githubusercontent.com/projectdiscovery/nuclei-templates/main"
+)
+
+# Threshold above which identical headers are collapsed with a note.
+# Set conservatively: real templates rarely need >5 identical lines,
+# so anything beyond a couple is almost certainly a payload spam pattern.
+_DEDUP_HEADER_THRESHOLD = 2
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# AI extraction config
+# Record schema (v3.2 — minimal: two sub-systems, documentation | network)
 # ─────────────────────────────────────────────────────────────────────────────
 
-_PROMPTS_DIR = Path(__file__).parent / "prompts"
-_MAX_README_CHARS = 12_000   # ~3k input tokens, đủ cho output 3k
-_MAX_RETRIES = 2
-_MAX_REGEX_RECORDS_PER_REPO = 12  # cap regex supplement per repo
-
-EvidenceType = Literal[
-    "network",          # HTTP/LDAP/SMB request/response, curl examples
-    "poc_script",       # Python/Bash exploit scripts
-    "payload",          # Raw payload string (no wrapping request)
-    "scan_result",      # Tool output: "Found CVE-...", "9 vulnerable files"
-    "log_snippet",      # Verbatim log lines from code fence
-    "file_reference",   # .log / .pcap / .evtx filename refs
-    "config",           # YAML/TOML/env misconfiguration snippet
-    "documentation",    # Catch-all heading-level prose (regex returns)
-]
+EvidenceType = Literal["documentation", "network"]
 
 
 class CrawlEvidenceRecord(BaseModel):
-    """Single normalized evidence record — schema v2.0. STANDALONE CLI.
+    """Single normalized evidence record — schema v3.2. STANDALONE CLI.
 
-    Fields `id`, `extraction_method`, `source`, `reference_url` are set in code
-    (NOT by LLM). The LLM only fills content fields (type, request, payload,
-    observable, tool, etc.) — keeps the AI contract simple and avoids the LLM
-    refusing to fill provenance fields we don't care about.
+    Two shapes only:
+
+    * ``documentation``: ``request`` holds the joined ``info.description +
+      info.impact`` text.
+    * ``network``: ``request_info`` holds ``{method, path, headers, body,
+      raw_block_count}`` parsed from the http[] step.
     """
 
-    id: str = ""                                # patched post-loop
+    id: str = ""
     type: EvidenceType
-    title: str | None = None
     request: str | None = None
-    payload: str | None = None
-    observable: list[str] = Field(default_factory=list)
-    tool: str | None = None
-    log_type: str | None = None
-    source_section: str | None = None
-    confidence: float = 0.7                     # patched: 0.7 ai / 0.5 regex
-    extraction_method: Literal["ai", "regex"] = "regex"   # patched
-    source: str = ""                            # patched
-    reference_url: str = ""                     # patched
-
-    @field_validator("confidence")
-    @classmethod
-    def _bounded_confidence(cls, value: float) -> float:
-        if not 0.0 <= value <= 1.0:
-            raise ValueError(f"confidence must be in [0,1], got {value}")
-        return value
+    request_info: dict[str, Any] | None = None
 
     @model_validator(mode="after")
     def _at_least_one_content(self) -> "CrawlEvidenceRecord":
-        if not any([self.request, self.payload, self.observable]):
+        if not any([self.request, self.request_info]):
             raise ValueError(
-                "record must have at least one of request/payload/observable"
+                "record must have request (documentation) or "
+                "request_info (network)"
             )
         return self
 
 
-class _EvidenceExtractionLLMResponse(BaseModel):
-    """Internal: parsed AI response. LLM only fills content fields."""
-
-    cve_id: str
-    evidence_records: list[CrawlEvidenceRecord] = Field(default_factory=list)
-    skipped_sections: list[str] = Field(default_factory=list)
-    reason: str | None = None
-
-
-class _AIDisabledError(Exception):
-    """Internal: AI disabled or no key. Caller still runs regex supplement."""
-
-
-def _clean_json(text: str) -> str:
-    """Mirror ai_telemetry_service._clean_json (balanced-brace, string-escape aware).
-
-    Source: src/usecases/step_4_telemetry/services/ai_telemetry_service.py:480-525
-    """
-    text = text.strip()
-
-    # Step 1: fenced markdown
-    fenced = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
-    if fenced:
-        return fenced.group(1).strip()
-
-    # Step 2: balanced-brace scanner (string-aware)
-    first = text.find("{")
-    if first == -1:
-        return text.strip()
-
-    depth = 0
-    in_string = False
-    escape = False
-    last = -1
-    for i in range(first, len(text)):
-        c = text[i]
-        if escape:
-            escape = False
-            continue
-        if c == "\\":
-            escape = True
-            continue
-        if c == '"':
-            in_string = not in_string
-            continue
-        if in_string:
-            continue
-        if c == "{":
-            depth += 1
-        elif c == "}":
-            depth -= 1
-            if depth == 0:
-                last = i
-                break
-
-    if last == -1:
-        # Balanced-brace không khép — JSON bị truncate. Trả về best-effort text.
-        return text[first:].strip()
-
-    return text[first: last + 1].strip()
-
-
-async def extract_evidence_with_ai(
-    readme_text: str,
-    cve_id: str,
-    full_name: str,
-    html_url: str,
-) -> list[CrawlEvidenceRecord]:
-    """AI-based multi-record extraction. Returns list (possibly empty).
-
-    Raises:
-        _AIDisabledError: AI disabled — caller still runs regex.
-        AIServiceError / json.JSONDecodeError / ValidationError: caller catches.
-    """
-    from src.infrastructure.ai.core import BaseAIClient
-
-    base = BaseAIClient()
-    if not base.ai_enabled:
-        raise _AIDisabledError("ai_enabled=False")
-
-    # Reuse Phase 1 cascade (classification task fits Phase 1's purpose).
-    model = settings.get_phase1_model() or "llama-3.3-70b-versatile"
-    phase1_keys = settings.get_phase1_api_keys()
-    phase1_base_url = settings.get_phase1_base_url()
-    has_separate = (phase1_keys != settings.get_api_keys()) or (
-        phase1_base_url != getattr(settings, "ai_base_url", None)
-    )
-
-    truncated = readme_text[:_MAX_README_CHARS]
-    if len(readme_text) > _MAX_README_CHARS:
-        truncated += "\n\n[README truncated for length]"
-
-    sys_prompt = (_PROMPTS_DIR / "extract_evidence.system.txt").read_text(encoding="utf-8")
-    user_prompt = (_PROMPTS_DIR / "extract_evidence.user.txt").read_text(encoding="utf-8").format(
-        cve_id=cve_id,
-        max_chars=_MAX_README_CHARS,
-        readme_text=truncated,
-    )
-
-    kwargs: dict = dict(
-        system_prompt=sys_prompt,
-        user_prompt=user_prompt,
-        model=model,
-        max_tokens=3000,                # bumped: multi-record output
-        response_format_json=True,
-        max_retries=_MAX_RETRIES,
-    )
-    if has_separate:
-        kwargs.update(
-            override_api_key=phase1_keys[0],
-            override_base_url=phase1_base_url,
-        )
-
-    raw = await base.call_llm(**kwargs)
-    parsed = _EvidenceExtractionLLMResponse.model_validate(json.loads(_clean_json(raw)))
-
-    # Patch provenance + extraction_method + confidence in code (NOT from LLM).
-    patched: list[CrawlEvidenceRecord] = []
-    for rec in parsed.evidence_records:
-        patched.append(
-            rec.model_copy(update={
-                "extraction_method": "ai",
-                "confidence": 0.7,
-                "source": f"NomiSec - {full_name}",
-                "reference_url": html_url,
-            })
-        )
-    return patched
-
-
-async def extract_evidence_hybrid(
-    readme_text: str,
-    cve_id: str,
-    full_name: str,
-    html_url: str,
-) -> tuple[list[CrawlEvidenceRecord], dict[str, int]]:
-    """AI try → always supplement with regex (no dedup).
-
-    Returns:
-        (records, stats) where stats = {ai_calls, ai_failures, regex_calls}.
-    NEVER raises — caller's job is just to push results into evidence[].
-    """
-    records: list[CrawlEvidenceRecord] = []
-    stats = {"ai_calls": 0, "ai_failures": 0, "regex_calls": 0}
-
-    # Path A — AI
-    try:
-        stats["ai_calls"] += 1
-        ai_records = await extract_evidence_with_ai(
-            readme_text, cve_id, full_name, html_url
-        )
-        records.extend(ai_records)
-    except _AIDisabledError:
-        pass  # silent — pure-regex mode
-    except Exception as exc:  # AIServiceError, JSON, Validation, anything
-        stats["ai_failures"] += 1
-        logger.debug(
-            "[crawl_evidence] AI failed for %s/%s: %s",
-            cve_id, full_name, exc,
-        )
-
-    # Path B — regex supplement (always, no dedup vs AI per user decision)
-    try:
-        stats["regex_calls"] += 1
-        regex_records = extract_steps_section_records(
-            readme_text, cve_id, full_name, html_url
-        )
-        records.extend(regex_records)
-    except Exception as exc:
-        logger.debug(
-            "[crawl_evidence] regex failed for %s/%s: %s",
-            cve_id, full_name, exc,
-        )
-
-    return records, stats
-
-
 # ─────────────────────────────────────────────────────────────────────────────
-# Regex fallback
-# ─────────────────────────────────────────────────────────────────────────────
-
-_HEADING_PATTERN = re.compile(
-    r"^#{1,3}\s*(?:"
-    r"Steps?\s+to\s+Reproduce|"
-    r"Steps?|"
-    r"Reproduction|Reproduce|"
-    r"Proof\s+of\s+Concept|"
-    r"PoC|"
-    r"How\s+to\s+(?:Use|Run|Exploit|Reproduce)|"
-    r"Usage|"
-    r"Run(?:\s+the\s+exploit)?|"
-    r"(?:Attack|Exploit|Exploitation)\s+Steps?|"
-    r"Quick\s*Start|Getting\s+Started|"
-    r"重现步骤|复现步骤|重现|复现"
-    r")\s*:?\s*$",
-    re.I | re.M,
-)
-_NEXT_HEADING = re.compile(r"^#{1,3}\s+\S", re.M)
-_FENCE_PATTERN = re.compile(r"```([a-zA-Z]*)\s*\n(.*?)\n```", re.S)
-
-# Log content patterns (reuse from src/infrastructure/.../evidence_extractor.py).
-_APACHE_LOG_PATTERN = re.compile(
-    r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\s+-\s+\S+\s+\[[\d\w:/]+\s+[+-]\d{4}\]\s+\""
-    r"[^"
-    r"\"]+\"\s+\d+\s+\d+"
-)
-_ZEEK_CONN_PATTERN = re.compile(
-    r"^\d+\.\d+\.\d+\.\d+\t\d+\t[\d.]+\t\d+\t(?:tcp|udp|icmp)",
-    re.M,
-)
-_SURICATA_EVE_PATTERN = re.compile(
-    r'"event_type"\s*:\s*"(?:alert|flow|dns|http|smtp|tls|ssh|ftp)"'
-)
-_WINDOWS_XML_PATTERN = re.compile(r"<Event xmlns=\"[^\"]+\">.*?</Event>", re.S)
-_FILE_REF_PATTERN = re.compile(r"\b(\w+\.(?:evtx|pcap|log|json|tsv|csv))\b", re.I)
-
-
-def _fence_log_type(content: str) -> str | None:
-    """Detect log type from fenced code block content."""
-    if _APACHE_LOG_PATTERN.search(content):
-        return "apache_access_log"
-    if _ZEEK_CONN_PATTERN.search(content):
-        return "zeek_conn_log"
-    if _SURICATA_EVE_PATTERN.search(content):
-        return "suricata_eve"
-    if _WINDOWS_XML_PATTERN.search(content):
-        return "windows_event_xml"
-    return None
-
-
-def _extract_code_block_records(
-    readme_text: str,
-    full_name: str,
-    html_url: str,
-) -> list[CrawlEvidenceRecord]:
-    """Find fenced ```lang ... ``` blocks; emit log_snippet/file_reference records."""
-    records: list[CrawlEvidenceRecord] = []
-    for match in _FENCE_PATTERN.finditer(readme_text):
-        lang = (match.group(1) or "").lower()
-        content = match.group(2).strip()
-        if not content or len(content) < 10:
-            continue
-
-        # log_snippet: detect log type from content
-        log_type = _fence_log_type(content)
-        if log_type:
-            records.append(CrawlEvidenceRecord(
-                id="",  # patched by caller
-                type="log_snippet",
-                title=f"Fenced code block ({lang or 'plain'})",
-                observable=[f"Detected {log_type} pattern", content[:200]],
-                log_type=log_type,
-                source_section=None,
-                confidence=0.5,
-                extraction_method="regex",
-                source=f"NomiSec - {full_name}",
-                reference_url=html_url,
-            ))
-            if len(records) >= _MAX_REGEX_RECORDS_PER_REPO:
-                break
-            continue
-
-        # file_reference: detect .evtx / .pcap / .log etc in content
-        refs = list({m.group(1) for m in _FILE_REF_PATTERN.finditer(content)})[:3]
-        for ref in refs:
-            records.append(CrawlEvidenceRecord(
-                id="",
-                type="file_reference",
-                title=f"File reference: {ref}",
-                observable=[f"File: {ref}", content[:200]],
-                source_section=None,
-                confidence=0.5,
-                extraction_method="regex",
-                source=f"NomiSec - {full_name}",
-                reference_url=html_url,
-            ))
-            if len(records) >= _MAX_REGEX_RECORDS_PER_REPO:
-                break
-
-        if len(records) >= _MAX_REGEX_RECORDS_PER_REPO:
-            break
-    return records
-
-
-def extract_steps_section_records(
-    readme_text: str,
-    cve_id: str,
-    full_name: str,
-    html_url: str,
-) -> list[CrawlEvidenceRecord]:
-    """Regex fallback. Emits 1 documentation record + log_snippet/file_reference sub-records.
-
-    Always sets `extraction_method="regex"`, `confidence=0.5`.
-    """
-    records: list[CrawlEvidenceRecord] = []
-
-    heading_match = _HEADING_PATTERN.search(readme_text)
-    if heading_match:
-        start = heading_match.end()
-        nxt = _NEXT_HEADING.search(readme_text, start)
-        end = nxt.start() if nxt else len(readme_text)
-        section_body = readme_text[start:end].strip()
-        section_body = re.sub(r"^\s*\n", "", section_body)
-
-        heading_text = heading_match.group(0).strip().lstrip("#").strip()
-        if len(section_body) >= 30:
-            records.append(CrawlEvidenceRecord(
-                id="",  # patched by caller
-                type="documentation",
-                title=heading_text or "Steps section",
-                request=section_body[:1000],
-                observable=[],
-                source_section=heading_text,
-                confidence=0.5,
-                extraction_method="regex",
-                source=f"NomiSec - {full_name}",
-                reference_url=html_url,
-            ))
-
-    # Sub-extractor: code fences in full README (not just section body) — sometimes
-    # scanner output lives in a standalone block outside the heading section.
-    records.extend(_extract_code_block_records(readme_text, full_name, html_url))
-    return records[:_MAX_REGEX_RECORDS_PER_REPO]
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# HTTP fetch helpers (unchanged from prior version)
+# YAML fetcher
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _cve_year(cve_id: str) -> str | None:
@@ -445,149 +102,262 @@ def _cve_year(cve_id: str) -> str | None:
     return m.group(1) if m else None
 
 
-async def fetch_repos_for_cve(client: httpx.AsyncClient, cve_id: str) -> list[dict]:
-    """Fetch list repo PoC cho 1 CVE từ nomi-sec (1 HTTP call).
+async def fetch_template_yaml(
+    client: httpx.AsyncClient, cve_id: str
+) -> dict | None:
+    """Fetch + parse the nuclei-templates YAML for one CVE.
 
-    Returns: list[dict] — mỗi dict là 1 repo entry từ GitHub search API format.
+    Returns the parsed mapping on success, ``None`` on 404 / network / parse error.
     """
     year = _cve_year(cve_id)
     if not year:
-        return []
-    url = f"{NOMISEC_RAW}/{year}/{cve_id}.json"
-    r = await client.get(url, timeout=15.0)
-    if r.status_code != 200:
-        return []  # 404 = CVE không có trên nomi-sec
-    data = r.json()
-    if not isinstance(data, list):
-        return []
-    return [
-        e for e in data
-        if isinstance(e, dict) and e.get("full_name") and not e.get("fork", False)
-    ]
+        return None
+    url = f"{NUCLEI_RAW}/http/cves/{year}/{cve_id}.yaml"
+    try:
+        r = await client.get(url, timeout=10.0)
+    except httpx.HTTPError as exc:
+        logger.debug("[crawl_evidence] fetch failed for %s: %s", cve_id, exc)
+        return None
+    if r.status_code != 200 or not r.text:
+        return None
+    try:
+        # PyYAML silently drops the trailing `# digest:` comment — fine.
+        data = yaml.safe_load(r.text)
+    except yaml.YAMLError as exc:
+        logger.debug("[crawl_evidence] YAML parse failed for %s: %s", cve_id, exc)
+        return None
+    return data if isinstance(data, dict) else None
 
 
-async def fetch_default_branch(client: httpx.AsyncClient, full_name: str) -> str:
-    """Fetch default_branch của repo (cached per instance). Fallback: ``main``."""
-    r = await client.get(
-        f"https://api.github.com/repos/{full_name}",
-        timeout=5.0,
+# ─────────────────────────────────────────────────────────────────────────────
+# Raw HTTP block parser (for the request_info structure)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _parse_raw_block(block: str) -> dict[str, Any] | None:
+    """Parse a single literal HTTP/1.x request block into structured form.
+
+    Accepts block scalar output (e.g. ``"GET /path HTTP/1.1\\nHost: ...\\n\\nbody"``).
+    Returns ``None`` if the block isn't a recognizable request line.
+
+    Returned shape::
+
+        {"method": str, "path": str, "headers": dict[str, str], "body": str | None}
+    """
+    text = block.replace("\r\n", "\n").strip("\n")
+    if not text:
+        return None
+
+    lines = text.split("\n")
+    # Request line: "METHOD <path> HTTP/1.x"
+    request_line = lines[0].strip()
+    m = re.match(r"^([A-Z]+)\s+(\S+)\s+HTTP/\d", request_line)
+    if not m:
+        return None
+    method = m.group(1)
+    path = m.group(2)
+
+    headers: dict[str, str] = {}
+    body: str | None = None
+    # Headers continue until a blank line, then body.
+    for line in lines[1:]:
+        if line.strip() == "":
+            # Everything after this is body.
+            body = "\n".join(lines[lines.index(line) + 1 :])
+            break
+        if ":" not in line:
+            continue
+        k, _, v = line.partition(":")
+        headers[k.strip()] = v.strip()
+
+    return {
+        "method": method,
+        "path": path,
+        "headers": headers,
+        "body": body if body else None,
+    }
+
+
+def _dedup_headers(headers: dict[str, str]) -> dict[str, Any]:
+    """Collapse identical (case-insensitive key + same value) headers.
+
+    Real templates (Log4Shell etc.) spam the same JNDI payload across many
+    headers with the same value; collapse them with a ``_collapsed_count``
+    sibling key so the user still sees the count without the noise.
+
+    Headers with distinct values are preserved verbatim.
+    """
+    if not headers:
+        return {}
+
+    # Group by lowercased key first.
+    by_key: dict[str, list[tuple[str, str]]] = {}
+    for k, v in headers.items():
+        by_key.setdefault(k.lower(), []).append((k, v))
+
+    out: dict[str, Any] = {}
+    for lk, entries in by_key.items():
+        if len(entries) == 1:
+            out[entries[0][0]] = entries[0][1]
+            continue
+
+        # Multiple entries with same lowercased key — check value identity.
+        distinct_values = {v for _, v in entries}
+        if len(distinct_values) == 1:
+            # Identical values: collapse.
+            out[entries[0][0]] = entries[0][1]
+            if len(entries) > _DEDUP_HEADER_THRESHOLD:
+                # Use the original casing from the first occurrence + count note.
+                note_key = f"_{entries[0][0].lower().replace('-', '_')}_collapsed_count"
+                out[note_key] = len(entries)
+        else:
+            # Same key, different values: preserve all (keep order).
+            for k, v in entries:
+                out.setdefault(k, v)
+            if len(entries) > _DEDUP_HEADER_THRESHOLD:
+                note_key = f"_{lk.replace('-', '_')}_variants_count"
+                out[note_key] = len(entries)
+    return out
+
+
+def _build_request_info(step: dict) -> dict[str, Any] | None:
+    """Build ``request_info`` dict for one http[] step.
+
+    Behavior:
+      * ``method`` and ``path`` come from the first parseable raw block (or
+        from the structured fields when no raw blocks exist).
+      * ``headers`` is the **union across all raw blocks**, with identical
+        (key+value) pairs collapsed via :func:`_dedup_headers` so Log4Shell-
+        style payload spam across many headers is visible but not noisy.
+      * ``body`` comes from the first block that has one.
+      * ``raw_block_count`` records how many raw blocks were present.
+      * Fallback when no raw blocks exist: reconstruct from ``method`` +
+        ``path`` + ``headers`` + ``body`` (structured fields).
+    """
+    raw_blocks = step.get("raw") or []
+
+    if raw_blocks:
+        # First parseable block drives method/path/body.
+        primary: dict[str, Any] | None = None
+        merged_headers: dict[str, str] = {}
+        primary_body: str | None = None
+        primary_method: str | None = None
+        primary_path: str | None = None
+
+        for block in raw_blocks:
+            parsed = _parse_raw_block(str(block))
+            if parsed is None:
+                continue
+            merged_headers.update(parsed["headers"] or {})
+            if primary is None:
+                primary = parsed
+                primary_method = parsed["method"]
+                primary_path = parsed["path"]
+                primary_body = parsed["body"]
+            elif primary_body is None and parsed["body"]:
+                primary_body = parsed["body"]
+
+        if primary is not None:
+            info: dict[str, Any] = {
+                "method": primary_method,
+                "path": primary_path,
+                "headers": _dedup_headers(merged_headers),
+            }
+            if primary_body:
+                info["body"] = primary_body
+            if len(raw_blocks) > 1:
+                info["raw_block_count"] = len(raw_blocks)
+            return info
+
+    # Fallback: reconstruct from structured fields.
+    method = step.get("method", "GET")
+    paths = step.get("path") or ["/"]
+    path = paths[0] if isinstance(paths, list) else str(paths)
+    body = step.get("body")
+    info: dict[str, Any] = {
+        "method": method,
+        "path": path,
+        "headers": _dedup_headers(dict(step.get("headers") or {})),
+    }
+    if body:
+        info["body"] = body
+    return info
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Record builders
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _description_record(template: dict, cve_id: str) -> CrawlEvidenceRecord:
+    """Emit one documentation record holding ``info.description + info.impact``.
+
+    ``remediation`` is intentionally dropped (per user decision).
+    """
+    info = template.get("info") or {}
+    parts: list[str] = []
+    description = (info.get("description") or "").strip()
+    if description:
+        parts.append(description)
+    impact = (info.get("impact") or "").strip()
+    if impact:
+        parts.append(impact)
+    return CrawlEvidenceRecord(
+        id=f"{cve_id.lower()}_description",
+        type="documentation",
+        request="\n\n".join(parts),
     )
-    if r.status_code == 200:
-        return (r.json().get("default_branch") or "main").strip()
-    return "main"
 
 
-async def fetch_readme(
-    client: httpx.AsyncClient,
-    full_name: str,
-    branch: str,
-) -> str | None:
-    """Fetch raw README từ 1 repo. Try nhiều tên file."""
-    for name in ("README.md", "README", "readme.md", "Readme.md"):
-        url = f"https://raw.githubusercontent.com/{full_name}/{branch}/{name}"
-        r = await client.get(url, timeout=5.0)
-        if r.status_code == 200 and r.text:
-            return r.text
-    return None
+def _http_step_record(
+    step: dict, idx: int, cve_id: str
+) -> CrawlEvidenceRecord:
+    """Emit one network record per ``http[]`` step."""
+    return CrawlEvidenceRecord(
+        id=f"{cve_id.lower()}_http_{idx:02d}",
+        type="network",
+        request_info=_build_request_info(step),
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Orchestrator
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _make_evidence_id(cve_id: str, seq: int) -> str:
-    return f"evidence_{cve_id.strip().lower().replace('-', '_')}_{seq:03d}"
+async def crawl(cve_id: str, max_evidence: int = 50, timeout: float = 10.0) -> dict:
+    """Fetch nuclei YAML for ``cve_id`` and emit documentation + per-step records.
 
+    Top-level shape (v3.2):
+        {cve_id, evidence[], references[]}
 
-async def crawl(
-    cve_id: str,
-    max_repos: int = 5,
-    max_evidence: int = 50,
-) -> dict:
-    """Crawl nomi-sec cho 1 CVE. Output schema v2.0: evidence + references + metadata."""
-    async with httpx.AsyncClient(timeout=15.0) as client:
-        repos = await fetch_repos_for_cve(client, cve_id)
-        top_repos = sorted(
-            repos, key=lambda r: r.get("stargazers_count", 0), reverse=True
-        )[:max_repos]
+    ``timeout`` is the httpx request deadline (seconds) — owns the deadline
+    so the utility has a single, well-defined time budget callers can rely on.
+    """
+    year = _cve_year(cve_id)
+    yaml_url = f"{NUCLEI_RAW}/http/cves/{year}/{cve_id}.yaml" if year else ""
 
-        evidence: list[CrawlEvidenceRecord] = []
-        references: list[dict] = []
-        repos_with_evidence = 0
-        ai_calls = 0
-        ai_failures = 0
-        regex_calls = 0
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        template = await fetch_template_yaml(client, cve_id)
 
-        for repo in top_repos:
-            full_name = repo.get("full_name", "")
-            html_url = repo.get("html_url", "")
-            stars = repo.get("stargazers_count", 0)
-            if not full_name:
-                continue
-
-            references.append({
-                "url": html_url,
-                "stars": stars,
-                "description": (repo.get("description") or "").strip(),
-            })
-
-            branch = await fetch_default_branch(client, full_name)
-            readme = await fetch_readme(client, full_name, branch)
-            if not readme:
-                continue
-
-            records, stats = await extract_evidence_hybrid(
-                readme, cve_id, full_name, html_url,
-            )
-            ai_calls += stats["ai_calls"]
-            ai_failures += stats["ai_failures"]
-            regex_calls += stats["regex_calls"]
-
-            if records:
-                repos_with_evidence += 1
-                evidence.extend(records)
-
-        # Cap BEFORE renumbering (IDs stay contiguous).
-        if len(evidence) > max_evidence:
-            logger.info(
-                "[crawl_evidence] capping %d evidence records to %d (--max-evidence)",
-                len(evidence), max_evidence,
-            )
-            evidence = evidence[:max_evidence]
-
-        # Per-CVE global renumbering (001..N).
-        for i, rec in enumerate(evidence, 1):
-            rec.id = _make_evidence_id(cve_id, i)
-
-        if ai_calls == 0:
-            backend_mode = "regex"
-        elif ai_failures == ai_calls:
-            backend_mode = "regex"
-        elif ai_failures > 0:
-            backend_mode = "hybrid"
-        else:
-            backend_mode = "ai"
-
-        metadata = {
-            "schema_version": "2.0",
-            "extraction_stats": {
-                "ai_records": sum(1 for r in evidence if r.extraction_method == "ai"),
-                "regex_records": sum(1 for r in evidence if r.extraction_method == "regex"),
-                "ai_calls": ai_calls,
-                "ai_failures": ai_failures,
-                "regex_calls": regex_calls,
-                "backend_mode": backend_mode,
-                "repos_with_evidence": repos_with_evidence,
-                "repos_without_evidence": len(top_repos) - repos_with_evidence,
-            },
-            "generated_at": datetime.now(timezone.utc).isoformat(),
+    if template is None:
+        return {
+            "cve_id": cve_id,
+            "evidence": [],
+            "references": [],
         }
+
+    records: list[CrawlEvidenceRecord] = [
+        _description_record(template, cve_id)
+    ]
+    http_steps = template.get("http") or []
+    for idx, step in enumerate(http_steps):
+        records.append(_http_step_record(step, idx, cve_id))
+
+    # Cap (description is preserved; http steps may be truncated).
+    records = records[:max_evidence]
 
     return {
         "cve_id": cve_id,
-        "evidence": [r.model_dump() for r in evidence],
-        "references": references,
-        "metadata": metadata,
+        "evidence": [r.model_dump(exclude_none=True) for r in records],
+        "references": [{"url": yaml_url}],
     }
 
 
@@ -597,44 +367,30 @@ async def crawl(
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Crawl PoC evidence từ nomi-sec. Output JSON schema v2.0.",
+        description="Crawl nuclei-templates PoC YAML for 1 CVE. Output JSON schema v3.2."
     )
     parser.add_argument("--cve", required=True, help="CVE ID (e.g. CVE-2021-44228)")
     parser.add_argument(
         "--output", "-o",
-        help="Write JSON to file (mặc định: stdout)",
-    )
-    parser.add_argument(
-        "--max-repos", type=int, default=5,
-        help="Cap số repo crawl theo stars (mặc định 5)",
+        help="Write JSON to file (default: stdout)",
     )
     parser.add_argument(
         "--max-evidence", type=int, default=50,
-        help="Cap tổng evidence records per CVE (mặc định 50)",
+        help="Cap total evidence records per CVE (default 50)",
     )
     args = parser.parse_args()
 
     try:
-        result = asyncio.run(
-            crawl(
-                args.cve,
-                max_repos=args.max_repos,
-                max_evidence=args.max_evidence,
-            )
-        )
+        result = asyncio.run(crawl(args.cve, max_evidence=args.max_evidence))
     except KeyboardInterrupt:
         sys.exit(130)
 
     json_str = json.dumps(result, ensure_ascii=False, indent=2)
     if args.output:
         Path(args.output).write_text(json_str, encoding="utf-8")
-        stats = result["metadata"]["extraction_stats"]
+        n = len(result["evidence"])
         print(
-            f"Written {args.output}: "
-            f"{len(result['evidence'])} evidence "
-            f"({stats['ai_records']} ai, {stats['regex_records']} regex), "
-            f"{len(result['references'])} references, "
-            f"schema v{result['metadata']['schema_version']}",
+            f"Written {args.output}: {n} evidence records",
             file=sys.stderr,
         )
     else:

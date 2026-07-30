@@ -10,7 +10,8 @@ dependencies = [
     "pydantic-settings>=2.0",
     "httpx>=0.24.0",
     "structlog>=23.1.0",
-    "openai>=1.40.0"
+    "openai>=1.40.0",
+    "PyYAML>=6.0"
 ]
 
 [project.optional-dependencies]
@@ -20,6 +21,5 @@ dev = ["pytest>=7.4"]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
-# DÁN THÊM CỤC NÀY VÀO DƯỚI CÙNG NÈ MÀY
 [tool.hatch.build.targets.wheel]
 packages = ["app"]

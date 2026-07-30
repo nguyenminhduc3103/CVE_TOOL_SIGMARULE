@@ -37,20 +37,24 @@ class KEVHTTPClient(BaseHTTPClient):
         # `BaseHTTPClient.__init__` may create a default client. We replace it
         # with one that follows redirects (CISA may redirect), then patch in
         # our custom User-Agent.
-        super().__init__(base_url=None if kev_api_url else self.BASE_URL, timeout=timeout)
+        base_url_for_super = self.BASE_URL if kev_api_url is None else ""
+        super().__init__(base_url=base_url_for_super, timeout=timeout)
         headers = {
             "User-Agent": os.environ.get("CUSTOM_USER_AGENT") or self.DEFAULT_USER_AGENT,
             "Accept": "application/json",
             "Accept-Language": "en-US,en;q=0.9",
             "Referer": "https://www.cisa.gov/",
         }
-        self._client = httpx.AsyncClient(
-            base_url=None if kev_api_url else self.BASE_URL,
+        # httpx 0.28+ rejects base_url=None; pass empty string (or omit) instead.
+        client_kwargs: dict[str, Any] = dict(
             timeout=timeout,
             follow_redirects=True,
             headers=headers,
             trust_env=True,
         )
+        if kev_api_url is None:
+            client_kwargs["base_url"] = self.BASE_URL
+        self._client = httpx.AsyncClient(**client_kwargs)
 
         self.retries = retries
         self.backoff_seconds = backoff_seconds

@@ -28,6 +28,7 @@ from src.usecases.step_1_triage.stages.epss_stage import run_epss_stage
 from src.usecases.step_1_triage.stages.exposure_stage import run_exposure_stage
 from src.usecases.step_1_triage.stages.kev_stage import run_kev_stage
 from src.usecases.step_1_triage.stages.poc_stage import run_poc_stage
+from src.usecases.step_1_triage.stages.nuclei_crawl_stage import run_nuclei_crawl_stage
 from src.usecases.step_1_triage.stages.telemetry_discovery_stage import run_telemetry_discovery_stage
 from src.usecases.step_1_triage.stages.telemetry_assessment_stage import run_telemetry_assessment_stage
 from src.usecases.step_1_triage.stages.telemetry_stage import run_telemetry_stage
@@ -79,7 +80,26 @@ class TriageOrchestrator:
             "otx": self._run_provider("otx", self.otx, self.otx.fetch, cve_id, provider_status, provider_errors, provider_durations),
             "poc": self._run_provider("poc", self.poc, self.poc.fetch, cve_id, provider_status, provider_errors, provider_durations),
         }
-        provider_results = await asyncio.gather(*provider_tasks.values(), return_exceptions=True)
+        nuclei_task = asyncio.create_task(run_nuclei_crawl_stage(cve_id))
+        provider_results, nuclei_raw = await asyncio.gather(
+            asyncio.gather(*provider_tasks.values(), return_exceptions=True),
+            nuclei_task,
+            return_exceptions=True,
+        )
+        # nuclei_raw should be a dict; collapse exception to empty payload
+        if isinstance(nuclei_raw, BaseException):
+            self.logger.warning(
+                "[ORCHESTRATOR] nuclei_crawl_failed", cve_id=cve_id, error=_err_line(nuclei_raw)
+            )
+            nuclei_raw = {
+                "status": "error",
+                "cve_id": cve_id,
+                "evidence": [],
+                "references": [],
+                "error": str(nuclei_raw)[:200],
+            }
+        # When wrapped, provider_results is the inner gather() list
+        provider_results = provider_results if isinstance(provider_results, list) else []
 
         nvd_raw = kev_raw = epss_raw = poc_raw = None
         for name, result in zip(provider_tasks.keys(), provider_results):
@@ -144,6 +164,10 @@ class TriageOrchestrator:
         # Build CoreCVEData from NVD raw (minimal mapping)
         core = self._build_core_context(cve_id, nvd_core_raw, otx_raw)
 
+        # Merge nuclei YAML URL(s) into core.references so resolve_poc_context
+        # carries them into triage.poc_references → PoCExtractorSource (Step 1.3).
+        self._merge_references(core.references, nuclei_raw.get("references", []))
+
         exposure_raw, stage_failed = await self._run_stage(
             stage_name="exposure_stage",
             stage_fn=run_exposure_stage,
@@ -204,6 +228,8 @@ class TriageOrchestrator:
             provider_status=provider_status,
             provider_errors=provider_errors,
         )
+        # Surface raw nuclei payload via object.__setattr__ to bypass Pydantic strict
+        object.__setattr__(enriched, "nuclei_evidence", nuclei_raw)
 
         # ============================================================
         # Step 1.3: Telemetry Discovery (Two-Phase)
@@ -511,6 +537,23 @@ error=_err_line(exc),
             provider_durations[provider_name] = int((perf_counter() - started) * 1000)
             self.logger.warning("[ORCHESTRATOR] provider_failed", provider=provider_name, cve_id=cve_id, duration_ms=provider_durations[provider_name], error=provider_errors[provider_name])
         return None
+
+    @staticmethod
+    def _merge_references(existing: list[Any], new_refs: list[Any]) -> None:
+        """In-place dedup-merge: append new refs into existing, dedup by URL.
+
+        Preserves full ref dict (URL + title/source/etc.) — never strips
+        downstream-added keys. First occurrence wins on URL collision.
+        """
+        seen = {
+            (r.get("url") if isinstance(r, dict) else r)
+            for r in existing or []
+        }
+        for ref in new_refs or []:
+            url = ref.get("url") if isinstance(ref, dict) else ref
+            if isinstance(url, str) and url and url not in seen:
+                seen.add(url)
+                existing.append(ref)
 
     def _build_core_context(self, cve_id: str, nvd_raw: dict[str, Any] | None, otx_raw: dict[str, Any] | None = None) -> CoreCVEData:
         payload = nvd_raw or {}

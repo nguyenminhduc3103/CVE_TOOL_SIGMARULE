@@ -13,6 +13,11 @@ from src.adapters.presenters.cli_presenter import (
     print_step4_telemetry,
     print_step6_sigma,
     print_metadata_footer,
+    _section_header,
+    _subsection,
+    _kv,
+    _C,
+    _truncate,
 )
 
 
@@ -22,6 +27,51 @@ def _wait_for_user(step_description: str) -> None:
     if os.getenv("CVE_TI_NONINTERACTIVE", "0").lower() in ("1", "true", "yes"):
         return
     input()
+
+
+def _print_nuclei_cache(cve_id: str, nuclei_raw: dict | None) -> None:
+    """Print PoC Details fetched by Step 1's nuclei crawl stage.
+
+    Length truncation honors CVE_TI_FULL_OUTPUT (opt-in via env / .env).
+    """
+    if not nuclei_raw:
+        return
+
+    _section_header(f"PoC Details — {cve_id}")
+    status = nuclei_raw.get("status", "?")
+    status_color = (
+        _C.GREEN if status == "success"
+        else _C.YELLOW if status == "disabled"
+        else _C.RED
+    )
+    print(_kv("status", f"{status_color}{status}{_C.RESET}"))
+    err = nuclei_raw.get("error")
+    if err:
+        print(_kv("error", f"{_C.RED}{_truncate(err, max_len=200)}{_C.RESET}"))
+
+    evidence = nuclei_raw.get("evidence") or []
+    print(_kv("evidence", f"{len(evidence)} record(s)"))
+    if evidence:
+        _subsection("Records", _C.MAGENTA)
+        for rec in evidence:
+            rtype = rec.get("type", "?")
+            if rtype == "documentation":
+                txt = (rec.get("request") or "").strip().replace("\n", " ")
+                print(f"  {_C.DIM}·{_C.RESET} {_C.BOLD}documentation{_C.RESET}: {_truncate(txt, max_len=200)}")
+            else:
+                ri = rec.get("request_info") or {}
+                method = ri.get("method", "?")
+                path = ri.get("path", "?")
+                print(f"  {_C.DIM}·{_C.RESET} {_C.BOLD}network{_C.RESET}: {method} {_truncate(path, max_len=200)}")
+                if ri.get("body"):
+                    print(f"      body: {_truncate(ri['body'], max_len=300)}")
+
+    refs = nuclei_raw.get("references") or []
+    if refs:
+        _subsection("References", _C.BLUE)
+        for r in refs:
+            url = r.get("url") if isinstance(r, dict) else r
+            print(f"  {_C.DIM}·{_C.RESET} {_C.CYAN}{url}{_C.RESET}")
 
 
 class CLITriageController:
@@ -48,7 +98,7 @@ class CLITriageController:
 
         _wait_for_user(f"Step 1: Triage & Enrichment cho {cve_id}")
 
-        # === STEP 1 + 2 ===
+        # --- STEP 1 + 2 ---
         enriched: Any | None = None
         try:
             enriched = await self.orchestrator.orchestrate(cve_id)
@@ -58,30 +108,31 @@ class CLITriageController:
 
         print_step1_triage(enriched)
 
-        # NO-GO → skip các step sau
+        # --- Nuclei evidence cache (fired concurrently in Step 1's asyncio.gather) ---
+        _print_nuclei_cache(cve_id, getattr(enriched, "nuclei_evidence", None))
+
+        # NO-GO → skip downstream steps
         if (enriched.triage.decision or "").upper() in ("NO-GO", "STOP"):
             print(f"\n⚠ Pipeline halted at Step 1 (decision={enriched.triage.decision}).")
             print(f"  Skipping Step 2 / 4 / 6.")
             return
 
-        # === STEP 2 (analysis đã được populate bởi orchestrate) ===
+        # --- STEP 2 (analysis populated by orchestrate) ---
         _wait_for_user(f"Step 2: AI phân tích behavior + ATT&CK cho {cve_id}")
         print_step2_analysis(enriched)
 
-        # Nếu Step 2 fail → skip Step 4/6
+        # Step 2 fail → skip Step 4/6
         if enriched.analysis is None:
             print(f"\n⚠ Step 2 produced no analysis. Skipping Step 4 / 6.")
             return
 
-        # === STEP 4 (Telemetry Selector) ===
+        # --- STEP 4 (Telemetry Selector) ---
         _wait_for_user(f"Step 4: AI Telemetry Selector cho {cve_id}")
         telemetry_dict: dict | None = None
         try:
             from src.usecases.step_1_triage.stages.telemetry_stage import run_telemetry_stage
 
-            # Capability classification — phải là CapabilityClassification object
-            # (dataclass với value/confidence_modifier/telemetry_modifier/reasoning).
-            # Không dump được từ `triage.capability_assessment` (đó chỉ là str).
+            # CapabilityClassification object (not the str in triage.capability_assessment)
             capability_classification = self.orchestrator.capability_checker.classify(enriched.core)
 
             telemetry_assessment = await run_telemetry_stage(enriched, capability_classification)
@@ -96,7 +147,7 @@ class CLITriageController:
 
         print_step4_telemetry(enriched)
 
-        # === STEP 6 (Sigma Generation) ===
+        # --- STEP 6 (Sigma Generation) ---
         _wait_for_user(f"Step 6: AI Detection Logic Planner + Sigma Builder cho {cve_id}")
         result: Any = None
         if telemetry_dict is None or enriched.telemetry is None:
@@ -129,7 +180,7 @@ class CLITriageController:
 
         print_step6_sigma(result, enriched)
 
-        # === Footer ===
+        # --- Footer ---
         total_ms = int((time.perf_counter() - pipeline_start) * 1000)
         print_metadata_footer(enriched, total_ms)
 
