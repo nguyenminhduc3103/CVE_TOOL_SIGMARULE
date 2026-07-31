@@ -1,0 +1,4335 @@
+{
+  "port_scanning": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1049",
+        "t_name": "System Network Connections Discovery",
+        "tactics": [
+          "TA0007"
+        ],
+        "confidence": 0.58
+      },
+      {
+        "mapped_t_code": "T1046",
+        "t_name": "Network Service Discovery",
+        "tactics": [
+          "TA0007"
+        ],
+        "confidence": 0.55
+      },
+      {
+        "mapped_t_code": "T1205.001",
+        "t_name": "Port Knocking",
+        "tactics": [
+          "TA0005",
+          "TA0003",
+          "TA0011"
+        ],
+        "confidence": 0.53
+      }
+    ]
+  },
+  "os_fingerprinting": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1036.012",
+        "t_name": "Browser Fingerprint",
+        "tactics": [
+          "TA0005"
+        ],
+        "confidence": 0.57
+      },
+      {
+        "mapped_t_code": "T1018",
+        "t_name": "Remote System Discovery",
+        "tactics": [
+          "TA0007"
+        ],
+        "confidence": 0.53
+      },
+      {
+        "mapped_t_code": "T1082",
+        "t_name": "System Information Discovery",
+        "tactics": [
+          "TA0007"
+        ],
+        "confidence": 0.5
+      }
+    ]
+  },
+  "ip_probing": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1016.001",
+        "t_name": "Internet Connection Discovery",
+        "tactics": [
+          "TA0007"
+        ],
+        "confidence": 0.52
+      },
+      {
+        "mapped_t_code": "T1018",
+        "t_name": "Remote System Discovery",
+        "tactics": [
+          "TA0007"
+        ],
+        "confidence": 0.5
+      },
+      {
+        "mapped_t_code": "T1595.001",
+        "t_name": "Scanning IP Blocks",
+        "tactics": [
+          "TA0043"
+        ],
+        "confidence": 0.49
+      }
+    ]
+  },
+  "host_discovery": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1018",
+        "t_name": "Remote System Discovery",
+        "tactics": [
+          "TA0007"
+        ],
+        "confidence": 0.67
+      },
+      {
+        "mapped_t_code": "T1049",
+        "t_name": "System Network Connections Discovery",
+        "tactics": [
+          "TA0007"
+        ],
+        "confidence": 0.59
+      },
+      {
+        "mapped_t_code": "T1016",
+        "t_name": "System Network Configuration Discovery",
+        "tactics": [
+          "TA0007"
+        ],
+        "confidence": 0.58
+      }
+    ]
+  },
+  "network_enumeration": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1590.004",
+        "t_name": "Network Topology",
+        "tactics": [
+          "TA0043"
+        ],
+        "confidence": 0.51
+      },
+      {
+        "mapped_t_code": "T1049",
+        "t_name": "System Network Connections Discovery",
+        "tactics": [
+          "TA0007"
+        ],
+        "confidence": 0.5
+      },
+      {
+        "mapped_t_code": "T1602.001",
+        "t_name": "SNMP (MIB Dump)",
+        "tactics": [
+          "TA0009"
+        ],
+        "confidence": 0.49
+      }
+    ]
+  },
+  "dns_enumeration": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1590.002",
+        "t_name": "DNS",
+        "tactics": [
+          "TA0043"
+        ],
+        "confidence": 0.54
+      },
+      {
+        "mapped_t_code": "T1596.001",
+        "t_name": "DNS/Passive DNS",
+        "tactics": [
+          "TA0043"
+        ],
+        "confidence": 0.52
+      },
+      {
+        "mapped_t_code": "T1583.002",
+        "t_name": "DNS Server",
+        "tactics": [
+          "TA0042"
+        ],
+        "confidence": 0.51
+      }
+    ]
+  },
+  "flood_dos": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1498.001",
+        "t_name": "Direct Network Flood",
+        "tactics": [
+          "TA0040"
+        ],
+        "confidence": 0.79
+      },
+      {
+        "mapped_t_code": "T1498",
+        "t_name": "Network Denial of Service",
+        "tactics": [
+          "TA0040"
+        ],
+        "confidence": 0.78
+      },
+      {
+        "mapped_t_code": "T1499",
+        "t_name": "Endpoint Denial of Service",
+        "tactics": [
+          "TA0040"
+        ],
+        "confidence": 0.75
+      }
+    ]
+  },
+  "payload_expansion_dos": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1001.001",
+        "t_name": "Junk Data",
+        "tactics": [
+          "TA0011"
+        ],
+        "confidence": 0.55
+      },
+      {
+        "mapped_t_code": "T1132",
+        "t_name": "Data Encoding",
+        "tactics": [
+          "TA0011"
+        ],
+        "confidence": 0.54
+      },
+      {
+        "mapped_t_code": "T1055.009",
+        "t_name": "Proc Memory",
+        "tactics": [
+          "TA0005",
+          "TA0004"
+        ],
+        "confidence": 0.54
+      }
+    ]
+  },
+  "amplification_dos": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1498.002",
+        "t_name": "Reflection Amplification",
+        "tactics": [
+          "TA0040"
+        ],
+        "confidence": 0.76
+      },
+      {
+        "mapped_t_code": "T1498",
+        "t_name": "Network Denial of Service",
+        "tactics": [
+          "TA0040"
+        ],
+        "confidence": 0.66
+      },
+      {
+        "mapped_t_code": "T1499",
+        "t_name": "Endpoint Denial of Service",
+        "tactics": [
+          "TA0040"
+        ],
+        "confidence": 0.64
+      }
+    ]
+  },
+  "resource_exhaustion": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1499.003",
+        "t_name": "Application Exhaustion Flood",
+        "tactics": [
+          "TA0040"
+        ],
+        "confidence": 0.75
+      },
+      {
+        "mapped_t_code": "T1496",
+        "t_name": "Resource Hijacking",
+        "tactics": [
+          "TA0040"
+        ],
+        "confidence": 0.66
+      },
+      {
+        "mapped_t_code": "T1499.001",
+        "t_name": "OS Exhaustion Flood",
+        "tactics": [
+          "TA0040"
+        ],
+        "confidence": 0.65
+      }
+    ]
+  },
+  "jamming": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1669",
+        "t_name": "Wi-Fi Networks",
+        "tactics": [
+          "TA0001"
+        ],
+        "confidence": 0.51
+      },
+      {
+        "mapped_t_code": "T1011",
+        "t_name": "Exfiltration Over Other Network Medium",
+        "tactics": [
+          "TA0010"
+        ],
+        "confidence": 0.48
+      },
+      {
+        "mapped_t_code": "T1011.001",
+        "t_name": "Exfiltration Over Bluetooth",
+        "tactics": [
+          "TA0010"
+        ],
+        "confidence": 0.47
+      }
+    ]
+  },
+  "reflected_xss": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1027.006",
+        "t_name": "HTML Smuggling",
+        "tactics": [
+          "TA0005"
+        ],
+        "confidence": 0.61
+      },
+      {
+        "mapped_t_code": "T1204.004",
+        "t_name": "Malicious Copy and Paste",
+        "tactics": [
+          "TA0002"
+        ],
+        "confidence": 0.57
+      },
+      {
+        "mapped_t_code": "T1674",
+        "t_name": "Input Injection",
+        "tactics": [
+          "TA0002"
+        ],
+        "confidence": 0.56
+      }
+    ]
+  },
+  "stored_xss": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1027.006",
+        "t_name": "HTML Smuggling",
+        "tactics": [
+          "TA0005"
+        ],
+        "confidence": 0.57
+      },
+      {
+        "mapped_t_code": "T1059.007",
+        "t_name": "JavaScript",
+        "tactics": [
+          "TA0002"
+        ],
+        "confidence": 0.55
+      },
+      {
+        "mapped_t_code": "T1220",
+        "t_name": "XSL Script Processing",
+        "tactics": [
+          "TA0005"
+        ],
+        "confidence": 0.5
+      }
+    ]
+  },
+  "dom_based_xss": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1059.007",
+        "t_name": "JavaScript",
+        "tactics": [
+          "TA0002"
+        ],
+        "confidence": 0.61
+      },
+      {
+        "mapped_t_code": "T1027.006",
+        "t_name": "HTML Smuggling",
+        "tactics": [
+          "TA0005"
+        ],
+        "confidence": 0.6
+      },
+      {
+        "mapped_t_code": "T1220",
+        "t_name": "XSL Script Processing",
+        "tactics": [
+          "TA0005"
+        ],
+        "confidence": 0.57
+      }
+    ]
+  },
+  "pretexting": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1684.001",
+        "t_name": "Impersonation",
+        "tactics": [
+          "TA0005"
+        ],
+        "confidence": 0.58
+      },
+      {
+        "mapped_t_code": "T1003",
+        "t_name": "OS Credential Dumping",
+        "tactics": [
+          "TA0006"
+        ],
+        "confidence": 0.56
+      },
+      {
+        "mapped_t_code": "T1534",
+        "t_name": "Internal Spearphishing",
+        "tactics": [
+          "TA0008"
+        ],
+        "confidence": 0.56
+      }
+    ]
+  },
+  "phishing": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1566",
+        "t_name": "Phishing",
+        "tactics": [
+          "TA0001"
+        ],
+        "confidence": 0.75
+      },
+      {
+        "mapped_t_code": "T1598",
+        "t_name": "Phishing for Information",
+        "tactics": [
+          "TA0043"
+        ],
+        "confidence": 0.73
+      },
+      {
+        "mapped_t_code": "T1684.001",
+        "t_name": "Impersonation",
+        "tactics": [
+          "TA0005"
+        ],
+        "confidence": 0.69
+      }
+    ]
+  },
+  "alternate_encoding": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1132.002",
+        "t_name": "Non-Standard Encoding",
+        "tactics": [
+          "TA0011"
+        ],
+        "confidence": 0.63
+      },
+      {
+        "mapped_t_code": "T1027.018",
+        "t_name": "Invisible Unicode",
+        "tactics": [
+          "TA0005"
+        ],
+        "confidence": 0.58
+      },
+      {
+        "mapped_t_code": "T1132",
+        "t_name": "Data Encoding",
+        "tactics": [
+          "TA0011"
+        ],
+        "confidence": 0.56
+      }
+    ]
+  },
+  "filter_bypass_via_encoding": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1132",
+        "t_name": "Data Encoding",
+        "tactics": [
+          "TA0011"
+        ],
+        "confidence": 0.64
+      },
+      {
+        "mapped_t_code": "T1132.002",
+        "t_name": "Non-Standard Encoding",
+        "tactics": [
+          "TA0011"
+        ],
+        "confidence": 0.6
+      },
+      {
+        "mapped_t_code": "T1027.018",
+        "t_name": "Invisible Unicode",
+        "tactics": [
+          "TA0005"
+        ],
+        "confidence": 0.59
+      }
+    ]
+  },
+  "hardware_substitution": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1195.003",
+        "t_name": "Compromise Hardware Supply Chain",
+        "tactics": [
+          "TA0001"
+        ],
+        "confidence": 0.79
+      },
+      {
+        "mapped_t_code": "T1195",
+        "t_name": "Supply Chain Compromise",
+        "tactics": [
+          "TA0001"
+        ],
+        "confidence": 0.68
+      },
+      {
+        "mapped_t_code": "T1195.002",
+        "t_name": "Compromise Software Supply Chain",
+        "tactics": [
+          "TA0001"
+        ],
+        "confidence": 0.64
+      }
+    ]
+  },
+  "documentation_alteration": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1213.001",
+        "t_name": "Confluence",
+        "tactics": [
+          "TA0009"
+        ],
+        "confidence": 0.46
+      },
+      {
+        "mapped_t_code": "T1564",
+        "t_name": "Hide Artifacts",
+        "tactics": [
+          "TA0005"
+        ],
+        "confidence": 0.46
+      },
+      {
+        "mapped_t_code": "T1221",
+        "t_name": "Template Injection",
+        "tactics": [
+          "TA0005"
+        ],
+        "confidence": 0.46
+      }
+    ]
+  },
+  "software_supply_chain_attack": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1195",
+        "t_name": "Supply Chain Compromise",
+        "tactics": [
+          "TA0001"
+        ],
+        "confidence": 0.82
+      },
+      {
+        "mapped_t_code": "T1195.002",
+        "t_name": "Compromise Software Supply Chain",
+        "tactics": [
+          "TA0001"
+        ],
+        "confidence": 0.78
+      },
+      {
+        "mapped_t_code": "T1195.001",
+        "t_name": "Compromise Software Dependencies and Development Tools",
+        "tactics": [
+          "TA0001"
+        ],
+        "confidence": 0.7
+      }
+    ]
+  },
+  "domain_squatting": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1584.001",
+        "t_name": "Domains",
+        "tactics": [
+          "TA0042"
+        ],
+        "confidence": 0.68
+      },
+      {
+        "mapped_t_code": "T1583.001",
+        "t_name": "Domains",
+        "tactics": [
+          "TA0042"
+        ],
+        "confidence": 0.64
+      },
+      {
+        "mapped_t_code": "T1584.002",
+        "t_name": "DNS Server",
+        "tactics": [
+          "TA0042"
+        ],
+        "confidence": 0.6
+      }
+    ]
+  },
+  "package_squatting": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1195.001",
+        "t_name": "Compromise Software Dependencies and Development Tools",
+        "tactics": [
+          "TA0001"
+        ],
+        "confidence": 0.7
+      },
+      {
+        "mapped_t_code": "T1204.005",
+        "t_name": "Malicious Library",
+        "tactics": [
+          "TA0002"
+        ],
+        "confidence": 0.68
+      },
+      {
+        "mapped_t_code": "T1195",
+        "t_name": "Supply Chain Compromise",
+        "tactics": [
+          "TA0001"
+        ],
+        "confidence": 0.66
+      }
+    ]
+  },
+  "identity_spoofing": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1036",
+        "t_name": "Masquerading",
+        "tactics": [
+          "TA0005"
+        ],
+        "confidence": 0.58
+      },
+      {
+        "mapped_t_code": "T1036.010",
+        "t_name": "Masquerade Account Name",
+        "tactics": [
+          "TA0005"
+        ],
+        "confidence": 0.55
+      },
+      {
+        "mapped_t_code": "T1684.001",
+        "t_name": "Impersonation",
+        "tactics": [
+          "TA0005"
+        ],
+        "confidence": 0.55
+      }
+    ]
+  },
+  "content_spoofing": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1001.003",
+        "t_name": "Protocol or Service Impersonation",
+        "tactics": [
+          "TA0011"
+        ],
+        "confidence": 0.62
+      },
+      {
+        "mapped_t_code": "T1056",
+        "t_name": "Input Capture",
+        "tactics": [
+          "TA0009",
+          "TA0006"
+        ],
+        "confidence": 0.62
+      },
+      {
+        "mapped_t_code": "T1036",
+        "t_name": "Masquerading",
+        "tactics": [
+          "TA0005"
+        ],
+        "confidence": 0.59
+      }
+    ]
+  },
+  "infrastructure_spoofing": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1665",
+        "t_name": "Hide Infrastructure",
+        "tactics": [
+          "TA0011"
+        ],
+        "confidence": 0.63
+      },
+      {
+        "mapped_t_code": "T1001.003",
+        "t_name": "Protocol or Service Impersonation",
+        "tactics": [
+          "TA0011"
+        ],
+        "confidence": 0.63
+      },
+      {
+        "mapped_t_code": "T1557.004",
+        "t_name": "Evil Twin",
+        "tactics": [
+          "TA0006",
+          "TA0009"
+        ],
+        "confidence": 0.6
+      }
+    ]
+  },
+  "dns_spoofing": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1584.002",
+        "t_name": "DNS Server",
+        "tactics": [
+          "TA0042"
+        ],
+        "confidence": 0.73
+      },
+      {
+        "mapped_t_code": "T1071.004",
+        "t_name": "DNS",
+        "tactics": [
+          "TA0011"
+        ],
+        "confidence": 0.73
+      },
+      {
+        "mapped_t_code": "T1583.002",
+        "t_name": "DNS Server",
+        "tactics": [
+          "TA0042"
+        ],
+        "confidence": 0.67
+      }
+    ]
+  },
+  "signal_spoofing": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1036",
+        "t_name": "Masquerading",
+        "tactics": [
+          "TA0005"
+        ],
+        "confidence": 0.48
+      },
+      {
+        "mapped_t_code": "T1001.003",
+        "t_name": "Protocol or Service Impersonation",
+        "tactics": [
+          "TA0011"
+        ],
+        "confidence": 0.47
+      },
+      {
+        "mapped_t_code": "T1614",
+        "t_name": "System Location Discovery",
+        "tactics": [
+          "TA0007"
+        ],
+        "confidence": 0.46
+      }
+    ]
+  },
+  "metadata_spoofing": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1036",
+        "t_name": "Masquerading",
+        "tactics": [
+          "TA0005"
+        ],
+        "confidence": 0.66
+      },
+      {
+        "mapped_t_code": "T1588.003",
+        "t_name": "Code Signing Certificates",
+        "tactics": [
+          "TA0042"
+        ],
+        "confidence": 0.54
+      },
+      {
+        "mapped_t_code": "T1213.003",
+        "t_name": "Code Repositories",
+        "tactics": [
+          "TA0009"
+        ],
+        "confidence": 0.54
+      }
+    ]
+  },
+  "certificate_forgery": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1588.003",
+        "t_name": "Code Signing Certificates",
+        "tactics": [
+          "TA0042"
+        ],
+        "confidence": 0.73
+      },
+      {
+        "mapped_t_code": "T1587.002",
+        "t_name": "Code Signing Certificates",
+        "tactics": [
+          "TA0042"
+        ],
+        "confidence": 0.72
+      },
+      {
+        "mapped_t_code": "T1553.002",
+        "t_name": "Code Signing",
+        "tactics": [
+          "TA0112"
+        ],
+        "confidence": 0.69
+      }
+    ]
+  },
+  "action_spoofing": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1204.004",
+        "t_name": "Malicious Copy and Paste",
+        "tactics": [
+          "TA0002"
+        ],
+        "confidence": 0.56
+      },
+      {
+        "mapped_t_code": "T1056",
+        "t_name": "Input Capture",
+        "tactics": [
+          "TA0009",
+          "TA0006"
+        ],
+        "confidence": 0.55
+      },
+      {
+        "mapped_t_code": "T1674",
+        "t_name": "Input Injection",
+        "tactics": [
+          "TA0002"
+        ],
+        "confidence": 0.55
+      }
+    ]
+  },
+  "parameter_injection": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1055",
+        "t_name": "Process Injection",
+        "tactics": [
+          "TA0005",
+          "TA0004"
+        ],
+        "confidence": 0.57
+      },
+      {
+        "mapped_t_code": "T1055.001",
+        "t_name": "Dynamic-link Library Injection",
+        "tactics": [
+          "TA0005",
+          "TA0004"
+        ],
+        "confidence": 0.52
+      },
+      {
+        "mapped_t_code": "T1559.001",
+        "t_name": "Component Object Model",
+        "tactics": [
+          "TA0002"
+        ],
+        "confidence": 0.52
+      }
+    ]
+  },
+  "sql_injection": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1565.001",
+        "t_name": "Stored Data Manipulation",
+        "tactics": [
+          "TA0040"
+        ],
+        "confidence": 0.58
+      },
+      {
+        "mapped_t_code": "T1213.006",
+        "t_name": "Databases",
+        "tactics": [
+          "TA0009"
+        ],
+        "confidence": 0.58
+      },
+      {
+        "mapped_t_code": "T1565",
+        "t_name": "Data Manipulation",
+        "tactics": [
+          "TA0040"
+        ],
+        "confidence": 0.55
+      }
+    ]
+  },
+  "command_injection": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1059",
+        "t_name": "Command and Scripting Interpreter",
+        "tactics": [
+          "TA0002"
+        ],
+        "confidence": 0.69
+      },
+      {
+        "mapped_t_code": "T1055",
+        "t_name": "Process Injection",
+        "tactics": [
+          "TA0005",
+          "TA0004"
+        ],
+        "confidence": 0.68
+      },
+      {
+        "mapped_t_code": "T1202",
+        "t_name": "Indirect Command Execution",
+        "tactics": [
+          "TA0005"
+        ],
+        "confidence": 0.66
+      }
+    ]
+  },
+  "xml_injection": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1221",
+        "t_name": "Template Injection",
+        "tactics": [
+          "TA0005"
+        ],
+        "confidence": 0.65
+      },
+      {
+        "mapped_t_code": "T1220",
+        "t_name": "XSL Script Processing",
+        "tactics": [
+          "TA0005"
+        ],
+        "confidence": 0.63
+      },
+      {
+        "mapped_t_code": "T1027.006",
+        "t_name": "HTML Smuggling",
+        "tactics": [
+          "TA0005"
+        ],
+        "confidence": 0.55
+      }
+    ]
+  },
+  "ldap_injection": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1083",
+        "t_name": "File and Directory Discovery",
+        "tactics": [
+          "TA0007"
+        ],
+        "confidence": 0.55
+      },
+      {
+        "mapped_t_code": "T1056.004",
+        "t_name": "Credential API Hooking",
+        "tactics": [
+          "TA0009",
+          "TA0006"
+        ],
+        "confidence": 0.54
+      },
+      {
+        "mapped_t_code": "T1556.001",
+        "t_name": "Domain Controller Authentication",
+        "tactics": [
+          "TA0112",
+          "TA0003",
+          "TA0006"
+        ],
+        "confidence": 0.5
+      }
+    ]
+  },
+  "script_injection": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1055",
+        "t_name": "Process Injection",
+        "tactics": [
+          "TA0005",
+          "TA0004"
+        ],
+        "confidence": 0.7
+      },
+      {
+        "mapped_t_code": "T1674",
+        "t_name": "Input Injection",
+        "tactics": [
+          "TA0002"
+        ],
+        "confidence": 0.67
+      },
+      {
+        "mapped_t_code": "T1216",
+        "t_name": "System Script Proxy Execution",
+        "tactics": [
+          "TA0005"
+        ],
+        "confidence": 0.66
+      }
+    ]
+  },
+  "css_injection": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1027.006",
+        "t_name": "HTML Smuggling",
+        "tactics": [
+          "TA0005"
+        ],
+        "confidence": 0.63
+      },
+      {
+        "mapped_t_code": "T1027.017",
+        "t_name": "SVG Smuggling",
+        "tactics": [
+          "TA0005"
+        ],
+        "confidence": 0.59
+      },
+      {
+        "mapped_t_code": "T1491",
+        "t_name": "Defacement",
+        "tactics": [
+          "TA0040"
+        ],
+        "confidence": 0.58
+      }
+    ]
+  },
+  "log_injection": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1654",
+        "t_name": "Log Enumeration",
+        "tactics": [
+          "TA0007"
+        ],
+        "confidence": 0.64
+      },
+      {
+        "mapped_t_code": "T1055",
+        "t_name": "Process Injection",
+        "tactics": [
+          "TA0005",
+          "TA0004"
+        ],
+        "confidence": 0.57
+      },
+      {
+        "mapped_t_code": "T1056.004",
+        "t_name": "Credential API Hooking",
+        "tactics": [
+          "TA0009",
+          "TA0006"
+        ],
+        "confidence": 0.56
+      }
+    ]
+  },
+  "format_string_injection": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1055.009",
+        "t_name": "Proc Memory",
+        "tactics": [
+          "TA0005",
+          "TA0004"
+        ],
+        "confidence": 0.6
+      },
+      {
+        "mapped_t_code": "T1055.008",
+        "t_name": "Ptrace System Calls",
+        "tactics": [
+          "TA0005",
+          "TA0004"
+        ],
+        "confidence": 0.6
+      },
+      {
+        "mapped_t_code": "T1056.004",
+        "t_name": "Credential API Hooking",
+        "tactics": [
+          "TA0009",
+          "TA0006"
+        ],
+        "confidence": 0.59
+      }
+    ]
+  },
+  "object_injection": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1546.015",
+        "t_name": "Component Object Model Hijacking",
+        "tactics": [
+          "TA0004",
+          "TA0003"
+        ],
+        "confidence": 0.65
+      },
+      {
+        "mapped_t_code": "T1620",
+        "t_name": "Reflective Code Loading",
+        "tactics": [
+          "TA0005"
+        ],
+        "confidence": 0.58
+      },
+      {
+        "mapped_t_code": "T1559.001",
+        "t_name": "Component Object Model",
+        "tactics": [
+          "TA0002"
+        ],
+        "confidence": 0.58
+      }
+    ]
+  },
+  "server_side_request_forgery": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1001.003",
+        "t_name": "Protocol or Service Impersonation",
+        "tactics": [
+          "TA0011"
+        ],
+        "confidence": 0.61
+      },
+      {
+        "mapped_t_code": "T1187",
+        "t_name": "Forced Authentication",
+        "tactics": [
+          "TA0006"
+        ],
+        "confidence": 0.56
+      },
+      {
+        "mapped_t_code": "T1606",
+        "t_name": "Forge Web Credentials",
+        "tactics": [
+          "TA0006"
+        ],
+        "confidence": 0.55
+      }
+    ]
+  },
+  "authentication_bypass": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1056",
+        "t_name": "Input Capture",
+        "tactics": [
+          "TA0009",
+          "TA0006"
+        ],
+        "confidence": 0.62
+      },
+      {
+        "mapped_t_code": "T1212",
+        "t_name": "Exploitation for Credential Access",
+        "tactics": [
+          "TA0006"
+        ],
+        "confidence": 0.59
+      },
+      {
+        "mapped_t_code": "T1550",
+        "t_name": "Use Alternate Authentication Material",
+        "tactics": [
+          "TA0008"
+        ],
+        "confidence": 0.59
+      }
+    ]
+  },
+  "authorization_bypass": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1548.004",
+        "t_name": "Elevated Execution with Prompt",
+        "tactics": [
+          "TA0004"
+        ],
+        "confidence": 0.59
+      },
+      {
+        "mapped_t_code": "T1556.009",
+        "t_name": "Conditional Access Policies",
+        "tactics": [
+          "TA0112",
+          "TA0003",
+          "TA0006"
+        ],
+        "confidence": 0.56
+      },
+      {
+        "mapped_t_code": "T1068",
+        "t_name": "Exploitation for Privilege Escalation",
+        "tactics": [
+          "TA0004"
+        ],
+        "confidence": 0.55
+      }
+    ]
+  },
+  "authentication_attempt": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1556",
+        "t_name": "Modify Authentication Process",
+        "tactics": [
+          "TA0112",
+          "TA0003",
+          "TA0006"
+        ],
+        "confidence": 0.6
+      },
+      {
+        "mapped_t_code": "T1212",
+        "t_name": "Exploitation for Credential Access",
+        "tactics": [
+          "TA0006"
+        ],
+        "confidence": 0.58
+      },
+      {
+        "mapped_t_code": "T1110.004",
+        "t_name": "Credential Stuffing",
+        "tactics": [
+          "TA0006"
+        ],
+        "confidence": 0.58
+      }
+    ]
+  },
+  "brute_force": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1110",
+        "t_name": "Brute Force",
+        "tactics": [
+          "TA0006"
+        ],
+        "confidence": 0.68
+      },
+      {
+        "mapped_t_code": "T1110.002",
+        "t_name": "Password Cracking",
+        "tactics": [
+          "TA0006"
+        ],
+        "confidence": 0.64
+      },
+      {
+        "mapped_t_code": "T1110.001",
+        "t_name": "Password Guessing",
+        "tactics": [
+          "TA0006"
+        ],
+        "confidence": 0.61
+      }
+    ]
+  },
+  "session_hijacking": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1563",
+        "t_name": "Remote Service Session Hijacking",
+        "tactics": [
+          "TA0008"
+        ],
+        "confidence": 0.75
+      },
+      {
+        "mapped_t_code": "T1185",
+        "t_name": "Browser Session Hijacking",
+        "tactics": [
+          "TA0009"
+        ],
+        "confidence": 0.67
+      },
+      {
+        "mapped_t_code": "T1563.002",
+        "t_name": "RDP Hijacking",
+        "tactics": [
+          "TA0008"
+        ],
+        "confidence": 0.67
+      }
+    ]
+  },
+  "session_prediction": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1563",
+        "t_name": "Remote Service Session Hijacking",
+        "tactics": [
+          "TA0008"
+        ],
+        "confidence": 0.57
+      },
+      {
+        "mapped_t_code": "T1185",
+        "t_name": "Browser Session Hijacking",
+        "tactics": [
+          "TA0009"
+        ],
+        "confidence": 0.56
+      },
+      {
+        "mapped_t_code": "T1539",
+        "t_name": "Steal Web Session Cookie",
+        "tactics": [
+          "TA0006"
+        ],
+        "confidence": 0.55
+      }
+    ]
+  },
+  "session_replay": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1056",
+        "t_name": "Input Capture",
+        "tactics": [
+          "TA0009",
+          "TA0006"
+        ],
+        "confidence": 0.58
+      },
+      {
+        "mapped_t_code": "T1563",
+        "t_name": "Remote Service Session Hijacking",
+        "tactics": [
+          "TA0008"
+        ],
+        "confidence": 0.57
+      },
+      {
+        "mapped_t_code": "T1056.001",
+        "t_name": "Keylogging",
+        "tactics": [
+          "TA0009",
+          "TA0006"
+        ],
+        "confidence": 0.55
+      }
+    ]
+  },
+  "session_fixation": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1563",
+        "t_name": "Remote Service Session Hijacking",
+        "tactics": [
+          "TA0008"
+        ],
+        "confidence": 0.6
+      },
+      {
+        "mapped_t_code": "T1056",
+        "t_name": "Input Capture",
+        "tactics": [
+          "TA0009",
+          "TA0006"
+        ],
+        "confidence": 0.59
+      },
+      {
+        "mapped_t_code": "T1556",
+        "t_name": "Modify Authentication Process",
+        "tactics": [
+          "TA0112",
+          "TA0003",
+          "TA0006"
+        ],
+        "confidence": 0.55
+      }
+    ]
+  },
+  "cross_site_request_forgery": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1056",
+        "t_name": "Input Capture",
+        "tactics": [
+          "TA0009",
+          "TA0006"
+        ],
+        "confidence": 0.52
+      },
+      {
+        "mapped_t_code": "T1606",
+        "t_name": "Forge Web Credentials",
+        "tactics": [
+          "TA0006"
+        ],
+        "confidence": 0.5
+      },
+      {
+        "mapped_t_code": "T1056.002",
+        "t_name": "GUI Input Capture",
+        "tactics": [
+          "TA0009",
+          "TA0006"
+        ],
+        "confidence": 0.5
+      }
+    ]
+  },
+  "code_execution": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1574",
+        "t_name": "Hijack Execution Flow",
+        "tactics": [
+          "TA0005",
+          "TA0002"
+        ],
+        "confidence": 0.66
+      },
+      {
+        "mapped_t_code": "T1204",
+        "t_name": "User Execution",
+        "tactics": [
+          "TA0002"
+        ],
+        "confidence": 0.63
+      },
+      {
+        "mapped_t_code": "T1204.004",
+        "t_name": "Malicious Copy and Paste",
+        "tactics": [
+          "TA0002"
+        ],
+        "confidence": 0.61
+      }
+    ]
+  },
+  "buffer_overflow": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1055.009",
+        "t_name": "Proc Memory",
+        "tactics": [
+          "TA0005",
+          "TA0004"
+        ],
+        "confidence": 0.65
+      },
+      {
+        "mapped_t_code": "T1055.014",
+        "t_name": "VDSO Hijacking",
+        "tactics": [
+          "TA0005",
+          "TA0004"
+        ],
+        "confidence": 0.64
+      },
+      {
+        "mapped_t_code": "T1055.008",
+        "t_name": "Ptrace System Calls",
+        "tactics": [
+          "TA0005",
+          "TA0004"
+        ],
+        "confidence": 0.62
+      }
+    ]
+  },
+  "memory_corruption": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1495",
+        "t_name": "Firmware Corruption",
+        "tactics": [
+          "TA0040"
+        ],
+        "confidence": 0.63
+      },
+      {
+        "mapped_t_code": "T1055.009",
+        "t_name": "Proc Memory",
+        "tactics": [
+          "TA0005",
+          "TA0004"
+        ],
+        "confidence": 0.63
+      },
+      {
+        "mapped_t_code": "T1055.014",
+        "t_name": "VDSO Hijacking",
+        "tactics": [
+          "TA0005",
+          "TA0004"
+        ],
+        "confidence": 0.58
+      }
+    ]
+  },
+  "memory_read": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1055.009",
+        "t_name": "Proc Memory",
+        "tactics": [
+          "TA0005",
+          "TA0004"
+        ],
+        "confidence": 0.56
+      },
+      {
+        "mapped_t_code": "T1055.008",
+        "t_name": "Ptrace System Calls",
+        "tactics": [
+          "TA0005",
+          "TA0004"
+        ],
+        "confidence": 0.56
+      },
+      {
+        "mapped_t_code": "T1003.007",
+        "t_name": "Proc Filesystem",
+        "tactics": [
+          "TA0006"
+        ],
+        "confidence": 0.52
+      }
+    ]
+  },
+  "race_condition_exploitation": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1055.003",
+        "t_name": "Thread Execution Hijacking",
+        "tactics": [
+          "TA0005",
+          "TA0004"
+        ],
+        "confidence": 0.68
+      },
+      {
+        "mapped_t_code": "T1055.014",
+        "t_name": "VDSO Hijacking",
+        "tactics": [
+          "TA0005",
+          "TA0004"
+        ],
+        "confidence": 0.64
+      },
+      {
+        "mapped_t_code": "T1068",
+        "t_name": "Exploitation for Privilege Escalation",
+        "tactics": [
+          "TA0004"
+        ],
+        "confidence": 0.63
+      }
+    ]
+  },
+  "transient_execution_exploitation": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1055.014",
+        "t_name": "VDSO Hijacking",
+        "tactics": [
+          "TA0005",
+          "TA0004"
+        ],
+        "confidence": 0.65
+      },
+      {
+        "mapped_t_code": "T1055.005",
+        "t_name": "Thread Local Storage",
+        "tactics": [
+          "TA0005",
+          "TA0004"
+        ],
+        "confidence": 0.62
+      },
+      {
+        "mapped_t_code": "T1055.009",
+        "t_name": "Proc Memory",
+        "tactics": [
+          "TA0005",
+          "TA0004"
+        ],
+        "confidence": 0.62
+      }
+    ]
+  },
+  "path_traversal": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1083",
+        "t_name": "File and Directory Discovery",
+        "tactics": [
+          "TA0007"
+        ],
+        "confidence": 0.64
+      },
+      {
+        "mapped_t_code": "T1574.009",
+        "t_name": "Path Interception by Unquoted Path",
+        "tactics": [
+          "TA0005",
+          "TA0002"
+        ],
+        "confidence": 0.57
+      },
+      {
+        "mapped_t_code": "T1574.007",
+        "t_name": "Path Interception by PATH Environment Variable",
+        "tactics": [
+          "TA0005",
+          "TA0002"
+        ],
+        "confidence": 0.56
+      }
+    ]
+  },
+  "file_read": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1083",
+        "t_name": "File and Directory Discovery",
+        "tactics": [
+          "TA0007"
+        ],
+        "confidence": 0.57
+      },
+      {
+        "mapped_t_code": "T1204.002",
+        "t_name": "Malicious File",
+        "tactics": [
+          "TA0002"
+        ],
+        "confidence": 0.57
+      },
+      {
+        "mapped_t_code": "T1222.001",
+        "t_name": "Windows Permissions",
+        "tactics": [
+          "TA0112"
+        ],
+        "confidence": 0.55
+      }
+    ]
+  },
+  "file_write": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1222",
+        "t_name": "File and Directory Permissions Modification",
+        "tactics": [
+          "TA0112"
+        ],
+        "confidence": 0.6
+      },
+      {
+        "mapped_t_code": "T1222.002",
+        "t_name": "Linux and Mac Permissions",
+        "tactics": [
+          "TA0112"
+        ],
+        "confidence": 0.59
+      },
+      {
+        "mapped_t_code": "T1027.011",
+        "t_name": "Fileless Storage",
+        "tactics": [
+          "TA0005"
+        ],
+        "confidence": 0.58
+      }
+    ]
+  },
+  "file_upload": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1608.002",
+        "t_name": "Upload Tool",
+        "tactics": [
+          "TA0042"
+        ],
+        "confidence": 0.66
+      },
+      {
+        "mapped_t_code": "T1608.001",
+        "t_name": "Upload Malware",
+        "tactics": [
+          "TA0042"
+        ],
+        "confidence": 0.65
+      },
+      {
+        "mapped_t_code": "T1204.002",
+        "t_name": "Malicious File",
+        "tactics": [
+          "TA0002"
+        ],
+        "confidence": 0.64
+      }
+    ]
+  },
+  "file_modification": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1222",
+        "t_name": "File and Directory Permissions Modification",
+        "tactics": [
+          "TA0112"
+        ],
+        "confidence": 0.72
+      },
+      {
+        "mapped_t_code": "T1565.003",
+        "t_name": "Runtime Data Manipulation",
+        "tactics": [
+          "TA0040"
+        ],
+        "confidence": 0.71
+      },
+      {
+        "mapped_t_code": "T1574",
+        "t_name": "Hijack Execution Flow",
+        "tactics": [
+          "TA0005",
+          "TA0002"
+        ],
+        "confidence": 0.66
+      }
+    ]
+  },
+  "file_deletion": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1070.004",
+        "t_name": "File Deletion",
+        "tactics": [
+          "TA0005"
+        ],
+        "confidence": 0.71
+      },
+      {
+        "mapped_t_code": "T1485",
+        "t_name": "Data Destruction",
+        "tactics": [
+          "TA0040"
+        ],
+        "confidence": 0.7
+      },
+      {
+        "mapped_t_code": "T1070",
+        "t_name": "Indicator Removal",
+        "tactics": [
+          "TA0005"
+        ],
+        "confidence": 0.6
+      }
+    ]
+  },
+  "file_discovery": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1083",
+        "t_name": "File and Directory Discovery",
+        "tactics": [
+          "TA0007"
+        ],
+        "confidence": 0.69
+      },
+      {
+        "mapped_t_code": "T1135",
+        "t_name": "Network Share Discovery",
+        "tactics": [
+          "TA0007"
+        ],
+        "confidence": 0.64
+      },
+      {
+        "mapped_t_code": "T1039",
+        "t_name": "Data from Network Shared Drive",
+        "tactics": [
+          "TA0009"
+        ],
+        "confidence": 0.58
+      }
+    ]
+  },
+  "local_file_inclusion": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1074.001",
+        "t_name": "Local Data Staging",
+        "tactics": [
+          "TA0009"
+        ],
+        "confidence": 0.51
+      },
+      {
+        "mapped_t_code": "T1005",
+        "t_name": "Data from Local System",
+        "tactics": [
+          "TA0009"
+        ],
+        "confidence": 0.5
+      },
+      {
+        "mapped_t_code": "T1218.001",
+        "t_name": "Compiled HTML File",
+        "tactics": [
+          "TA0005"
+        ],
+        "confidence": 0.5
+      }
+    ]
+  },
+  "remote_file_inclusion": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1204.002",
+        "t_name": "Malicious File",
+        "tactics": [
+          "TA0002"
+        ],
+        "confidence": 0.66
+      },
+      {
+        "mapped_t_code": "T1574.005",
+        "t_name": "Executable Installer File Permissions Weakness",
+        "tactics": [
+          "TA0005",
+          "TA0002"
+        ],
+        "confidence": 0.66
+      },
+      {
+        "mapped_t_code": "T1574",
+        "t_name": "Hijack Execution Flow",
+        "tactics": [
+          "TA0005",
+          "TA0002"
+        ],
+        "confidence": 0.64
+      }
+    ]
+  },
+  "alternate_data_stream_creation": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1027.013",
+        "t_name": "Encrypted/Encoded File",
+        "tactics": [
+          "TA0005"
+        ],
+        "confidence": 0.58
+      },
+      {
+        "mapped_t_code": "T1027",
+        "t_name": "Obfuscated Files or Information",
+        "tactics": [
+          "TA0005"
+        ],
+        "confidence": 0.57
+      },
+      {
+        "mapped_t_code": "T1027.011",
+        "t_name": "Fileless Storage",
+        "tactics": [
+          "TA0005"
+        ],
+        "confidence": 0.57
+      }
+    ]
+  },
+  "symlink_creation": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1222",
+        "t_name": "File and Directory Permissions Modification",
+        "tactics": [
+          "TA0112"
+        ],
+        "confidence": 0.64
+      },
+      {
+        "mapped_t_code": "T1083",
+        "t_name": "File and Directory Discovery",
+        "tactics": [
+          "TA0007"
+        ],
+        "confidence": 0.59
+      },
+      {
+        "mapped_t_code": "T1564.009",
+        "t_name": "Resource Forking",
+        "tactics": [
+          "TA0005"
+        ],
+        "confidence": 0.58
+      }
+    ]
+  },
+  "information_gathering": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1596.005",
+        "t_name": "Scan Databases",
+        "tactics": [
+          "TA0043"
+        ],
+        "confidence": 0.69
+      },
+      {
+        "mapped_t_code": "T1590",
+        "t_name": "Gather Victim Network Information",
+        "tactics": [
+          "TA0043"
+        ],
+        "confidence": 0.65
+      },
+      {
+        "mapped_t_code": "T1597.002",
+        "t_name": "Purchase Technical Data",
+        "tactics": [
+          "TA0043"
+        ],
+        "confidence": 0.63
+      }
+    ]
+  },
+  "data_manipulation": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1565.002",
+        "t_name": "Transmitted Data Manipulation",
+        "tactics": [
+          "TA0040"
+        ],
+        "confidence": 0.83
+      },
+      {
+        "mapped_t_code": "T1565",
+        "t_name": "Data Manipulation",
+        "tactics": [
+          "TA0040"
+        ],
+        "confidence": 0.82
+      },
+      {
+        "mapped_t_code": "T1565.001",
+        "t_name": "Stored Data Manipulation",
+        "tactics": [
+          "TA0040"
+        ],
+        "confidence": 0.79
+      }
+    ]
+  },
+  "data_extraction": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1565.002",
+        "t_name": "Transmitted Data Manipulation",
+        "tactics": [
+          "TA0040"
+        ],
+        "confidence": 0.56
+      },
+      {
+        "mapped_t_code": "T1565.001",
+        "t_name": "Stored Data Manipulation",
+        "tactics": [
+          "TA0040"
+        ],
+        "confidence": 0.56
+      },
+      {
+        "mapped_t_code": "T1025",
+        "t_name": "Data from Removable Media",
+        "tactics": [
+          "TA0009"
+        ],
+        "confidence": 0.55
+      }
+    ]
+  },
+  "data_corruption": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1565.001",
+        "t_name": "Stored Data Manipulation",
+        "tactics": [
+          "TA0040"
+        ],
+        "confidence": 0.65
+      },
+      {
+        "mapped_t_code": "T1565",
+        "t_name": "Data Manipulation",
+        "tactics": [
+          "TA0040"
+        ],
+        "confidence": 0.63
+      },
+      {
+        "mapped_t_code": "T1485",
+        "t_name": "Data Destruction",
+        "tactics": [
+          "TA0040"
+        ],
+        "confidence": 0.61
+      }
+    ]
+  },
+  "data_interception": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1565.002",
+        "t_name": "Transmitted Data Manipulation",
+        "tactics": [
+          "TA0040"
+        ],
+        "confidence": 0.66
+      },
+      {
+        "mapped_t_code": "T1020",
+        "t_name": "Automated Exfiltration",
+        "tactics": [
+          "TA0010"
+        ],
+        "confidence": 0.6
+      },
+      {
+        "mapped_t_code": "T1565",
+        "t_name": "Data Manipulation",
+        "tactics": [
+          "TA0040"
+        ],
+        "confidence": 0.58
+      }
+    ]
+  },
+  "network_sniffing": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1040",
+        "t_name": "Network Sniffing",
+        "tactics": [
+          "TA0006",
+          "TA0007"
+        ],
+        "confidence": 0.74
+      },
+      {
+        "mapped_t_code": "T1056",
+        "t_name": "Input Capture",
+        "tactics": [
+          "TA0009",
+          "TA0006"
+        ],
+        "confidence": 0.63
+      },
+      {
+        "mapped_t_code": "T1056.001",
+        "t_name": "Keylogging",
+        "tactics": [
+          "TA0009",
+          "TA0006"
+        ],
+        "confidence": 0.61
+      }
+    ]
+  },
+  "credential_theft": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1003",
+        "t_name": "OS Credential Dumping",
+        "tactics": [
+          "TA0006"
+        ],
+        "confidence": 0.73
+      },
+      {
+        "mapped_t_code": "T1212",
+        "t_name": "Exploitation for Credential Access",
+        "tactics": [
+          "TA0006"
+        ],
+        "confidence": 0.71
+      },
+      {
+        "mapped_t_code": "T1556",
+        "t_name": "Modify Authentication Process",
+        "tactics": [
+          "TA0112",
+          "TA0003",
+          "TA0006"
+        ],
+        "confidence": 0.66
+      }
+    ]
+  },
+  "pass_the_hash": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1550.002",
+        "t_name": "Pass the Hash",
+        "tactics": [
+          "TA0008"
+        ],
+        "confidence": 0.67
+      },
+      {
+        "mapped_t_code": "T1550",
+        "t_name": "Use Alternate Authentication Material",
+        "tactics": [
+          "TA0008"
+        ],
+        "confidence": 0.53
+      },
+      {
+        "mapped_t_code": "T1550.003",
+        "t_name": "Pass the Ticket",
+        "tactics": [
+          "TA0008"
+        ],
+        "confidence": 0.46
+      }
+    ]
+  },
+  "pass_the_ticket": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1550.003",
+        "t_name": "Pass the Ticket",
+        "tactics": [
+          "TA0008"
+        ],
+        "confidence": 0.6
+      },
+      {
+        "mapped_t_code": "T1550",
+        "t_name": "Use Alternate Authentication Material",
+        "tactics": [
+          "TA0008"
+        ],
+        "confidence": 0.53
+      },
+      {
+        "mapped_t_code": "T1056.003",
+        "t_name": "Web Portal Capture",
+        "tactics": [
+          "TA0009",
+          "TA0006"
+        ],
+        "confidence": 0.51
+      }
+    ]
+  },
+  "malware_installation": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1588.001",
+        "t_name": "Malware",
+        "tactics": [
+          "TA0042"
+        ],
+        "confidence": 0.67
+      },
+      {
+        "mapped_t_code": "T1608.001",
+        "t_name": "Upload Malware",
+        "tactics": [
+          "TA0042"
+        ],
+        "confidence": 0.64
+      },
+      {
+        "mapped_t_code": "T1554",
+        "t_name": "Compromise Host Software Binary",
+        "tactics": [
+          "TA0003"
+        ],
+        "confidence": 0.63
+      }
+    ]
+  },
+  "webshell_deployment": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1505.003",
+        "t_name": "Web Shell",
+        "tactics": [
+          "TA0003"
+        ],
+        "confidence": 0.76
+      },
+      {
+        "mapped_t_code": "T1584.004",
+        "t_name": "Server",
+        "tactics": [
+          "TA0042"
+        ],
+        "confidence": 0.58
+      },
+      {
+        "mapped_t_code": "T1072",
+        "t_name": "Software Deployment Tools",
+        "tactics": [
+          "TA0002",
+          "TA0008"
+        ],
+        "confidence": 0.57
+      }
+    ]
+  },
+  "dll_hijacking": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1574.001",
+        "t_name": "DLL",
+        "tactics": [
+          "TA0005",
+          "TA0002"
+        ],
+        "confidence": 0.77
+      },
+      {
+        "mapped_t_code": "T1055.001",
+        "t_name": "Dynamic-link Library Injection",
+        "tactics": [
+          "TA0005",
+          "TA0004"
+        ],
+        "confidence": 0.7
+      },
+      {
+        "mapped_t_code": "T1574.005",
+        "t_name": "Executable Installer File Permissions Weakness",
+        "tactics": [
+          "TA0005",
+          "TA0002"
+        ],
+        "confidence": 0.69
+      }
+    ]
+  },
+  "dll_injection": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1055.001",
+        "t_name": "Dynamic-link Library Injection",
+        "tactics": [
+          "TA0005",
+          "TA0004"
+        ],
+        "confidence": 0.81
+      },
+      {
+        "mapped_t_code": "T1574.001",
+        "t_name": "DLL",
+        "tactics": [
+          "TA0005",
+          "TA0002"
+        ],
+        "confidence": 0.73
+      },
+      {
+        "mapped_t_code": "T1620",
+        "t_name": "Reflective Code Loading",
+        "tactics": [
+          "TA0005"
+        ],
+        "confidence": 0.72
+      }
+    ]
+  },
+  "process_hijacking": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1574",
+        "t_name": "Hijack Execution Flow",
+        "tactics": [
+          "TA0005",
+          "TA0002"
+        ],
+        "confidence": 0.67
+      },
+      {
+        "mapped_t_code": "T1055.003",
+        "t_name": "Thread Execution Hijacking",
+        "tactics": [
+          "TA0005",
+          "TA0004"
+        ],
+        "confidence": 0.67
+      },
+      {
+        "mapped_t_code": "T1055.014",
+        "t_name": "VDSO Hijacking",
+        "tactics": [
+          "TA0005",
+          "TA0004"
+        ],
+        "confidence": 0.66
+      }
+    ]
+  },
+  "registry_modification": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1112",
+        "t_name": "Modify Registry",
+        "tactics": [
+          "TA0112",
+          "TA0003"
+        ],
+        "confidence": 0.75
+      },
+      {
+        "mapped_t_code": "T1547.014",
+        "t_name": "Active Setup",
+        "tactics": [
+          "TA0003",
+          "TA0004"
+        ],
+        "confidence": 0.66
+      },
+      {
+        "mapped_t_code": "T1012",
+        "t_name": "Query Registry",
+        "tactics": [
+          "TA0007"
+        ],
+        "confidence": 0.65
+      }
+    ]
+  },
+  "configuration_manipulation": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1565.003",
+        "t_name": "Runtime Data Manipulation",
+        "tactics": [
+          "TA0040"
+        ],
+        "confidence": 0.67
+      },
+      {
+        "mapped_t_code": "T1565.002",
+        "t_name": "Transmitted Data Manipulation",
+        "tactics": [
+          "TA0040"
+        ],
+        "confidence": 0.64
+      },
+      {
+        "mapped_t_code": "T1565",
+        "t_name": "Data Manipulation",
+        "tactics": [
+          "TA0040"
+        ],
+        "confidence": 0.64
+      }
+    ]
+  },
+  "rootkit_installation": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1014",
+        "t_name": "Rootkit",
+        "tactics": [
+          "TA0005"
+        ],
+        "confidence": 0.74
+      },
+      {
+        "mapped_t_code": "T1574.005",
+        "t_name": "Executable Installer File Permissions Weakness",
+        "tactics": [
+          "TA0005",
+          "TA0002"
+        ],
+        "confidence": 0.6
+      },
+      {
+        "mapped_t_code": "T1564",
+        "t_name": "Hide Artifacts",
+        "tactics": [
+          "TA0005"
+        ],
+        "confidence": 0.58
+      }
+    ]
+  },
+  "service_modification": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1574.010",
+        "t_name": "Services File Permissions Weakness",
+        "tactics": [
+          "TA0005",
+          "TA0002"
+        ],
+        "confidence": 0.76
+      },
+      {
+        "mapped_t_code": "T1543",
+        "t_name": "Create or Modify System Process",
+        "tactics": [
+          "TA0003",
+          "TA0004"
+        ],
+        "confidence": 0.76
+      },
+      {
+        "mapped_t_code": "T1569",
+        "t_name": "System Services",
+        "tactics": [
+          "TA0002"
+        ],
+        "confidence": 0.75
+      }
+    ]
+  },
+  "api_abuse": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1056.004",
+        "t_name": "Credential API Hooking",
+        "tactics": [
+          "TA0009",
+          "TA0006"
+        ],
+        "confidence": 0.65
+      },
+      {
+        "mapped_t_code": "T1106",
+        "t_name": "Native API",
+        "tactics": [
+          "TA0002"
+        ],
+        "confidence": 0.64
+      },
+      {
+        "mapped_t_code": "T1548.004",
+        "t_name": "Elevated Execution with Prompt",
+        "tactics": [
+          "TA0004"
+        ],
+        "confidence": 0.63
+      }
+    ]
+  },
+  "interface_manipulation": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1565.003",
+        "t_name": "Runtime Data Manipulation",
+        "tactics": [
+          "TA0040"
+        ],
+        "confidence": 0.57
+      },
+      {
+        "mapped_t_code": "T1546.015",
+        "t_name": "Component Object Model Hijacking",
+        "tactics": [
+          "TA0004",
+          "TA0003"
+        ],
+        "confidence": 0.57
+      },
+      {
+        "mapped_t_code": "T1565.002",
+        "t_name": "Transmitted Data Manipulation",
+        "tactics": [
+          "TA0040"
+        ],
+        "confidence": 0.54
+      }
+    ]
+  },
+  "functionality_abuse": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1036",
+        "t_name": "Masquerading",
+        "tactics": [
+          "TA0005"
+        ],
+        "confidence": 0.58
+      },
+      {
+        "mapped_t_code": "T1212",
+        "t_name": "Exploitation for Credential Access",
+        "tactics": [
+          "TA0006"
+        ],
+        "confidence": 0.58
+      },
+      {
+        "mapped_t_code": "T1068",
+        "t_name": "Exploitation for Privilege Escalation",
+        "tactics": [
+          "TA0004"
+        ],
+        "confidence": 0.57
+      }
+    ]
+  },
+  "state_manipulation": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1565.003",
+        "t_name": "Runtime Data Manipulation",
+        "tactics": [
+          "TA0040"
+        ],
+        "confidence": 0.59
+      },
+      {
+        "mapped_t_code": "T1565.002",
+        "t_name": "Transmitted Data Manipulation",
+        "tactics": [
+          "TA0040"
+        ],
+        "confidence": 0.59
+      },
+      {
+        "mapped_t_code": "T1565",
+        "t_name": "Data Manipulation",
+        "tactics": [
+          "TA0040"
+        ],
+        "confidence": 0.58
+      }
+    ]
+  },
+  "cache_poisoning": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1565.003",
+        "t_name": "Runtime Data Manipulation",
+        "tactics": [
+          "TA0040"
+        ],
+        "confidence": 0.57
+      },
+      {
+        "mapped_t_code": "T1546.015",
+        "t_name": "Component Object Model Hijacking",
+        "tactics": [
+          "TA0004",
+          "TA0003"
+        ],
+        "confidence": 0.56
+      },
+      {
+        "mapped_t_code": "T1496",
+        "t_name": "Resource Hijacking",
+        "tactics": [
+          "TA0040"
+        ],
+        "confidence": 0.56
+      }
+    ]
+  },
+  "request_smuggling": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1027.006",
+        "t_name": "HTML Smuggling",
+        "tactics": [
+          "TA0005"
+        ],
+        "confidence": 0.62
+      },
+      {
+        "mapped_t_code": "T1185",
+        "t_name": "Browser Session Hijacking",
+        "tactics": [
+          "TA0009"
+        ],
+        "confidence": 0.61
+      },
+      {
+        "mapped_t_code": "T1090",
+        "t_name": "Proxy",
+        "tactics": [
+          "TA0011"
+        ],
+        "confidence": 0.59
+      }
+    ]
+  },
+  "physical_access": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1219.003",
+        "t_name": "Remote Access Hardware",
+        "tactics": [
+          "TA0011"
+        ],
+        "confidence": 0.56
+      },
+      {
+        "mapped_t_code": "T1052",
+        "t_name": "Exfiltration Over Physical Medium",
+        "tactics": [
+          "TA0010"
+        ],
+        "confidence": 0.53
+      },
+      {
+        "mapped_t_code": "T1200",
+        "t_name": "Hardware Additions",
+        "tactics": [
+          "TA0001"
+        ],
+        "confidence": 0.51
+      }
+    ]
+  },
+  "hardware_tampering": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1195.003",
+        "t_name": "Compromise Hardware Supply Chain",
+        "tactics": [
+          "TA0001"
+        ],
+        "confidence": 0.69
+      },
+      {
+        "mapped_t_code": "T1495",
+        "t_name": "Firmware Corruption",
+        "tactics": [
+          "TA0040"
+        ],
+        "confidence": 0.66
+      },
+      {
+        "mapped_t_code": "T1200",
+        "t_name": "Hardware Additions",
+        "tactics": [
+          "TA0001"
+        ],
+        "confidence": 0.61
+      }
+    ]
+  },
+  "root_detection_evasion": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1014",
+        "t_name": "Rootkit",
+        "tactics": [
+          "TA0005"
+        ],
+        "confidence": 0.55
+      },
+      {
+        "mapped_t_code": "T1056.004",
+        "t_name": "Credential API Hooking",
+        "tactics": [
+          "TA0009",
+          "TA0006"
+        ],
+        "confidence": 0.49
+      },
+      {
+        "mapped_t_code": "T1622",
+        "t_name": "Debugger Evasion",
+        "tactics": [
+          "TA0005",
+          "TA0007"
+        ],
+        "confidence": 0.47
+      }
+    ]
+  },
+  "security_software_disable": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1505.004",
+        "t_name": "IIS Components",
+        "tactics": [
+          "TA0003"
+        ],
+        "confidence": 0.47
+      },
+      {
+        "mapped_t_code": "T1686",
+        "t_name": "Disable or Modify System Firewall",
+        "tactics": [
+          "TA0112"
+        ],
+        "confidence": 0.46
+      },
+      {
+        "mapped_t_code": "T1567",
+        "t_name": "Exfiltration Over Web Service",
+        "tactics": [
+          "TA0010"
+        ],
+        "confidence": 0.42
+      }
+    ]
+  },
+  "forensic_obstruction": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1070",
+        "t_name": "Indicator Removal",
+        "tactics": [
+          "TA0005"
+        ],
+        "confidence": 0.55
+      },
+      {
+        "mapped_t_code": "T1565",
+        "t_name": "Data Manipulation",
+        "tactics": [
+          "TA0040"
+        ],
+        "confidence": 0.5
+      },
+      {
+        "mapped_t_code": "T1565.001",
+        "t_name": "Stored Data Manipulation",
+        "tactics": [
+          "TA0040"
+        ],
+        "confidence": 0.47
+      }
+    ]
+  },
+  "public_application_exploitation": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1190",
+        "t_name": "Exploit Public-Facing Application",
+        "tactics": [
+          "TA0001"
+        ],
+        "confidence": 0.66
+      },
+      {
+        "mapped_t_code": "T1687",
+        "t_name": "Exploitation for Defense Impairment",
+        "tactics": [
+          "TA0112"
+        ],
+        "confidence": 0.65
+      },
+      {
+        "mapped_t_code": "T1211",
+        "t_name": "Exploitation for Stealth",
+        "tactics": [
+          "TA0005"
+        ],
+        "confidence": 0.64
+      }
+    ]
+  },
+  "wmi_execution": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1047",
+        "t_name": "Windows Management Instrumentation",
+        "tactics": [
+          "TA0002"
+        ],
+        "confidence": 0.89
+      },
+      {
+        "mapped_t_code": "T1546.003",
+        "t_name": "Windows Management Instrumentation Event Subscription",
+        "tactics": [
+          "TA0004",
+          "TA0003"
+        ],
+        "confidence": 0.82
+      },
+      {
+        "mapped_t_code": "T1021.006",
+        "t_name": "Windows Remote Management",
+        "tactics": [
+          "TA0008"
+        ],
+        "confidence": 0.73
+      }
+    ]
+  },
+  "scheduled_task_creation": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1053.005",
+        "t_name": "Scheduled Task",
+        "tactics": [
+          "TA0002",
+          "TA0003",
+          "TA0004"
+        ],
+        "confidence": 0.81
+      },
+      {
+        "mapped_t_code": "T1053",
+        "t_name": "Scheduled Task/Job",
+        "tactics": [
+          "TA0002",
+          "TA0003",
+          "TA0004"
+        ],
+        "confidence": 0.77
+      },
+      {
+        "mapped_t_code": "T1053.002",
+        "t_name": "At",
+        "tactics": [
+          "TA0002",
+          "TA0003",
+          "TA0004"
+        ],
+        "confidence": 0.73
+      }
+    ]
+  },
+  "cron_job_manipulation": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1053.003",
+        "t_name": "Cron",
+        "tactics": [
+          "TA0002",
+          "TA0003",
+          "TA0004"
+        ],
+        "confidence": 0.76
+      },
+      {
+        "mapped_t_code": "T1053.006",
+        "t_name": "Systemd Timers",
+        "tactics": [
+          "TA0002",
+          "TA0003",
+          "TA0004"
+        ],
+        "confidence": 0.63
+      },
+      {
+        "mapped_t_code": "T1053",
+        "t_name": "Scheduled Task/Job",
+        "tactics": [
+          "TA0002",
+          "TA0003",
+          "TA0004"
+        ],
+        "confidence": 0.63
+      }
+    ]
+  },
+  "log_clearing": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1685.005",
+        "t_name": "Clear Windows Event Logs",
+        "tactics": [
+          "TA0112"
+        ],
+        "confidence": 0.73
+      },
+      {
+        "mapped_t_code": "T1685.006",
+        "t_name": "Clear Linux or Mac System Logs",
+        "tactics": [
+          "TA0112"
+        ],
+        "confidence": 0.71
+      },
+      {
+        "mapped_t_code": "T1070.003",
+        "t_name": "Clear Command History",
+        "tactics": [
+          "TA0005"
+        ],
+        "confidence": 0.62
+      }
+    ]
+  },
+  "timestomping": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1070.006",
+        "t_name": "Timestomp",
+        "tactics": [
+          "TA0005"
+        ],
+        "confidence": 0.77
+      },
+      {
+        "mapped_t_code": "T1564",
+        "t_name": "Hide Artifacts",
+        "tactics": [
+          "TA0005"
+        ],
+        "confidence": 0.57
+      },
+      {
+        "mapped_t_code": "T1027.011",
+        "t_name": "Fileless Storage",
+        "tactics": [
+          "TA0005"
+        ],
+        "confidence": 0.56
+      }
+    ]
+  },
+  "rdp_lateral_movement": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1021.001",
+        "t_name": "Remote Desktop Protocol",
+        "tactics": [
+          "TA0008"
+        ],
+        "confidence": 0.67
+      },
+      {
+        "mapped_t_code": "T1563.002",
+        "t_name": "RDP Hijacking",
+        "tactics": [
+          "TA0008"
+        ],
+        "confidence": 0.64
+      },
+      {
+        "mapped_t_code": "T1021",
+        "t_name": "Remote Services",
+        "tactics": [
+          "TA0008"
+        ],
+        "confidence": 0.58
+      }
+    ]
+  },
+  "ssh_lateral_movement": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1563.001",
+        "t_name": "SSH Hijacking",
+        "tactics": [
+          "TA0008"
+        ],
+        "confidence": 0.77
+      },
+      {
+        "mapped_t_code": "T1563",
+        "t_name": "Remote Service Session Hijacking",
+        "tactics": [
+          "TA0008"
+        ],
+        "confidence": 0.66
+      },
+      {
+        "mapped_t_code": "T1021.004",
+        "t_name": "SSH",
+        "tactics": [
+          "TA0008"
+        ],
+        "confidence": 0.62
+      }
+    ]
+  },
+  "smb_admin_share_access": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1021.002",
+        "t_name": "SMB/Windows Admin Shares",
+        "tactics": [
+          "TA0008"
+        ],
+        "confidence": 0.78
+      },
+      {
+        "mapped_t_code": "T1135",
+        "t_name": "Network Share Discovery",
+        "tactics": [
+          "TA0007"
+        ],
+        "confidence": 0.6
+      },
+      {
+        "mapped_t_code": "T1187",
+        "t_name": "Forced Authentication",
+        "tactics": [
+          "TA0006"
+        ],
+        "confidence": 0.54
+      }
+    ]
+  },
+  "winrm_lateral_movement": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1021.006",
+        "t_name": "Windows Remote Management",
+        "tactics": [
+          "TA0008"
+        ],
+        "confidence": 0.69
+      },
+      {
+        "mapped_t_code": "T1059.003",
+        "t_name": "Windows Command Shell",
+        "tactics": [
+          "TA0002"
+        ],
+        "confidence": 0.53
+      },
+      {
+        "mapped_t_code": "T1047",
+        "t_name": "Windows Management Instrumentation",
+        "tactics": [
+          "TA0002"
+        ],
+        "confidence": 0.52
+      }
+    ]
+  },
+  "vnc_lateral_movement": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1021.005",
+        "t_name": "VNC",
+        "tactics": [
+          "TA0008"
+        ],
+        "confidence": 0.62
+      },
+      {
+        "mapped_t_code": "T1219.002",
+        "t_name": "Remote Desktop Software",
+        "tactics": [
+          "TA0011"
+        ],
+        "confidence": 0.54
+      },
+      {
+        "mapped_t_code": "T1219.003",
+        "t_name": "Remote Access Hardware",
+        "tactics": [
+          "TA0011"
+        ],
+        "confidence": 0.49
+      }
+    ]
+  },
+  "ssh_authorized_keys_manipulation": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1098.004",
+        "t_name": "SSH Authorized Keys",
+        "tactics": [
+          "TA0003",
+          "TA0004"
+        ],
+        "confidence": 0.75
+      },
+      {
+        "mapped_t_code": "T1563.001",
+        "t_name": "SSH Hijacking",
+        "tactics": [
+          "TA0008"
+        ],
+        "confidence": 0.47
+      },
+      {
+        "mapped_t_code": "T1098.001",
+        "t_name": "Additional Cloud Credentials",
+        "tactics": [
+          "TA0003",
+          "TA0004"
+        ],
+        "confidence": 0.46
+      }
+    ]
+  },
+  "domain_trust_discovery": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1482",
+        "t_name": "Domain Trust Discovery",
+        "tactics": [
+          "TA0007"
+        ],
+        "confidence": 0.75
+      },
+      {
+        "mapped_t_code": "T1590.003",
+        "t_name": "Network Trust Dependencies",
+        "tactics": [
+          "TA0043"
+        ],
+        "confidence": 0.58
+      },
+      {
+        "mapped_t_code": "T1484.002",
+        "t_name": "Trust Modification",
+        "tactics": [
+          "TA0112",
+          "TA0004"
+        ],
+        "confidence": 0.56
+      }
+    ]
+  },
+  "cloud_instance_metadata_api_abuse": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1552.005",
+        "t_name": "Cloud Instance Metadata API",
+        "tactics": [
+          "TA0006"
+        ],
+        "confidence": 0.81
+      },
+      {
+        "mapped_t_code": "T1555.006",
+        "t_name": "Cloud Secrets Management Stores",
+        "tactics": [
+          "TA0006"
+        ],
+        "confidence": 0.71
+      },
+      {
+        "mapped_t_code": "T1528",
+        "t_name": "Steal Application Access Token",
+        "tactics": [
+          "TA0006"
+        ],
+        "confidence": 0.64
+      }
+    ]
+  },
+  "cloud_account_abuse": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1078.004",
+        "t_name": "Cloud Accounts",
+        "tactics": [
+          "TA0005",
+          "TA0003",
+          "TA0004",
+          "TA0001"
+        ],
+        "confidence": 0.79
+      },
+      {
+        "mapped_t_code": "T1586.003",
+        "t_name": "Cloud Accounts",
+        "tactics": [
+          "TA0042"
+        ],
+        "confidence": 0.78
+      },
+      {
+        "mapped_t_code": "T1585.003",
+        "t_name": "Cloud Accounts",
+        "tactics": [
+          "TA0042"
+        ],
+        "confidence": 0.73
+      }
+    ]
+  },
+  "container_escape": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1611",
+        "t_name": "Escape to Host",
+        "tactics": [
+          "TA0004"
+        ],
+        "confidence": 0.8
+      },
+      {
+        "mapped_t_code": "T1610",
+        "t_name": "Deploy Container",
+        "tactics": [
+          "TA0002"
+        ],
+        "confidence": 0.72
+      },
+      {
+        "mapped_t_code": "T1609",
+        "t_name": "Container Administration Command",
+        "tactics": [
+          "TA0002"
+        ],
+        "confidence": 0.64
+      }
+    ]
+  },
+  "token_impersonation": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1134.003",
+        "t_name": "Make and Impersonate Token",
+        "tactics": [
+          "TA0005",
+          "TA0004"
+        ],
+        "confidence": 0.76
+      },
+      {
+        "mapped_t_code": "T1134",
+        "t_name": "Access Token Manipulation",
+        "tactics": [
+          "TA0005",
+          "TA0004"
+        ],
+        "confidence": 0.72
+      },
+      {
+        "mapped_t_code": "T1134.001",
+        "t_name": "Token Impersonation/Theft",
+        "tactics": [
+          "TA0005",
+          "TA0004"
+        ],
+        "confidence": 0.71
+      }
+    ]
+  },
+  "elevation_control_bypass": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1548.002",
+        "t_name": "Bypass User Account Control",
+        "tactics": [
+          "TA0004"
+        ],
+        "confidence": 0.76
+      },
+      {
+        "mapped_t_code": "T1548.004",
+        "t_name": "Elevated Execution with Prompt",
+        "tactics": [
+          "TA0004"
+        ],
+        "confidence": 0.69
+      },
+      {
+        "mapped_t_code": "T1548",
+        "t_name": "Abuse Elevation Control Mechanism",
+        "tactics": [
+          "TA0004"
+        ],
+        "confidence": 0.67
+      }
+    ]
+  },
+  "mfa_fatigue": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1621",
+        "t_name": "Multi-Factor Authentication Request Generation",
+        "tactics": [
+          "TA0006"
+        ],
+        "confidence": 0.76
+      },
+      {
+        "mapped_t_code": "T1556.006",
+        "t_name": "Multi-Factor Authentication",
+        "tactics": [
+          "TA0112",
+          "TA0003",
+          "TA0006"
+        ],
+        "confidence": 0.63
+      },
+      {
+        "mapped_t_code": "T1111",
+        "t_name": "Multi-Factor Authentication Interception",
+        "tactics": [
+          "TA0006"
+        ],
+        "confidence": 0.59
+      }
+    ]
+  },
+  "data_exfiltration_over_dns": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1071.004",
+        "t_name": "DNS",
+        "tactics": [
+          "TA0011"
+        ],
+        "confidence": 0.77
+      },
+      {
+        "mapped_t_code": "T1583.002",
+        "t_name": "DNS Server",
+        "tactics": [
+          "TA0042"
+        ],
+        "confidence": 0.69
+      },
+      {
+        "mapped_t_code": "T1584.002",
+        "t_name": "DNS Server",
+        "tactics": [
+          "TA0042"
+        ],
+        "confidence": 0.67
+      }
+    ]
+  },
+  "data_exfiltration_over_icmp": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1048.003",
+        "t_name": "Exfiltration Over Unencrypted Non-C2 Protocol",
+        "tactics": [
+          "TA0010"
+        ],
+        "confidence": 0.55
+      },
+      {
+        "mapped_t_code": "T1020",
+        "t_name": "Automated Exfiltration",
+        "tactics": [
+          "TA0010"
+        ],
+        "confidence": 0.51
+      },
+      {
+        "mapped_t_code": "T1041",
+        "t_name": "Exfiltration Over C2 Channel",
+        "tactics": [
+          "TA0010"
+        ],
+        "confidence": 0.5
+      }
+    ]
+  },
+  "volume_shadow_copy_deletion": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1490",
+        "t_name": "Inhibit System Recovery",
+        "tactics": [
+          "TA0040"
+        ],
+        "confidence": 0.65
+      },
+      {
+        "mapped_t_code": "T1485",
+        "t_name": "Data Destruction",
+        "tactics": [
+          "TA0040"
+        ],
+        "confidence": 0.58
+      },
+      {
+        "mapped_t_code": "T1486",
+        "t_name": "Data Encrypted for Impact",
+        "tactics": [
+          "TA0040"
+        ],
+        "confidence": 0.56
+      }
+    ]
+  },
+  "process_hollowing": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1055.012",
+        "t_name": "Process Hollowing",
+        "tactics": [
+          "TA0005",
+          "TA0004"
+        ],
+        "confidence": 0.88
+      },
+      {
+        "mapped_t_code": "T1055.003",
+        "t_name": "Thread Execution Hijacking",
+        "tactics": [
+          "TA0005",
+          "TA0004"
+        ],
+        "confidence": 0.8
+      },
+      {
+        "mapped_t_code": "T1055.013",
+        "t_name": "Process Doppelgänging",
+        "tactics": [
+          "TA0005",
+          "TA0004"
+        ],
+        "confidence": 0.7
+      }
+    ]
+  },
+  "remote_service_exploitation": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1210",
+        "t_name": "Exploitation of Remote Services",
+        "tactics": [
+          "TA0008"
+        ],
+        "confidence": 0.81
+      },
+      {
+        "mapped_t_code": "T1569.002",
+        "t_name": "Service Execution",
+        "tactics": [
+          "TA0002"
+        ],
+        "confidence": 0.7
+      },
+      {
+        "mapped_t_code": "T1563",
+        "t_name": "Remote Service Session Hijacking",
+        "tactics": [
+          "TA0008"
+        ],
+        "confidence": 0.68
+      }
+    ]
+  },
+  "vpn_gateway_exploitation": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1210",
+        "t_name": "Exploitation of Remote Services",
+        "tactics": [
+          "TA0008"
+        ],
+        "confidence": 0.67
+      },
+      {
+        "mapped_t_code": "T1190",
+        "t_name": "Exploit Public-Facing Application",
+        "tactics": [
+          "TA0001"
+        ],
+        "confidence": 0.62
+      },
+      {
+        "mapped_t_code": "T1133",
+        "t_name": "External Remote Services",
+        "tactics": [
+          "TA0003",
+          "TA0001"
+        ],
+        "confidence": 0.62
+      }
+    ]
+  },
+  "smb_vulnerability_exploitation": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1021.002",
+        "t_name": "SMB/Windows Admin Shares",
+        "tactics": [
+          "TA0008"
+        ],
+        "confidence": 0.76
+      },
+      {
+        "mapped_t_code": "T1210",
+        "t_name": "Exploitation of Remote Services",
+        "tactics": [
+          "TA0008"
+        ],
+        "confidence": 0.65
+      },
+      {
+        "mapped_t_code": "T1187",
+        "t_name": "Forced Authentication",
+        "tactics": [
+          "TA0006"
+        ],
+        "confidence": 0.61
+      }
+    ]
+  },
+  "rpc_vulnerability_exploitation": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1210",
+        "t_name": "Exploitation of Remote Services",
+        "tactics": [
+          "TA0008"
+        ],
+        "confidence": 0.67
+      },
+      {
+        "mapped_t_code": "T1563",
+        "t_name": "Remote Service Session Hijacking",
+        "tactics": [
+          "TA0008"
+        ],
+        "confidence": 0.63
+      },
+      {
+        "mapped_t_code": "T1569.002",
+        "t_name": "Service Execution",
+        "tactics": [
+          "TA0002"
+        ],
+        "confidence": 0.62
+      }
+    ]
+  },
+  "default_credentials_abuse": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1078.001",
+        "t_name": "Default Accounts",
+        "tactics": [
+          "TA0005",
+          "TA0003",
+          "TA0004",
+          "TA0001"
+        ],
+        "confidence": 0.71
+      },
+      {
+        "mapped_t_code": "T1110.004",
+        "t_name": "Credential Stuffing",
+        "tactics": [
+          "TA0006"
+        ],
+        "confidence": 0.65
+      },
+      {
+        "mapped_t_code": "T1003",
+        "t_name": "OS Credential Dumping",
+        "tactics": [
+          "TA0006"
+        ],
+        "confidence": 0.63
+      }
+    ]
+  },
+  "hardcoded_credentials_usage": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1556.004",
+        "t_name": "Network Device Authentication",
+        "tactics": [
+          "TA0112",
+          "TA0003",
+          "TA0006"
+        ],
+        "confidence": 0.57
+      },
+      {
+        "mapped_t_code": "T1556.003",
+        "t_name": "Pluggable Authentication Modules",
+        "tactics": [
+          "TA0112",
+          "TA0003",
+          "TA0006"
+        ],
+        "confidence": 0.53
+      },
+      {
+        "mapped_t_code": "T1003",
+        "t_name": "OS Credential Dumping",
+        "tactics": [
+          "TA0006"
+        ],
+        "confidence": 0.51
+      }
+    ]
+  },
+  "local_account_abuse": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1078.003",
+        "t_name": "Local Accounts",
+        "tactics": [
+          "TA0005",
+          "TA0003",
+          "TA0004",
+          "TA0001"
+        ],
+        "confidence": 0.8
+      },
+      {
+        "mapped_t_code": "T1136.001",
+        "t_name": "Local Account",
+        "tactics": [
+          "TA0003"
+        ],
+        "confidence": 0.72
+      },
+      {
+        "mapped_t_code": "T1098.007",
+        "t_name": "Additional Local or Domain Groups",
+        "tactics": [
+          "TA0003",
+          "TA0004"
+        ],
+        "confidence": 0.66
+      }
+    ]
+  },
+  "domain_account_abuse": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1078.002",
+        "t_name": "Domain Accounts",
+        "tactics": [
+          "TA0005",
+          "TA0003",
+          "TA0004",
+          "TA0001"
+        ],
+        "confidence": 0.73
+      },
+      {
+        "mapped_t_code": "T1078",
+        "t_name": "Valid Accounts",
+        "tactics": [
+          "TA0005",
+          "TA0003",
+          "TA0004",
+          "TA0001"
+        ],
+        "confidence": 0.69
+      },
+      {
+        "mapped_t_code": "T1482",
+        "t_name": "Domain Trust Discovery",
+        "tactics": [
+          "TA0007"
+        ],
+        "confidence": 0.68
+      }
+    ]
+  },
+  "unsecured_credentials_discovery": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1552",
+        "t_name": "Unsecured Credentials",
+        "tactics": [
+          "TA0006"
+        ],
+        "confidence": 0.65
+      },
+      {
+        "mapped_t_code": "T1552.001",
+        "t_name": "Credentials In Files",
+        "tactics": [
+          "TA0006"
+        ],
+        "confidence": 0.59
+      },
+      {
+        "mapped_t_code": "T1083",
+        "t_name": "File and Directory Discovery",
+        "tactics": [
+          "TA0007"
+        ],
+        "confidence": 0.57
+      }
+    ]
+  },
+  "private_key_discovery": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1552.004",
+        "t_name": "Private Keys",
+        "tactics": [
+          "TA0006"
+        ],
+        "confidence": 0.62
+      },
+      {
+        "mapped_t_code": "T1083",
+        "t_name": "File and Directory Discovery",
+        "tactics": [
+          "TA0007"
+        ],
+        "confidence": 0.53
+      },
+      {
+        "mapped_t_code": "T1039",
+        "t_name": "Data from Network Shared Drive",
+        "tactics": [
+          "TA0009"
+        ],
+        "confidence": 0.49
+      }
+    ]
+  },
+  "bash_history_credential_discovery": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1552",
+        "t_name": "Unsecured Credentials",
+        "tactics": [
+          "TA0006"
+        ],
+        "confidence": 0.59
+      },
+      {
+        "mapped_t_code": "T1003",
+        "t_name": "OS Credential Dumping",
+        "tactics": [
+          "TA0006"
+        ],
+        "confidence": 0.55
+      },
+      {
+        "mapped_t_code": "T1552.003",
+        "t_name": "Shell History",
+        "tactics": [
+          "TA0006"
+        ],
+        "confidence": 0.54
+      }
+    ]
+  },
+  "registry_credential_discovery": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1552.002",
+        "t_name": "Credentials in Registry",
+        "tactics": [
+          "TA0006"
+        ],
+        "confidence": 0.78
+      },
+      {
+        "mapped_t_code": "T1555.004",
+        "t_name": "Windows Credential Manager",
+        "tactics": [
+          "TA0006"
+        ],
+        "confidence": 0.66
+      },
+      {
+        "mapped_t_code": "T1552.001",
+        "t_name": "Credentials In Files",
+        "tactics": [
+          "TA0006"
+        ],
+        "confidence": 0.59
+      }
+    ]
+  },
+  "password_manager_extraction": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1555.005",
+        "t_name": "Password Managers",
+        "tactics": [
+          "TA0006"
+        ],
+        "confidence": 0.78
+      },
+      {
+        "mapped_t_code": "T1555",
+        "t_name": "Credentials from Password Stores",
+        "tactics": [
+          "TA0006"
+        ],
+        "confidence": 0.59
+      },
+      {
+        "mapped_t_code": "T1555.004",
+        "t_name": "Windows Credential Manager",
+        "tactics": [
+          "TA0006"
+        ],
+        "confidence": 0.56
+      }
+    ]
+  },
+  "browser_credential_extraction": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1555.003",
+        "t_name": "Credentials from Web Browsers",
+        "tactics": [
+          "TA0006"
+        ],
+        "confidence": 0.72
+      },
+      {
+        "mapped_t_code": "T1217",
+        "t_name": "Browser Information Discovery",
+        "tactics": [
+          "TA0007"
+        ],
+        "confidence": 0.62
+      },
+      {
+        "mapped_t_code": "T1555.004",
+        "t_name": "Windows Credential Manager",
+        "tactics": [
+          "TA0006"
+        ],
+        "confidence": 0.59
+      }
+    ]
+  },
+  "local_privilege_escalation_exploit": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1068",
+        "t_name": "Exploitation for Privilege Escalation",
+        "tactics": [
+          "TA0004"
+        ],
+        "confidence": 0.74
+      },
+      {
+        "mapped_t_code": "T1548",
+        "t_name": "Abuse Elevation Control Mechanism",
+        "tactics": [
+          "TA0004"
+        ],
+        "confidence": 0.64
+      },
+      {
+        "mapped_t_code": "T1548.004",
+        "t_name": "Elevated Execution with Prompt",
+        "tactics": [
+          "TA0004"
+        ],
+        "confidence": 0.62
+      }
+    ]
+  },
+  "cloud_infrastructure_modification": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1578",
+        "t_name": "Modify Cloud Compute Infrastructure",
+        "tactics": [
+          "TA0112"
+        ],
+        "confidence": 0.86
+      },
+      {
+        "mapped_t_code": "T1578.005",
+        "t_name": "Modify Cloud Compute Configurations",
+        "tactics": [
+          "TA0112"
+        ],
+        "confidence": 0.76
+      },
+      {
+        "mapped_t_code": "T1578.002",
+        "t_name": "Create Cloud Instance",
+        "tactics": [
+          "TA0112"
+        ],
+        "confidence": 0.69
+      }
+    ]
+  },
+  "virtualization_escape": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1564.006",
+        "t_name": "Run Virtual Instance",
+        "tactics": [
+          "TA0005"
+        ],
+        "confidence": 0.64
+      },
+      {
+        "mapped_t_code": "T1059.012",
+        "t_name": "Hypervisor CLI",
+        "tactics": [
+          "TA0002"
+        ],
+        "confidence": 0.64
+      },
+      {
+        "mapped_t_code": "T1673",
+        "t_name": "Virtual Machine Discovery",
+        "tactics": [
+          "TA0007"
+        ],
+        "confidence": 0.63
+      }
+    ]
+  },
+  "firmware_vulnerability_exploitation": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1542.001",
+        "t_name": "System Firmware",
+        "tactics": [
+          "TA0005",
+          "TA0003"
+        ],
+        "confidence": 0.76
+      },
+      {
+        "mapped_t_code": "T1542.002",
+        "t_name": "Component Firmware",
+        "tactics": [
+          "TA0005",
+          "TA0003"
+        ],
+        "confidence": 0.73
+      },
+      {
+        "mapped_t_code": "T1495",
+        "t_name": "Firmware Corruption",
+        "tactics": [
+          "TA0040"
+        ],
+        "confidence": 0.72
+      }
+    ]
+  },
+  "defense_evasion_exploitation": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1687",
+        "t_name": "Exploitation for Defense Impairment",
+        "tactics": [
+          "TA0112"
+        ],
+        "confidence": 0.74
+      },
+      {
+        "mapped_t_code": "T1211",
+        "t_name": "Exploitation for Stealth",
+        "tactics": [
+          "TA0005"
+        ],
+        "confidence": 0.68
+      },
+      {
+        "mapped_t_code": "T1588.005",
+        "t_name": "Exploits",
+        "tactics": [
+          "TA0042"
+        ],
+        "confidence": 0.59
+      }
+    ]
+  },
+  "trusted_relationship_abuse": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1199",
+        "t_name": "Trusted Relationship",
+        "tactics": [
+          "TA0001"
+        ],
+        "confidence": 0.69
+      },
+      {
+        "mapped_t_code": "T1590.003",
+        "t_name": "Network Trust Dependencies",
+        "tactics": [
+          "TA0043"
+        ],
+        "confidence": 0.58
+      },
+      {
+        "mapped_t_code": "T1650",
+        "t_name": "Acquire Access",
+        "tactics": [
+          "TA0042"
+        ],
+        "confidence": 0.56
+      }
+    ]
+  },
+  "removable_media_replication": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1091",
+        "t_name": "Replication Through Removable Media",
+        "tactics": [
+          "TA0008",
+          "TA0001"
+        ],
+        "confidence": 0.72
+      },
+      {
+        "mapped_t_code": "T1025",
+        "t_name": "Data from Removable Media",
+        "tactics": [
+          "TA0009"
+        ],
+        "confidence": 0.56
+      },
+      {
+        "mapped_t_code": "T1542",
+        "t_name": "Pre-OS Boot",
+        "tactics": [
+          "TA0005",
+          "TA0003"
+        ],
+        "confidence": 0.54
+      }
+    ]
+  },
+  "cloud_administration_execution": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1651",
+        "t_name": "Cloud Administration Command",
+        "tactics": [
+          "TA0002"
+        ],
+        "confidence": 0.82
+      },
+      {
+        "mapped_t_code": "T1059.009",
+        "t_name": "Cloud API",
+        "tactics": [
+          "TA0002"
+        ],
+        "confidence": 0.77
+      },
+      {
+        "mapped_t_code": "T1072",
+        "t_name": "Software Deployment Tools",
+        "tactics": [
+          "TA0002",
+          "TA0008"
+        ],
+        "confidence": 0.73
+      }
+    ]
+  },
+  "serverless_execution_abuse": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1648",
+        "t_name": "Serverless Execution",
+        "tactics": [
+          "TA0002"
+        ],
+        "confidence": 0.86
+      },
+      {
+        "mapped_t_code": "T1583.007",
+        "t_name": "Serverless",
+        "tactics": [
+          "TA0042"
+        ],
+        "confidence": 0.75
+      },
+      {
+        "mapped_t_code": "T1584.007",
+        "t_name": "Serverless",
+        "tactics": [
+          "TA0042"
+        ],
+        "confidence": 0.75
+      }
+    ]
+  },
+  "inter_process_communication_abuse": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1559",
+        "t_name": "Inter-Process Communication",
+        "tactics": [
+          "TA0002"
+        ],
+        "confidence": 0.75
+      },
+      {
+        "mapped_t_code": "T1055",
+        "t_name": "Process Injection",
+        "tactics": [
+          "TA0005",
+          "TA0004"
+        ],
+        "confidence": 0.74
+      },
+      {
+        "mapped_t_code": "T1055.014",
+        "t_name": "VDSO Hijacking",
+        "tactics": [
+          "TA0005",
+          "TA0004"
+        ],
+        "confidence": 0.74
+      }
+    ]
+  },
+  "shared_module_execution": {
+    "status": "SUCCESS",
+    "matches": [
+      {
+        "mapped_t_code": "T1129",
+        "t_name": "Shared Modules",
+        "tactics": [
+          "TA0002"
+        ],
+        "confidence": 0.82
+      },
+      {
+        "mapped_t_code": "T1574.006",
+        "t_name": "Dynamic Linker Hijacking",
+        "tactics": [
+          "TA0005",
+          "TA0002"
+        ],
+        "confidence": 0.72
+      },
+      {
+        "mapped_t_code": "T1574.004",
+        "t_name": "Dylib Hijacking",
+        "tactics": [
+          "TA0005",
+          "TA0002"
+        ],
+        "confidence": 0.7
+      }
+    ]
+  }
+}

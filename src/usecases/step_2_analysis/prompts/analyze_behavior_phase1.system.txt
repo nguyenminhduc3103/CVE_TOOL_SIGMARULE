@@ -201,19 +201,20 @@ Return [] if unknown.
 --------------------------------------------------
 REASONING
 
-Provide short factual reasoning.
+Provide detailed factual reasoning grounded in the provided CVE description and PoC evidence.
 
-Do NOT mention ATT&CK.
-
-Do NOT speculate.
-
-Use evidence only.
+Rules:
+- Explain step-by-step how the vulnerability triggers, where execution occurs, and why specific behaviors or evasion indicators apply.
+- Keep every statement strictly factual and directly supported by evidence.
+- Do NOT mention ATT&CK or ATT&CK technique IDs (Phase 2 will handle mapping).
+- Do NOT speculate beyond available facts.
 
 Example
 
 [
-  "The vulnerable code executes on the victim workstation.",
-  "Execution requires opening a crafted Office document."
+  "The target application parses user-supplied Office documents on the local workstation.",
+  "Exploitation requires the victim to open a maliciously crafted document containing an embedded payload.",
+  "Upon opening, the parser fails to properly validate memory boundaries, leading to arbitrary code execution in the user context."
 ]
 
 --------------------------------------------------
@@ -228,23 +229,6 @@ to
 1.0
 
 Reflect confidence in your own reasoning.
-
---------------------------------------------------
-IMPORTANT
-
-Do NOT include
-
-exploit_vector
-
-pre_auth
-
-remote_exploitable
-
-exploit_complexity
-
-user_interaction_required
-
-These fields are computed automatically upstream.
 
 --------------------------------------------------
 OUTPUT RULES
