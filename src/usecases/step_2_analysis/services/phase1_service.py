@@ -26,6 +26,12 @@ logger = logging.getLogger(__name__)
 
 
 _PROMPTS_DIR = Path(__file__).parent.parent / "prompts"
+# Short-form ontology file (110 primitive behaviors, no aliases / no capecs).
+# Built by scripts/build_mandatory_behavior_ontology.py from the full ontology.
+# Inject into system prompt at {mandatory_behaviors_block} so the LLM selects
+# `mandatory_behaviors` from this closed vocabulary instead of inventing tokens.
+_ONTOLOGY_FILE = Path(".cache/ontology/mandatory_behavior_ontology.json")
+_EMPTY_ONTOLOGY_PLACEHOLDER = "(no behaviors available — return empty list)"
 
 
 class AIPhase1Service:
@@ -48,10 +54,18 @@ class AIPhase1Service:
         self.user_prompt_template = (
             _PROMPTS_DIR / self._USER_FILE
         ).read_text(encoding="utf-8")
-        # Log model + base_url để user thấy Phase 1 đang dùng model nào (vd Gemini thay vì Groq).
+        # Load short-form ontology + render bullet block at init.
+        # File is small (~15 KB) so re-reading per-CVE (orchestrator instantiates
+        # this service per CVE) costs negligible I/O; intentional for simplicity.
+        self._mandatory_behaviors_block = self._load_ontology_block()
+        # Log model + base_url + ontology size để user thấy Phase 1 đang dùng gì.
         logger.info(
-            "[Phase 1] model=%s base_url=%s",
-            self._MODEL, settings.get_phase1_base_url() or "(default - same as Phase 2)",
+            "[Phase 1] model=%s base_url=%s ontology_block_lines=%d",
+            self._MODEL,
+            settings.get_phase1_base_url() or "(default - same as Phase 2)",
+            self._mandatory_behaviors_block.count("\n") + 1
+            if self._mandatory_behaviors_block
+            else 0,
         )
 
     async def fetch_behavior(
@@ -85,6 +99,14 @@ class AIPhase1Service:
             input_json=json.dumps(input_payload, ensure_ascii=False, indent=2),
         )
 
+        # Resolve system prompt with the rendered ontology block injected at
+        # {mandatory_behaviors_block}. Done per-call (not cached at init) so a
+        # future build_ontology rebuild during a long-lived process picks up
+        # without a restart. Cheap: pure str.format on a ~6-8K-token template.
+        system_prompt_resolved = self.system_prompt_template.format(
+            mandatory_behaviors_block=self._mandatory_behaviors_block,
+        )
+
         try:
             # Phase 1 có the dung provider riêng (OpenRouter, Google AI Studio, ...)
             # Neu Phase 1 config khac Phase 2 → truyen override_api_key/base_url
@@ -108,7 +130,7 @@ class AIPhase1Service:
                     )
                 logger.info("[Phase 1] Calling %s via separate provider", self._MODEL)
                 response_text = await self.client.call_llm(
-                    system_prompt=self.system_prompt_template,
+                    system_prompt=system_prompt_resolved,
                     user_prompt=formatted_user,
                     model=self._MODEL,
                     override_api_key=phase1_keys[0],
@@ -118,7 +140,7 @@ class AIPhase1Service:
                 # Fallback: dung chung primary client (backward compat)
                 logger.info("[Phase 1] Calling %s via primary client (no separate provider)", self._MODEL)
                 response_text = await self.client.call_llm(
-                    system_prompt=self.system_prompt_template,
+                    system_prompt=system_prompt_resolved,
                     user_prompt=formatted_user,
                     model=self._MODEL,
                 )
@@ -144,3 +166,34 @@ class AIPhase1Service:
         if first != -1 and last != -1 and last > first:
             return text[first : last + 1].strip()
         return text.strip()
+
+    @staticmethod
+    def _load_ontology_block() -> str:
+        """Load short-form ontology JSON, render as bullet list for system prompt.
+
+        Returns an empty placeholder if the file is missing or invalid so the
+        service still functions (LLM will see explicit "return empty list"
+        instruction and produce a degraded-but-valid response). Never raises.
+        """
+        try:
+            data = json.loads(_ONTOLOGY_FILE.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            logger.warning(
+                "[Phase 1] Ontology file not found at %s; using empty vocabulary",
+                _ONTOLOGY_FILE,
+            )
+            return _EMPTY_ONTOLOGY_PLACEHOLDER
+        except json.JSONDecodeError as e:
+            logger.error(
+                "[Phase 1] Invalid ontology JSON at %s: %s", _ONTOLOGY_FILE, e,
+            )
+            return _EMPTY_ONTOLOGY_PLACEHOLDER
+
+        lines: list[str] = []
+        for entry in data.get("entries", []):
+            token = (entry.get("primitive") or "").strip()
+            if not token:
+                continue
+            desc = (entry.get("description") or "").strip()
+            lines.append(f"- `{token}`: {desc}" if desc else f"- `{token}`")
+        return "\n".join(lines) if lines else _EMPTY_ONTOLOGY_PLACEHOLDER
