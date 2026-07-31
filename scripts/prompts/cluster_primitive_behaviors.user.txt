@@ -1,0 +1,6 @@
+Cluster the following candidate behavior tokens into synonym groups.
+
+INPUT_TOKENS_JSON:
+{input_json}
+
+Respond with JSON only.

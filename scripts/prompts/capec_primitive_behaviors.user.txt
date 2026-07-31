@@ -1,0 +1,5 @@
+Extract the primitive behaviors for the following CAPEC attack pattern.
+Respond with JSON only.
+
+CAPEC_INPUT_JSON:
+{input_json}

@@ -1,0 +1,6 @@
+Write one-sentence descriptions for the following canonical behavior tokens.
+
+INPUT_TOKENS_JSON:
+{input_json}
+
+Respond with JSON only.
