@@ -64,15 +64,12 @@ def _ai_dict_to_pydantic(
         tactics=atk_dict.get("tactics") or None,
         techniques=atk_dict.get("techniques") or None,
         subtechniques=atk_dict.get("subtechniques") or None,
-        confidence=atk_dict.get("confidence") or getattr(base_attack, "confidence", None),
-        mapping_reasons=atk_dict.get("mapping_reasons") or None,
-        attack_mapping_confidence=atk_dict.get("attack_mapping_confidence")
-        or atk_dict.get("confidence")
-        or getattr(base_attack, "attack_mapping_confidence", None),
-        validation_warnings=atk_dict.get("validation_warnings") or None,
-        dropped_tactics=atk_dict.get("dropped_tactics") or None,
-        dropped_techniques=atk_dict.get("dropped_techniques") or None,
-        dropped_subtechniques=atk_dict.get("dropped_subtechniques") or None,
+        mapping_reasons=atk_dict.get("mapping_reasoning") or atk_dict.get("mapping_reasons") or None,
+        # Phase 2B fields
+        is_attack_chain=atk_dict.get("is_attack_chain"),
+        attack_chain=atk_dict.get("attack_chain") or None,
+        chain_reasoning=atk_dict.get("chain_reasoning") or None,
+        confidence_level=atk_dict.get("confidence_level"),
         ai_used=True,
         ai_retry_count=getattr(base_attack, "ai_retry_count", 0),
         ai_model=ai_model,

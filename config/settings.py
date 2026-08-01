@@ -36,6 +36,12 @@ class Settings(BaseSettings):
     ai_model: str = "llama-3.3-70b-versatile"
     analyze_ai_model: str | None = None
 
+    # --- Phase 2 ATT&CK Mapping (separate from Phase 1) ---
+    phase2_ai_model: str | None = None
+    phase2_ai_base_url: str | None = None
+    phase2_ai_api_key: str | None = None
+    phase2_ai_keys: str | None = None
+
     # --- Two-phase Step 2 (Phase 1: classification; Phase 2: ATT&CK mapping) ---
     # Phase 1 extracts execution_surface / delivery_vector / user_interaction_required.
     # Phase 2 (ATT&CK) reuses analyze_ai_model — strong reasoning required.
@@ -91,6 +97,34 @@ class Settings(BaseSettings):
         if self.analyze_ai_model and self.analyze_ai_model.strip():
             return self.analyze_ai_model.strip()
         return self.ai_model
+
+    def get_phase2_model(self) -> str:
+        """Resolve model name for Phase 2 ATT&CK mapping.
+
+        Priority: PHASE2_AI_MODEL > ANALYZE_AI_MODEL > legacy AI_MODEL.
+        """
+        if self.phase2_ai_model and self.phase2_ai_model.strip():
+            return self.phase2_ai_model.strip()
+        return self.get_analyze_model()
+
+    def get_phase2_api_keys(self) -> list[str]:
+        """Return ordered list of API keys for Phase 2 AI client."""
+        raw_keys: list[str] = []
+        if self.phase2_ai_keys:
+            raw_keys = [k.strip() for k in self.phase2_ai_keys.split(",") if k.strip()]
+        if not raw_keys and self.phase2_ai_api_key:
+            stripped = self.phase2_ai_api_key.strip()
+            if stripped:
+                raw_keys = [stripped]
+        if not raw_keys:
+            return self.get_api_keys()
+        return raw_keys
+
+    def get_phase2_base_url(self) -> str | None:
+        """Resolve base URL for Phase 2 AI client."""
+        if self.phase2_ai_base_url and self.phase2_ai_base_url.strip():
+            return self.phase2_ai_base_url.strip()
+        return self.ai_base_url
 
     def get_phase1_model(self) -> str:
         """Resolve model name for Phase 1 (behavior classification).

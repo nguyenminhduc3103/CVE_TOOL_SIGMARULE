@@ -21,7 +21,6 @@ from src.infrastructure.providers.poc.provider import PoCProvider
 from src.domain.services.capability import CapabilityChecker
 from src.domain.services.priority_score import PriorityEngine
 from src.usecases.step_1_triage.decision_engine import DecisionEngine
-from src.usecases.step_1_triage.stages.analysis_stage import run_analysis_stage
 from src.usecases.step_1_triage.stages.core_stage import run_core_stage
 from src.usecases.step_1_triage.stages.coverage_stage import run_coverage_stage
 from src.usecases.step_1_triage.stages.epss_stage import run_epss_stage
@@ -32,7 +31,6 @@ from src.usecases.step_1_triage.stages.nuclei_crawl_stage import run_nuclei_craw
 from src.usecases.step_1_triage.stages.telemetry_discovery_stage import run_telemetry_discovery_stage
 from src.usecases.step_1_triage.stages.telemetry_assessment_stage import run_telemetry_assessment_stage
 from src.usecases.step_1_triage.stages.telemetry_stage import run_telemetry_stage
-from src.usecases.step_2_analysis.rule_based.attack_validator import validate_ttp_list
 
 
 def _err_line(exc: BaseException) -> str:
@@ -313,13 +311,8 @@ class TriageOrchestrator:
             return enriched
 
         # ============================================================
-        # Continue to Step 2: Analysis Stage
+        # Continue to Coverage Stage
         # ============================================================
-        analysis_context, attack_context, stage_failed = await self._run_analysis_stage(enriched, capability_classification)
-        stage_partial = stage_partial or stage_failed
-        enriched.analysis = analysis_context
-        enriched.attack = attack_context
-
         coverage_context, stage_failed = await self._run_enriched_stage(
             stage_name="coverage_stage",
             stage_fn=run_coverage_stage,
@@ -372,132 +365,6 @@ class TriageOrchestrator:
         except Exception as exc:
             self.logger.warning("[ORCHESTRATOR] stage_failed", stage=stage_name, cve_id=cve_id, error=_err_line(exc))
             return fallback, True
-
-    async def _run_analysis_stage(self, context: EnrichedCVEContext, capability):
-        from config.settings import settings
-        from src.usecases.step_2_analysis.rule_based.attack_validator import filter_attack_mapping
-        # NEW: import từ clean architecture folder
-        from src.infrastructure.ai.core import AIServiceError, BaseAIClient
-        from src.usecases.step_2_analysis.services.ai_service import AIBehaviorService
-        from src.usecases.step_2_analysis import run_step2_tech_analysis
-
-        # Phase 1: Try AI Behavior Analyzer first (nếu enabled).
-        if getattr(settings, "ai_enabled", False):
-            # Pre-bind locals so the warning logs below never raise UnboundLocalError
-            # if `run_step2_tech_analysis` raises before the tuple unpack completes.
-            tech_analysis = None
-            attack_mapping = None
-            coverage: dict = {"overall_coverage": 0.0, "verdict": "FAIL"}
-            try:
-                self.logger.info(
-                    "[ORCHESTRATOR] analysis_stage_ai_attempt",
-                    cve_id=context.core.cve_id,
-                )
-                client = BaseAIClient()
-                ai_service = AIBehaviorService(client)
-
-                tech_analysis, attack_mapping, coverage = await run_step2_tech_analysis(
-                    ai_service=ai_service,
-                    base_client=client,
-                    cve_id=context.core.cve_id,
-                    description=context.core.description or "",
-                    cvss_score=context.core.cvss_score or 0.0,
-                    cvss_vector=context.core.cvss_vector or "",
-                    cwe_ids=context.core.cwe_ids or [],
-                    # PoC details: extracted từ nuclei crawl evidence (Step 1 đã crawl)
-                    # documentation → poc_description, network → poc_request_info
-                    **_poc_details_from_nuclei(getattr(context, "nuclei_evidence", None)),
-                    # Context signals from KEV / ransomware intel (advisory).
-                    is_kev=bool(getattr(context.triage, "in_kev", False)),
-                    ransomware_usage=bool(
-                        getattr(context.triage, "ransomware_usage", False)
-                    ),
-                )
-
-                # Nếu AI fail hoàn toàn → fall through
-                if tech_analysis is None:
-                    raise AIServiceError("AI returned None after retry")
-
-                # Apply MITRE ATT&CK validator (safety net 2.3) cho AI output
-                validation = validate_ttp_list(
-                    attack_mapping.tactics,
-                    attack_mapping.techniques,
-                    attack_mapping.subtechniques,
-                )
-                attack_mapping.tactics = validation["valid_tactics"] or None
-                attack_mapping.techniques = validation["valid_techniques"] or None
-                attack_mapping.subtechniques = validation["valid_subtechniques"] or None
-                attack_mapping.validation_warnings = validation["warnings"] or None
-                attack_mapping.dropped_tactics = validation["invalid_tactics"] or None
-                attack_mapping.dropped_techniques = validation["invalid_techniques"] or None
-                attack_mapping.dropped_subtechniques = validation["invalid_subtechniques"] or None
-
-                self.logger.info(
-                    "[ORCHESTRATOR] analysis_stage_ai_success",
-                    cve_id=context.core.cve_id,
-                    coverage=coverage.get("overall_coverage", 0),
-                    verdict=coverage.get("verdict", "?"),
-                )
-                # Record AI usage so the test/CLI can report it. Two-phase
-                # flow exposes `ai_models_used` (list) covering both Phase 1
-                # (e.g. OpenRouter) + Phase 2 (e.g. Groq). Legacy 1-shot flow
-                # only has `ai_model` (single string). Aggregate both shapes.
-                used_models: list[str] = []
-                if tech_analysis.ai_models_used:
-                    used_models.extend(tech_analysis.ai_models_used)
-                if attack_mapping.ai_models_used:
-                    used_models.extend(attack_mapping.ai_models_used)
-                if not used_models:
-                    fallback = tech_analysis.ai_model or attack_mapping.ai_model
-                    if fallback:
-                        used_models = [fallback]
-                for m in used_models:
-                    if m and m not in self._ai_steps_used:
-                        self._ai_steps_used.append(m)
-                return tech_analysis, attack_mapping, False
-            except AIServiceError as exc:
-                self.logger.warning(
-                    "[ORCHESTRATOR] analysis_stage_ai_failed_fallback",
-                    cve_id=context.core.cve_id,
-error=_err_line(exc),
-                )
-                # Fall through to rule-based path bên dưới.
-            except Exception as exc:
-                self.logger.warning(
-                    "[ORCHESTRATOR] analysis_stage_ai_unexpected_fallback",
-                    cve_id=context.core.cve_id,
-error=_err_line(exc),
-                )
-                # Fall through to rule-based path bên dưới.
-
-        # Phase 2: Rule-based fallback.
-        try:
-            analysis_context, attack_context = await run_analysis_stage(context, capability)
-            # Apply MITRE ATT&CK validator cho rule-based output
-            validation = validate_ttp_list(
-                attack_context.tactics if attack_context else None,
-                attack_context.techniques if attack_context else None,
-                attack_context.subtechniques if attack_context else None,
-            )
-            if attack_context and not validation["passed"]:
-                self.logger.info(
-                    "[ORCHESTRATOR] analysis_stage_validator_dropped",
-                    cve_id=context.core.cve_id,
-                    dropped_tactics=len(validation["invalid_tactics"]),
-                    dropped_techniques=len(validation["invalid_techniques"]),
-                )
-            if attack_context:
-                attack_context.tactics = validation["valid_tactics"] or None
-                attack_context.techniques = validation["valid_techniques"] or None
-                attack_context.subtechniques = validation["valid_subtechniques"] or None
-                attack_context.validation_warnings = validation["warnings"] or None
-                attack_context.dropped_tactics = validation["invalid_tactics"] or None
-                attack_context.dropped_techniques = validation["invalid_techniques"] or None
-                attack_context.dropped_subtechniques = validation["invalid_subtechniques"] or None
-            return analysis_context, attack_context, False
-        except Exception as exc:
-            self.logger.warning("[ORCHESTRATOR] stage_failed", stage="analysis_stage", cve_id=context.core.cve_id, error=_err_line(exc))
-            return None, None, True
 
     async def _run_enriched_stage(self, stage_name: str, stage_fn, context: EnrichedCVEContext, capability, fallback):
         try:

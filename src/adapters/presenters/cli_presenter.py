@@ -227,19 +227,38 @@ def print_step2_analysis(enriched: Any) -> None:
     _list_value("Exploit Requirements:", a.exploit_requirements or [])
     _list_value("Reasoning:", a.reasoning or [])
 
-    # ATT&CK
+    # ATT&CK Mapping (Phase 2A + Phase 2B)
     atk = getattr(enriched, "attack", None)
     if atk is not None:
         _subsection("ATT&CK Mapping")
         print(_kv("AI used:", _status(bool(atk.ai_used), str(atk.ai_used))))
         print(_kv("AI model:", atk.ai_model or "(none)"))
         print(_kv("AI retries:", atk.ai_retry_count))
-        conf_color = _confidence_color(atk.confidence)
-        print(f"  {_C.BOLD}{'Mapping Confidence:':<22}{_C.RESET}{conf_color}{atk.confidence:.2f}{_C.RESET}")
+
+        # Phase 2A: TTPs extracted
         _list_value("Tactics:", atk.tactics or [])
         _list_value("Techniques:", atk.techniques or [])
         _list_value("Sub-techniques:", atk.subtechniques or [])
-        _list_value("Mapping Reasons:", atk.mapping_reasons or [])
+
+        # Phase 2B: Chain Reasoning
+        print(_kv("Is Attack Chain:", str(atk.is_attack_chain) if atk.is_attack_chain is not None else "(none)"))
+        _list_value("Chain Reasoning:", getattr(atk, "chain_reasoning", None) or [])
+        _list_value("Mapping Reasoning:", getattr(atk, "mapping_reasoning", None) or getattr(atk, "mapping_reasons", None) or [])
+        print(_kv("Confidence:", atk.confidence_level or "(none)"))
+
+        # Attack chain steps
+        chain = getattr(atk, "attack_chain", None)
+        if chain:
+            _subsection("Attack Chain")
+            for step in chain:
+                if isinstance(step, dict):
+                    print(f"  Step {step.get('step')}: {step.get('technique_id')} ({step.get('tactic_id')})")
+                    desc = step.get('description', '')
+                    if desc:
+                        print(f"    {desc}")
+                    reasoning = step.get('reasoning', '')
+                    if reasoning:
+                        print(f"    Reasoning: {reasoning}")
 
 
 # --- Step 4: Telemetry ---------------------------------------------------

@@ -1,3 +1,18 @@
+"""Build TTPs mapping từ MITRE ATT&CK JSON sang format hierarchical.
+
+Output format:
+{
+  "T1003": {
+    "name": "OS Credential Dumping",
+    "tactic_id": "TA0006",
+    "phase": "Credential Access",
+    "children": {
+      "T1003.001": {"name": "LSASS Memory"},
+      "T1003.002": {"name": "Security Account Manager"}
+    }
+  }
+}
+"""
 from __future__ import annotations
 
 import json
@@ -10,7 +25,6 @@ logger = logging.getLogger(__name__)
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
 INPUT_FILE = ROOT_DIR / ".cache" / "mitre_attack" / "ATT_CK_TTPs" / "ATT_CK.json"
-FALLBACK_INPUT_FILE = ROOT_DIR / ".cache" / "mitre_attack" / "ATT_CK.json"
 OUTPUT_FILE = ROOT_DIR / ".cache" / "ontology" / "ATT_CK_TTPs" / "TTPs_mapping.json"
 
 
@@ -18,36 +32,61 @@ def build_ttps_mapping(
     input_path: Path = INPUT_FILE,
     output_path: Path = OUTPUT_FILE,
 ) -> dict[str, dict[str, Any]]:
-    target_input = input_path if input_path.exists() else FALLBACK_INPUT_FILE
-    if not target_input.exists():
-        raise FileNotFoundError(f"Neither {input_path} nor {FALLBACK_INPUT_FILE} exists.")
+    if not input_path.exists():
+        raise FileNotFoundError(f"Input file not found: {input_path}")
 
-    logger.info("Loading standardized ATT_CK JSON from %s...", target_input)
-    with open(target_input, "r", encoding="utf-8") as f:
+    logger.info("Loading ATT_CK JSON from %s...", input_path)
+    with open(input_path, "r", encoding="utf-8") as f:
         data = json.load(f)
 
     techniques = data.get("techniques", [])
     mapping: dict[str, dict[str, Any]] = {}
 
+    # Build lookup for tactic info
+    tactic_lookup: dict[str, str] = {}
     for t in techniques:
-        tech_id = t.get("id")
+        for tac in t.get("tactics", []):
+            if isinstance(tac, dict):
+                tid = tac.get("id", "")
+                tname = tac.get("name", "")
+                if tid:
+                    tactic_lookup[tid] = tname
+
+    for t in techniques:
+        tech_id = t.get("id", "")
         if not tech_id:
             continue
 
-        # Extract tactic IDs (e.g. ["TA0001", "TA0002"])
-        tactics_list = []
-        for tac in t.get("tactics", []):
-            if isinstance(tac, dict) and tac.get("id"):
-                tactics_list.append(tac["id"])
-            elif isinstance(tac, str):
-                tactics_list.append(tac)
+        is_subtechnique = t.get("is_subtechnique", False)
+        if is_subtechnique:
+            continue  # Skip subtechniques, they'll be added as children
+
+        # Get primary tactic
+        tactics = t.get("tactics", [])
+        primary_tactic = tactics[0] if tactics else {}
+        if isinstance(primary_tactic, dict):
+            tactic_id = primary_tactic.get("id", "")
+            tactic_name = primary_tactic.get("name", "")
+        else:
+            tactic_id = str(primary_tactic)
+            tactic_name = tactic_lookup.get(tactic_id, "")
+
+        # Build children (subtechniques)
+        children: dict[str, dict[str, str]] = {}
+        for child_id in t.get("subtechniques", []):
+            # Find child technique info
+            for sub_t in techniques:
+                if sub_t.get("id") == child_id:
+                    children[child_id] = {
+                        "name": sub_t.get("name", "")
+                    }
+                    break
 
         mapping[tech_id] = {
             "name": t.get("name", ""),
-            "description": t.get("description", ""), # <--- DÒNG MỚI ĐƯỢC THÊM
-            "tactics": tactics_list,
-            "parent": t.get("parent"),
-            "children": t.get("subtechniques", []),
+            "tactic_id": tactic_id,
+            "phase": tactic_name,
+            "children": children,
         }
 
     output_path.parent.mkdir(parents=True, exist_ok=True)

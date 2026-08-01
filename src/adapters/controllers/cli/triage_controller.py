@@ -119,6 +119,31 @@ class CLITriageController:
 
         # --- STEP 2 (analysis populated by orchestrate) ---
         _wait_for_user(f"Step 2: AI phân tích behavior + ATT&CK cho {cve_id}")
+        try:
+            from src.infrastructure.ai.core import BaseAIClient
+            from src.usecases.step_2_analysis.services.phase2a_service import AIBehaviorService
+            from src.usecases.step_2_analysis import run_step2_tech_analysis
+
+            client = BaseAIClient(
+                api_keys=settings.get_phase2_api_keys(),
+                base_url=settings.get_phase2_base_url(),
+            )
+            ai_service = AIBehaviorService(client)
+            analysis, attack, _ = await run_step2_tech_analysis(
+                ai_service=ai_service,
+                base_client=client,
+                cve_id=enriched.core.cve_id,
+                description=enriched.core.description or "",
+                cvss_score=enriched.core.cvss_score or 0.0,
+                cvss_vector=enriched.core.cvss_vector or "",
+                cwe_ids=enriched.core.cwe_ids or [],
+            )
+            enriched.analysis = analysis
+            enriched.attack = attack
+        except Exception as exc:
+            print(f"\n[!] Step 2 failed: {exc}")
+            import traceback
+            traceback.print_exc()
         print_step2_analysis(enriched)
 
         # Step 2 fail → skip Step 4/6

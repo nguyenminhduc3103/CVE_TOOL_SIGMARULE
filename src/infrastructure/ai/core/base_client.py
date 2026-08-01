@@ -35,10 +35,11 @@ class BaseAIClient:
     On 429 / rate_limit_exceeded response, switches to next key automatically.
     """
 
-    def __init__(self) -> None:
-        self.api_keys: list[str] = settings.get_api_keys()
+    def __init__(self, api_keys: list[str] | None = None, base_url: str | None = None) -> None:
+        # Allow overriding keys/base_url (for Phase 1, Phase 2 configs)
+        self.api_keys: list[str] = api_keys if api_keys is not None else settings.get_api_keys()
         self.api_key = self.api_keys[0] if self.api_keys else None  # back-compat
-        self.base_url = getattr(settings, "ai_base_url", None) or ""
+        self.base_url = base_url if base_url is not None else (getattr(settings, "ai_base_url", None) or "")
         self.ai_enabled = getattr(settings, "ai_enabled", False)
         # Round-robin cursor + lock (multi-call safety across coroutines).
         self._key_index: int = 0
@@ -270,7 +271,7 @@ class BaseAIClient:
                             "[AI] override endpoint hit rate limit (attempt %d/%d): %s",
                             attempt + 1, total_attempts, e,
                         )
-                        await asyncio.sleep(2)
+                        await asyncio.sleep(5)
                         continue
                     logger.warning(
                         "[AI] key %d/%d hit rate limit (attempt %d/%d): %s",
@@ -283,38 +284,38 @@ class BaseAIClient:
                     if len(self.api_keys) > 1:
                         self._rotate_to_next_key()
                         continue
-                    await asyncio.sleep(2)
+                    await asyncio.sleep(5)
                     continue
                 # Non-rate-limit HTTP error
                 logger.warning(
-                    "[AI] HTTP error (attempt %d/%d): %s. Retrying in 2s.",
+                    "[AI] HTTP error (attempt %d/%d): %s. Retrying in 5s.",
                     attempt + 1,
                     total_attempts,
                     e,
                 )
-                await asyncio.sleep(2)
+                await asyncio.sleep(5)
                 continue
 
             except httpx.RequestError as e:
                 last_exc = e
                 logger.warning(
-                    "[AI] request error (attempt %d/%d): %s. Retrying in 2s.",
+                    "[AI] request error (attempt %d/%d): %s. Retrying in 5s.",
                     attempt + 1,
                     total_attempts,
                     e,
                 )
-                await asyncio.sleep(2)
+                await asyncio.sleep(5)
                 continue
 
             except (KeyError, ValueError, TypeError) as e:
                 last_exc = e
                 logger.warning(
-                    "[AI] response parse error (attempt %d/%d): %s. Retrying in 2s.",
+                    "[AI] response parse error (attempt %d/%d): %s. Retrying in 5s.",
                     attempt + 1,
                     total_attempts,
                     e,
                 )
-                await asyncio.sleep(2)
+                await asyncio.sleep(5)
                 continue
 
             except Exception as e:
@@ -323,20 +324,20 @@ class BaseAIClient:
                 status = getattr(e, "status_code", None)
                 if status == 429 or "rate_limit" in str(e).lower():
                     if override_api_key:
-                        await asyncio.sleep(2)
+                        await asyncio.sleep(5)
                         continue
                     if len(self.api_keys) > 1:
                         self._rotate_to_next_key()
                         continue
-                    await asyncio.sleep(2)
+                    await asyncio.sleep(5)
                     continue
                 logger.warning(
-                    "[AI] unexpected error (attempt %d/%d): %s. Retrying in 2s.",
+                    "[AI] unexpected error (attempt %d/%d): %s. Retrying in 5s.",
                     attempt + 1,
                     total_attempts,
                     e,
                 )
-                await asyncio.sleep(2)
+                await asyncio.sleep(5)
                 continue
 
         # All attempts exhausted.

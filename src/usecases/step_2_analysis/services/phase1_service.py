@@ -26,11 +26,7 @@ logger = logging.getLogger(__name__)
 
 
 _PROMPTS_DIR = Path(__file__).parent.parent / "prompts"
-# Short-form ontology file (110 primitive behaviors, no aliases / no capecs).
-# Built by scripts/build_mandatory_behavior_ontology.py from the full ontology.
-# Inject into system prompt at {mandatory_behaviors_block} so the LLM selects
-# `mandatory_behaviors` from this closed vocabulary instead of inventing tokens.
-_ONTOLOGY_FILE = Path(".cache/ontology/mandatory_behavior_ontology.json")
+_ONTOLOGY_FILE = Path(".cache/ontology/CAPEC_BEHAVIORs/mandatory_behavior_ontology.json")
 _EMPTY_ONTOLOGY_PLACEHOLDER = "(no behaviors available — return empty list)"
 
 
@@ -55,8 +51,7 @@ class AIPhase1Service:
             _PROMPTS_DIR / self._USER_FILE
         ).read_text(encoding="utf-8")
         # Load short-form ontology + render bullet block at init.
-        # File is small (~15 KB) so re-reading per-CVE (orchestrator instantiates
-        # this service per CVE) costs negligible I/O; intentional for simplicity.
+        # File is small (~15 KB) so re-reading per-CVE (orchestrator instantiates this service per CVE) costs negligible I/O; intentional for simplicity.
         self._mandatory_behaviors_block = self._load_ontology_block()
         # Log model + base_url + ontology size để user thấy Phase 1 đang dùng gì.
         logger.info(

@@ -28,13 +28,12 @@ class AttackMapping(BaseModel):
     tactics: list[str] | None = None
     techniques: list[str] | None = None
     subtechniques: list[str] | None = None
-    confidence: float | None = None
     mapping_reasons: list[str] | None = None
-    attack_mapping_confidence: float | None = None
-    validation_warnings: list[str] | None = None
-    dropped_tactics: list[str] | None = None
-    dropped_techniques: list[str] | None = None
-    dropped_subtechniques: list[str] | None = None
+    # Phase 2B fields
+    is_attack_chain: bool | None = None
+    attack_chain: list[dict] | None = None
+    chain_reasoning: list[str] | None = None
+    confidence_level: str | None = None  # high/medium/low
     ai_used: bool | None = None
     ai_retry_count: int = 0
     ai_model: str | None = None
