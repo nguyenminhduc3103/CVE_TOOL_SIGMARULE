@@ -1,5 +1,0 @@
-Analyze this CVE and recommend telemetry + detection features for Sigma rule authoring.
-Return a SINGLE JSON object per the system schema. No prose, no markdown.
-
-INPUT_PAYLOAD_JSON:
-{input_json}

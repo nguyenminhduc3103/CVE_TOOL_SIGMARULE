@@ -1,51 +1,42 @@
-# YAML knowledge base loader with LRU cache; tests call invalidate_cache() to reload from disk.
+# Telemetry concept ontology loader. LRU-cached — YAML read at most once per process.
 from __future__ import annotations
 
 import functools
 from pathlib import Path
-from typing import Any
 
 import yaml
 
-_KB_DIR = Path(__file__).parent
+
+_KB_PATH = Path(__file__).parent / "telemetry_concepts.yaml"
 
 
 @functools.lru_cache(maxsize=1)
-def load_telemetry_domains() -> dict[str, Any]:
-    """18 canonical semantic domains (identity, process, network, ...)."""
-    return _load_yaml("telemetry_domains.yaml")
+def _load_raw() -> dict:
+    """Read + parse the YAML once per process."""
+    return yaml.safe_load(_KB_PATH.read_text(encoding="utf-8"))
+
+
+def load_telemetry_concepts() -> dict[str, list[str]]:
+    """Return {group_name: [concept_name, ...]} mapping from the KB YAML."""
+    raw = _load_raw()
+    return {
+        group["name"]: list(group["concepts"])
+        for group in raw.get("groups", [])
+    }
 
 
 @functools.lru_cache(maxsize=1)
-def load_canonical_telemetry() -> dict[str, Any]:
-    """Domain × execution_surface × vendor → Canonical Telemetry list."""
-    return _load_yaml("canonical_telemetry.yaml")
+def load_concept_to_group() -> dict[str, str]:
+    """Return flat {concept_name: group_name} mapping for validator whitelist."""
+    raw = _load_raw()
+    mapping: dict[str, str] = {}
+    for group in raw.get("groups", []):
+        group_name = group["name"]
+        for concept in group["concepts"]:
+            mapping[concept] = group_name
+    return mapping
 
 
-@functools.lru_cache(maxsize=1)
-def load_canonical_fields() -> dict[str, Any]:
-    """Canonical field names + backend aliases (sigma/ecs/splunk/sentinel)."""
-    return _load_yaml("canonical_fields.yaml")
-
-
-@functools.lru_cache(maxsize=1)
-def load_vendor_profiles() -> dict[str, Any]:
-    """Vendor detection coverage matrix."""
-    return _load_yaml("vendor_profiles.yaml")
-
-
-def _load_yaml(filename: str) -> dict[str, Any]:
-    path = _KB_DIR / filename
-    with open(path, "r", encoding="utf-8") as f:
-        data = yaml.safe_load(f)
-    if data is None:
-        return {}
-    return data
-
-
-def invalidate_cache() -> None:
-    """Reset all cached KB — dùng trong tests khi fixtures thay đổi."""
-    load_telemetry_domains.cache_clear()
-    load_canonical_telemetry.cache_clear()
-    load_canonical_fields.cache_clear()
-    load_vendor_profiles.cache_clear()
+def is_valid_concept(concept: str) -> bool:
+    """Quick check whether `concept` is in the KB whitelist."""
+    return concept in load_concept_to_group()

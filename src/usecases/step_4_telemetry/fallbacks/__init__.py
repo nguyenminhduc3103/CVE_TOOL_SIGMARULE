@@ -1,1 +1,0 @@
-# Step 4 fallback adapters when AI selection fails.

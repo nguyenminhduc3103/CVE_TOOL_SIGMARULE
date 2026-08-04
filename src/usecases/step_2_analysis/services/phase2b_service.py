@@ -81,10 +81,6 @@ class AIPhase2BService:
             logger.info("[Phase 2B] Cleaned JSON: %s", cleaned_text[:500])
             data = json.loads(cleaned_text)
             logger.info("[Phase 2B] Parsed data: %s", data)
-            print(f"[DEBUG Phase 2B] data keys: {data.keys()}")
-            print(f"[DEBUG Phase 2B] is_attack_chain: {data.get('is_attack_chain')}")
-            print(f"[DEBUG Phase 2B] confidence: {data.get('confidence')}")
-            print(f"[DEBUG Phase 2B] chain_reasoning: {data.get('chain_reasoning')}")
 
             # Ensure required fields
             if not data.get("is_attack_chain") and data.get("attack_chain"):

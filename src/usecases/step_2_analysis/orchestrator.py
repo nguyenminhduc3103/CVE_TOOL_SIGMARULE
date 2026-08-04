@@ -123,9 +123,6 @@ async def _run_step2_two_phase(
         cve_id=cve_id,
     )
     logger.info("[Phase 2B] Got result: %s", phase2b_dict)
-    print(f"[DEBUG orch] phase2b_dict keys: {phase2b_dict.keys()}")
-    print(f"[DEBUG orch] confidence: {phase2b_dict.get('confidence')}")
-    print(f"[DEBUG orch] is_attack_chain: {phase2b_dict.get('is_attack_chain')}")
 
     # Normalize Phase 2A output
     phase2a_normalized = _normalize_phase2a_dict(phase2a_dict)

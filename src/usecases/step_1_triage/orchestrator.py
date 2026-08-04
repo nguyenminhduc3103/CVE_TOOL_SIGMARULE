@@ -11,7 +11,7 @@ from config.logging import get_logger
 from src.domain.models.cve import CoreCVEData
 from src.domain.models.coverage import CoverageAssessment
 from src.domain.models.enriched import EnrichedCVEContext, EnrichmentMetadata
-from src.domain.models.telemetry import TelemetryAssessment
+from src.domain.models.telemetry_discovery import PoCSummary
 from src.domain.models.triage import TriageContext
 from src.infrastructure.providers.epss.provider import EPSSProvider
 from src.infrastructure.providers.kev.provider import KEVProvider
@@ -30,7 +30,6 @@ from src.usecases.step_1_triage.stages.poc_stage import run_poc_stage
 from src.usecases.step_1_triage.stages.nuclei_crawl_stage import run_nuclei_crawl_stage
 from src.usecases.step_1_triage.stages.telemetry_discovery_stage import run_telemetry_discovery_stage
 from src.usecases.step_1_triage.stages.telemetry_assessment_stage import run_telemetry_assessment_stage
-from src.usecases.step_1_triage.stages.telemetry_stage import run_telemetry_stage
 
 
 def _err_line(exc: BaseException) -> str:
@@ -323,15 +322,30 @@ class TriageOrchestrator:
         stage_partial = stage_partial or stage_failed
         enriched.coverage = coverage_context
 
-        telemetry_context, stage_failed = await self._run_enriched_stage(
-            stage_name="telemetry_stage",
-            stage_fn=run_telemetry_stage,
-            context=enriched,
-            capability=capability_classification,
-            fallback=TelemetryAssessment(),
+        # ============================================================
+        # Step 4 (Telemetry Plan AI) — new rebuild 2026-08
+        # Orchestrator only assembles `enriched.intel` so downstream consumers
+        # (Step 4 AI in the CLI controller) have PoC + exposure payload. The
+        # controller dispatches run_telemetry_stage after Step 2 populates
+        # `enriched.analysis`.
+        # ============================================================
+        enriched.intel = PoCSummary(
+            public_poc=bool(public_poc),
+            poc_references=list(poc_references or []),
+            poc_credibility=(
+                poc_stage_raw.get("credibility", [])
+                if isinstance(poc_stage_raw, dict)
+                else []
+            ),
+            nuclei_templates=(
+                nuclei_raw.get("evidence", [])
+                if isinstance(nuclei_raw, dict) and nuclei_raw
+                else []
+            ),
+            exposure=(
+                exposure_raw if isinstance(exposure_raw, dict) else None
+            ),
         )
-        stage_partial = stage_partial or stage_failed
-        enriched.telemetry = telemetry_context
 
         enrichment_duration_ms = int((perf_counter() - pipeline_started) * 1000)
         metadata = EnrichmentMetadata(

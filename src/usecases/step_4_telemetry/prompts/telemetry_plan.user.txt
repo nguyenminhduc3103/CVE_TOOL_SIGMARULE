@@ -1,0 +1,9 @@
+You are given a TelemetryInput bundle extracted from Step 1 + Step 2 of a CVE
+triage pipeline. Produce a TelemetryPlan JSON object per the schema in the
+system prompt.
+
+INPUT_PAYLOAD_JSON:
+{input_json}
+
+Produce exactly one JSON object conforming to the schema.
+No markdown fence. No explanations. No extra text.

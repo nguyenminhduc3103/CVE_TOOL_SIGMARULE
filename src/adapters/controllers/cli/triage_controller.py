@@ -152,15 +152,12 @@ class CLITriageController:
             return
 
         # --- STEP 4 (Telemetry Selector) ---
-        _wait_for_user(f"Step 4: AI Telemetry Selector cho {cve_id}")
+        _wait_for_user(f"Step 4: AI Telemetry Plan cho {cve_id}")
         telemetry_dict: dict | None = None
         try:
             from src.usecases.step_1_triage.stages.telemetry_stage import run_telemetry_stage
 
-            # CapabilityClassification object (not the str in triage.capability_assessment)
-            capability_classification = self.orchestrator.capability_checker.classify(enriched.core)
-
-            telemetry_assessment = await run_telemetry_stage(enriched, capability_classification)
+            telemetry_assessment = await run_telemetry_stage(enriched)
             enriched.telemetry = telemetry_assessment
             telemetry_dict = telemetry_assessment.model_dump() if hasattr(
                 telemetry_assessment, "model_dump"

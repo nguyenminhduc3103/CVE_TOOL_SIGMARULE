@@ -8,8 +8,8 @@ from src.domain.constants import PIPELINE_VERSION
 from src.domain.models.attack import AttackMapping, TechnicalAnalysis
 from src.domain.models.coverage import CoverageAssessment
 from src.domain.models.cve import CoreCVEData
-from src.domain.models.telemetry import TelemetryAssessment
-from src.domain.models.telemetry_discovery import TelemetryDiscovery, TelemetrySourceAssessment
+from src.usecases.step_4_telemetry.models.telemetry_plan import TelemetryPlan
+from src.domain.models.telemetry_discovery import PoCSummary, TelemetryDiscovery, TelemetrySourceAssessment
 from src.domain.models.triage import TriageContext
 
 
@@ -64,7 +64,8 @@ class EnrichedCVEContext(BaseModel):
     analysis: TechnicalAnalysis | None = None
     attack: AttackMapping | None = None
     coverage: CoverageAssessment | None = None
-    telemetry: TelemetryAssessment | None = None
+    telemetry: TelemetryPlan | None = None  # Step 4: new TelemetryPlan (replaces TelemetryAssessment)
+    intel: PoCSummary | None = None  # Step 4 input: bundled PoC doc + network + exposure
     telemetry_discovery: TelemetryDiscovery | None = None  # Step 1.3: Two-phase discovery
     telemetry_assessment: TelemetrySourceAssessment | None = None  # Step 1.4: Gate decision
     threat_intelligence: ThreatIntelligenceContext | None = None

@@ -266,74 +266,119 @@ def print_step2_analysis(enriched: Any) -> None:
 def print_step4_telemetry(enriched: Any) -> None:
     t = getattr(enriched, "telemetry", None)
     if t is None:
-        _section_header("STEP 4 — TELEMETRY ASSESSMENT · skipped", _C.DIM)
+        _section_header("STEP 4 — TELEMETRY PLAN · skipped", _C.DIM)
         return
 
-    _section_header(f"STEP 4 — TELEMETRY ASSESSMENT · {enriched.core.cve_id}", _C.YELLOW)
+    _section_header(f"STEP 4 — TELEMETRY PLAN · {enriched.core.cve_id}", _C.YELLOW)
+
+    ai_model = getattr(t, "ai_model", None) or "(step4 model not set)"
+    ai_used = bool(getattr(t, "ai_used", True))
+    conf = getattr(t, "telemetry_confidence", None)
 
     _subsection("AI Service")
-    print(_kv("AI used:", _status(bool(t.ai_used), str(t.ai_used))))
-    print(_kv("AI model:", t.ai_model or "(none)"))
-    print(_kv("AI retries:", t.ai_retry_count))
-    conf_color = _confidence_color(t.telemetry_confidence)
-    print(f"  {_C.BOLD}{'Telemetry Confidence:':<22}{_C.RESET}{conf_color}{t.telemetry_confidence:.2f}{_C.RESET}")
+    print(_kv("AI used:", _status(ai_used, "yes" if ai_used else "no")))
+    print(_kv("AI model:", str(ai_model)))
+    if conf is not None:
+        conf_color = _confidence_color(conf)
+        print(
+            f"  {_C.BOLD}{'Telemetry Confidence:':<22}{_C.RESET}"
+            f"{conf_color}{conf:.2f}{_C.RESET}"
+        )
 
-    _subsection("Detection Strategy")
-    print(_kv("Detection Axis:", ", ".join(t.detection_axis or []) or "(none)"))
-    print(_kv("Primary Axis:", t.primary_axis or "(none)"))
-    print(_kv("Rule Strategy:", ", ".join(t.recommended_rule_strategy or []) or "(none)"))
-    print(_kv("Correlation:", _status(bool(t.correlation_required), "YES" if t.correlation_required else "NO")))
-    print(_kv("Feasibility:", f"{t.telemetry_feasibility_score:.2f}" if t.telemetry_feasibility_score is not None else "(none)"))
+    # Target environment
+    te = getattr(t, "target_environment", None)
+    if te is not None:
+        _subsection("Target Environment")
+        _list_value("Platforms:", list(getattr(te, "platforms", []) or []))
+        _list_value("Deployment:", list(getattr(te, "deployment", []) or []))
+        _list_value("App Types:", list(getattr(te, "application_types", []) or []))
+        _list_value("Technologies:", list(getattr(te, "technologies", []) or []))
+        _list_value("Special Env:", list(getattr(te, "special_environments", []) or []))
 
-    _subsection("Canonical Telemetry")
-    _list_value("Canonical Sources:", t.canonical_telemetry or [])
-    _list_value("Canonical Fields:", t.canonical_fields or [])
-    if t.sigma_logsources:
-        print(f"  {_C.BOLD}{'Sigma Logsources:':<22}{_C.RESET}{len(t.sigma_logsources)} (product/category/service)")
-        for idx, ls in enumerate(t.sigma_logsources, 1):
-            cat = getattr(ls, "category", "?")
-            prod = getattr(ls, "product", "?")
-            svc = getattr(ls, "service", None)
-            svc_str = f" / {svc}" if svc else ""
-            print(f"    {_C.DIM}{idx:>3}.{_C.RESET} {cat:<22} {prod}{svc_str}")
-    if t.required_events:
-        print(f"  {_C.BOLD}{'Required Events:':<22}{_C.RESET}{t.required_events}")
-
-    _subsection("Field Validation")
-    valid_total = len(t.validated_fields or []) + len(t.invalid_fields or [])
-    valid_pct = (len(t.validated_fields or []) / valid_total * 100) if valid_total else 0
-    print(_kv("Validated Fields:", f"{len(t.validated_fields or [])}/{valid_total} ({valid_pct:.0f}%)"))
-    _list_value("Validated:", t.validated_fields or [])
-    if t.invalid_fields:
-        _list_value(f"{_C.RED}Invalid (dropped):{_C.RESET}", t.invalid_fields or [])
-
-    _subsection("Detection Features")
-    _list_value("Stable Features:", _format_features(t.stable_features))
-    _list_value("Conditional Features:", _format_features(t.conditional_features))
-    _list_value("Optional Features:", _format_features(t.optional_features))
-
-
-def _format_features(features: list | None) -> list[str] | None:
-    """Format DetectionFeature list thành readable strings."""
-    if not features:
-        return None
-    lines = []
-    for feat in features:
-        field = getattr(feat, "field", "?")
-        value = getattr(feat, "value", None)
-        rationale = getattr(feat, "rationale", "")
-        if value is not None:
-            val_str = str(value) if not isinstance(value, list) else f"[{','.join(str(v) for v in value)}]"
-            line = f"{field} = {val_str}"
+    # Detection axis
+    da = getattr(t, "detection_axis", None)
+    if da is not None:
+        _subsection("Detection Axis")
+        primary = getattr(da, "primary", None)
+        secondary = list(getattr(da, "secondary", []) or [])
+        print(_kv("Primary:", primary or "(none)"))
+        if secondary:
+            print(_kv("Secondary:", ", ".join(secondary)))
         else:
-            line = field
-        if rationale:
-            if _FULL_OUTPUT or len(rationale) <= 50:
-                line += f"  ({rationale})"
-            else:
-                line += f"  ({rationale[:50]})"
-        lines.append(line)
-    return lines
+            print(_kv("Secondary:", "(none)"))
+
+    # Detection strategy (free text)
+    strategy = getattr(t, "detection_strategy", None)
+    if strategy:
+        _subsection("Detection Strategy")
+        for line in str(strategy).splitlines() or [str(strategy)]:
+            print(f"    {line}")
+
+    # Correlation + gaps
+    print(
+        _kv(
+            "Correlation:",
+            _status(
+                bool(getattr(t, "correlation_required", False)),
+                "YES" if getattr(t, "correlation_required", False) else "NO",
+            ),
+        )
+    )
+
+    gap_severity = getattr(t, "gap_severity", None)
+    gaps = list(getattr(t, "telemetry_gaps", []) or [])
+    if gaps or gap_severity:
+        _subsection("Telemetry Gaps")
+        sev_color = {
+            "high": _C.RED,
+            "medium": _C.YELLOW,
+            "low": _C.GREEN,
+        }.get((gap_severity or "").lower(), _C.RESET)
+        print(
+            f"  {_C.BOLD}{'Gap severity:':<22}{_C.RESET}"
+            f"{sev_color}{(gap_severity or 'unknown').upper()}{_C.RESET}"
+        )
+        if gaps:
+            for idx, gap in enumerate(gaps, 1):
+                gap_str = str(gap)
+                if not _FULL_OUTPUT and len(gap_str) > 120:
+                    gap_str = gap_str[:117] + "..."
+                print(f"    {_C.DIM}{idx:>3}.{_C.RESET} {gap_str}")
+
+    # Candidate features (stable / conditional / optional)
+    cf = getattr(t, "candidate_features", None)
+    if cf is not None:
+        for tier, label, color in (
+            ("stable", "Stable", _C.GREEN),
+            ("conditional", "Conditional", _C.YELLOW),
+            ("optional", "Optional", _C.DIM),
+        ):
+            tier_features = list(getattr(cf, tier, []) or [])
+            _subsection(f"Candidate Features · {label} ({len(tier_features)})", color)
+            if not tier_features:
+                print(f"    {_C.DIM}(none){_C.RESET}")
+                continue
+            for idx, feat in enumerate(tier_features, 1):
+                _format_candidate_feature(idx, feat)
+
+
+def _format_candidate_feature(idx: int, feat: Any) -> None:
+    """Render one CandidateFeature (new Step 4 shape)."""
+    semantic = getattr(feat, "semantic", "?")
+    concept = getattr(feat, "telemetry_concept", "?")
+    evidence = list(getattr(feat, "evidence", []) or [])
+
+    if not _FULL_OUTPUT and len(semantic) > 90:
+        semantic = semantic[:87] + "..."
+    print(
+        f"    {_C.DIM}{idx:>3}.{_C.RESET} "
+        f"{_C.CYAN}{concept}{_C.RESET} — {semantic}"
+    )
+    if evidence:
+        ev_str = ", ".join(str(e) for e in evidence)
+        if not _FULL_OUTPUT and len(ev_str) > 70:
+            ev_str = ev_str[:67] + "..."
+        print(f"        {_C.DIM}evidence:{_C.RESET} {ev_str}")
 
 
 # --- Step 6: Sigma generation -------------------------------------------

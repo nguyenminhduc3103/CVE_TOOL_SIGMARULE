@@ -400,3 +400,19 @@ class TelemetrySourceAssessment(BaseModel):
             blocking=blocking,
             recommendation=recommendation,
         )
+
+
+class PoCSummary(BaseModel):
+    """Step 4 'intel' payload — bundled POC documentation + network PoC + exposure.
+
+    Assembled by the Step 1 orchestrator from `triage.public_poc`,
+    `triage.poc_references`, `poc_stage_raw`, and `exposure_raw`. Fed
+    into the new Step 4 AI as the `intel` field of TelemetryInput.
+    """
+
+    public_poc: bool = False
+    poc_references: list[str] = Field(default_factory=list)
+    poc_credibility: list[dict] = Field(default_factory=list)
+    nuclei_templates: list[dict] = Field(default_factory=list)
+    exposure: dict | None = None
+
