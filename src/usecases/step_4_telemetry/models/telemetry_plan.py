@@ -5,6 +5,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
+from src.usecases.step_4_telemetry.models.sigma_logsource import SigmaLogsource
+
 # Lazy KB import: avoids circular import via enriched.py / step_4 __init__.
 def _kb() -> dict[str, str]:
     from src.usecases.step_4_telemetry._knowledge.loader import load_concept_to_group
@@ -90,6 +92,14 @@ class TelemetryPlan(BaseModel):
     )
     correlation_required: bool
     candidate_features: CandidateFeatures
+    sigma_logsources: list[SigmaLogsource] = Field(
+        default_factory=list,
+        description=(
+            "Deterministically derived post-pass from `candidate_features` "
+            "and `target_environment.platforms`. Populated by the AI service, "
+            "NOT by the LLM."
+        ),
+    )
     telemetry_gaps: list[str] = Field(default_factory=list)
     gap_severity: GapSeverityLiteral = "medium"
     telemetry_confidence: float = Field(ge=0.0, le=1.0)

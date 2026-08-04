@@ -103,6 +103,9 @@ OUTPUT SCHEMA
   "telemetry_confidence": <0.0-1.0>
 }
 
+`sigma_logsources` is derived deterministically after the LLM pass from
+`candidate_features` and `target_environment.platforms` — do NOT emit it.
+
 
 ANTI-HALLUCINATION
 - Output ONLY one JSON object. No markdown fence. No prose.

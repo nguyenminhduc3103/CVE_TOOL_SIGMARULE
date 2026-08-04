@@ -361,6 +361,22 @@ def print_step4_telemetry(enriched: Any) -> None:
             for idx, feat in enumerate(tier_features, 1):
                 _format_candidate_feature(idx, feat)
 
+    # Sigma Logsources — post-pass derived from candidate_features × platforms.
+    sigma_ls = list(getattr(t, "sigma_logsources", []) or [])
+    _subsection("Sigma Logsources", _C.MAGENTA)
+    if not sigma_ls:
+        print(f"    {_C.DIM}(none){_C.RESET}")
+    else:
+        print(f"    {_C.BOLD}{'Logsource entries:':<22}{_C.RESET}{len(sigma_ls)} item(s)")
+        for idx, ls in enumerate(sigma_ls, 1):
+            product = getattr(ls, "product", None)
+            category = getattr(ls, "category", "?")
+            print(
+                f"      {_C.DIM}{idx:>3}.{_C.RESET} "
+                f"{{product: {_C.CYAN}{repr(product)}{_C.RESET}, "
+                f"category: {_C.MAGENTA}{category!r}{_C.RESET}}}"
+            )
+
 
 def _format_candidate_feature(idx: int, feat: Any) -> None:
     """Render one CandidateFeature (new Step 4 shape)."""

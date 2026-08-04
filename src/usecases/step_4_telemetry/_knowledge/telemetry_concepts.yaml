@@ -1,97 +1,36 @@
-version: 1
-description: Fixed telemetry concept ontology for new Step 4. 13 groups, ~50 concepts.
-
-groups:
-  - name: PROCESS
-    concepts:
-      - process_image
-      - parent_process
-      - command_line
-      - process_name
-      - process_path
-      - process_hash
-      - process_argument
-
-  - name: FILE
-    concepts:
-      - file_name
-      - file_path
-      - file_extension
-      - file_hash
-      - file_content
-      - file_permission
-
-  - name: NETWORK
-    concepts:
-      - source_ip
-      - destination_ip
-      - source_port
-      - destination_port
-      - domain
-      - url
-      - uri_path
-      - protocol
-      - http_method
-      - user_agent
-      - dns_query
-
-  - name: REGISTRY
-    concepts:
-      - registry_key
-      - registry_value
-      - registry_data
-
-  - name: SERVICE
-    concepts:
-      - service_name
-      - service_path
-      - service_command
-
-  - name: MODULE
-    concepts:
-      - module_name
-      - library_name
-      - class_name
-      - api_name
-
-  - name: TEXT
-    concepts:
-      - text_content
-
-  - name: AUTH
-    concepts:
-      - username
-      - account_name
-      - authentication_type
-      - logon_type
-
-  - name: CERTIFICATE
-    concepts:
-      - certificate_subject
-      - certificate_issuer
-      - certificate_thumbprint
-
-  - name: EMAIL
-    concepts:
-      - email_sender
-      - email_receiver
-      - email_subject
-      - attachment_name
-
-  - name: MEMORY
-    concepts:
-      - memory_region
-      - memory_protection
-      - memory_string
-
-  - name: CONTAINER
-    concepts:
-      - container_name
-      - image_name
-      - pod_name
-      - namespace
-      - cloud_resource
-
-  - name: OTHER
-    concepts:
-      - event_type
+telemetry_concept:
+  - antivirus
+  - application
+  - create_remote_thread
+  - create_stream_hash
+  - database
+  - dns
+  - dns_query
+  - driver_load
+  - file_access
+  - file_change
+  - file_delete
+  - file_event
+  - file_executable_detected
+  - file_rename
+  - firewall
+  - image_load
+  - network_connection
+  - pipe_created
+  - process_access
+  - process_creation
+  - process_tampering
+  - proxy
+  - ps_classic_provider_start
+  - ps_classic_start
+  - ps_module
+  - ps_script
+  - raw_access_thread
+  - registry_add
+  - registry_delete
+  - registry_event
+  - registry_set
+  - sysmon_error
+  - sysmon_status
+  - webserver
+  - wmi_event

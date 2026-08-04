@@ -10,8 +10,13 @@ from typing import TYPE_CHECKING, Any
 from config.settings import settings
 from src.infrastructure.ai.core import BaseAIClient
 from src.usecases.step_4_telemetry._knowledge.loader import load_telemetry_concepts
+from src.usecases.step_4_telemetry._knowledge.sigma_category_statistics import load_statistics
 from src.usecases.step_4_telemetry.models.llm_contract import TelemetryLLMResponse
 from src.usecases.step_4_telemetry.models.telemetry_plan import TelemetryPlan
+from src.usecases.step_4_telemetry.services.logsource_resolver import (
+    extract_categories,
+    resolve,
+)
 
 if TYPE_CHECKING:
     from src.domain.models.enriched import EnrichedCVEContext
@@ -58,6 +63,7 @@ class TelemetryPlanAI:
             ai_model=model,
             **llm_response.model_dump(),
         )
+        plan = self._resolve_sigma_logsources(plan)
         logger.info(
             "step4.plan cve_id=%s primary=%s correlation=%s confidence=%.2f model=%s",
             plan.cve_id,
@@ -67,6 +73,17 @@ class TelemetryPlanAI:
             model,
         )
         return plan
+
+    def _resolve_sigma_logsources(self, plan: TelemetryPlan) -> TelemetryPlan:
+        """Deterministic post-pass: derive `sigma_logsources` from the AI plan.
+
+        `knowledge` is loaded once per `plan()` invocation so the resolver
+        itself stays a true pure function and is trivially testable.
+        """
+        knowledge = load_statistics()
+        categories = extract_categories(plan.candidate_features)
+        logsources = resolve(knowledge, plan.target_environment, categories)
+        return plan.model_copy(update={"sigma_logsources": logsources})
 
     def _build_input_payload(self, enriched: EnrichedCVEContext) -> dict[str, Any]:
         """Bundle the TelemetryInput that the AI consumes."""
