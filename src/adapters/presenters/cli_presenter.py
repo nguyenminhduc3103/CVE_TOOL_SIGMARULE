@@ -371,11 +371,23 @@ def print_step4_telemetry(enriched: Any) -> None:
         for idx, ls in enumerate(sigma_ls, 1):
             product = getattr(ls, "product", None)
             category = getattr(ls, "category", "?")
+            allowed = getattr(ls, "allowed_fields", {}) or {}
             print(
                 f"      {_C.DIM}{idx:>3}.{_C.RESET} "
                 f"{{product: {_C.CYAN}{repr(product)}{_C.RESET}, "
                 f"category: {_C.MAGENTA}{category!r}{_C.RESET}}}"
             )
+            if allowed:
+                print(f"        {_C.DIM}allowed_fields:{_C.RESET}")
+                # Sort keys for stable CLI output, but operators stay in source order.
+                for field_name in sorted(allowed.keys()):
+                    ops = allowed[field_name]
+                    ops_str = ", ".join(ops)
+                    print(
+                        f"          {_C.DIM}{field_name:<16}{_C.RESET}→ {ops_str}"
+                    )
+            else:
+                print(f"        {_C.DIM}allowed_fields: (none){_C.RESET}")
 
 
 def _format_candidate_feature(idx: int, feat: Any) -> None:

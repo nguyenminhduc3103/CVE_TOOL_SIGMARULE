@@ -73,9 +73,9 @@ def test_post_pass_populates_sigma_logsources(ai_service: TelemetryPlanAI):
     result = ai_service._resolve_sigma_logsources(plan)
 
     assert result.sigma_logsources == [
-        SigmaLogsource(product="windows", category="process_creation"),
-        SigmaLogsource(product="linux", category="process_creation"),
-        SigmaLogsource(product=None, category="webserver"),
+        SigmaLogsource(product="windows", category="process_creation", allowed_fields=_real_fields("process_creation")),
+        SigmaLogsource(product="linux", category="process_creation", allowed_fields=_real_fields("process_creation")),
+        SigmaLogsource(product=None, category="webserver", allowed_fields=_real_fields("webserver")),
     ]
 
 
@@ -93,9 +93,40 @@ def test_post_pass_uses_injected_knowledge(ai_service: TelemetryPlanAI):
     expected: list[SigmaLogsource] = []
     for p in target_env.platforms:
         if p in nw.platforms:
-            expected.append(SigmaLogsource(product=p, category="network_connection"))
-    expected.append(SigmaLogsource(product=None, category="webserver"))
+            expected.append(SigmaLogsource(product=p, category="network_connection", allowed_fields=_real_fields("network_connection")))
+    expected.append(SigmaLogsource(product=None, category="webserver", allowed_fields=_real_fields("webserver")))
     assert result.sigma_logsources == expected
+
+
+def _real_fields(category: str) -> dict[str, list[str]]:
+    """Helper: project real-file fields into the {name: [operators]} shape."""
+    from src.usecases.step_4_telemetry import SigmaCategoryStatistics
+
+    knowledge = SigmaCategoryStatistics.from_dict(_raw_stats_for(category))
+    info = knowledge.get(category)
+    if info is None:
+        return {}
+    return {name: list(stats.operators) for name, stats in info.fields.items() if name}
+
+
+def _raw_stats_for(category: str) -> dict:
+    """Read the live SigmaCategoryStatistics and re-emit just the requested category's fields."""
+    from src.usecases.step_4_telemetry import load_statistics
+
+    info = load_statistics().get(category)
+    if info is None:
+        return {}
+    return {
+        category: {
+            "platforms": info.platforms,
+            "technologies": info.technologies,
+            "services": info.services,
+            "fields": {
+                name: {"count": stats.count, "operators": list(stats.operators)}
+                for name, stats in info.fields.items()
+            },
+        }
+    }
 
 
 def test_post_pass_is_idempotent(ai_service: TelemetryPlanAI):
