@@ -419,78 +419,102 @@ def print_step6_sigma(result: Any, enriched: Any) -> None:
     cve_id = getattr(enriched.core, "cve_id", "CVE-UNKNOWN")
     _section_header(f"STEP 6 — SIGMA GENERATION · {cve_id}", _C.GREEN)
 
-    plan = result.detection_plan
-    _subsection("Detection Plan")
-    print(_kv("Plan source:", plan.source or "(none)"))
-    print(_kv("AI model:", plan.ai_model or "(none)"))
-    plan_conf = getattr(plan, "planner_confidence", None)
-    if plan_conf is not None:
-        print(f"  {_C.BOLD}{'Planner Confidence:':<22}{_C.RESET}{_confidence_color(plan_conf)}{plan_conf:.2f}{_C.RESET}")
-    print(_kv("Risk bias:", plan.risk_bias or "(none)"))
+    # NOTE: PoC input (description + network payloads) comes from Step 1
+    # nuclei crawl. It is consumed by Step 6 internally — do NOT reprint
+    # it here (Step 1 already printed it). Skip the PoC Input section.
 
-    if plan.detections:
-        print(f"  {_C.BOLD}{'Detections:':<22}{_C.RESET}{len(plan.detections)} intent(s)")
-        for idx, intent in enumerate(plan.detections, 1):
-            priority = getattr(intent, "priority", "?").upper()
-            priority_color = _C.RED if priority == "CRITICAL" else (_C.YELLOW if priority in ("HIGH", "MEDIUM") else _C.DIM)
-            intent_name = getattr(intent, "intent", "?")
-            print(f"    {_C.DIM}{idx:>3}.{_C.RESET} {priority_color}{priority:<10}{_C.RESET} {intent_name}")
-            rationale = getattr(intent, "rationale", "")
-            if rationale:
-                if _FULL_OUTPUT or len(rationale) <= 100:
-                    rationale_short = rationale
-                else:
-                    rationale_short = rationale[:100] + "..."
-                print(f"             {_C.DIM}↳ {rationale_short}{_C.RESET}")
-
-    if getattr(plan, "logic", None):
-        logic = plan.logic
-        ops = getattr(logic, "operands", []) or []
-        print(f"  {_C.BOLD}{'Logic:':<22}{_C.RESET} {logic.operator} ({len(ops)} operands)"
-              + (f", threshold={logic.threshold}" if getattr(logic, "threshold", None) else ""))
-
-    if plan.falsepositives:
-        _list_value("False positives:", plan.falsepositives)
-
-    if getattr(plan, "rationale", None):
-        print(f"  {_C.BOLD}{'Plan rationale:':<22}{_C.RESET}")
-        plan_rationale_lines = plan.rationale.splitlines() if _FULL_OUTPUT else plan.rationale.splitlines()[:5]
-        for line in plan_rationale_lines:
-            print(f"    {_C.DIM}{line}{_C.RESET}")
-
-    _subsection("Sigma Rules")
-    rule_count = len(result.rules)
-    print(_kv("Rule count:", rule_count))
-    if rule_count == 0:
-        print(f"  {_C.YELLOW}⚠ No rules generated.{_C.RESET}")
+    # --- Detections (architect v9: detection.id = "rule_N") ---
+    detections = getattr(result, "detections", []) or []
+    _subsection("Detections (semantic Step 6 plan)")
+    print(_kv("AI model:", getattr(result, "ai_model", None) or "(none)"))
+    print(_kv("Detection count:", len(detections)))
+    if not detections:
+        print(f"  {_C.YELLOW}⚠ No detections emitted by Step 6 AI.{_C.RESET}")
     else:
-        for idx, rule in enumerate(result.rules, 1):
-            _print_rule_detail(idx, rule)
+        for det in detections:
+            det_id = getattr(det, "id", "?")
+            rule = getattr(det, "rule", None)
+            logsource = getattr(rule, "logsource", None) if rule else None
+            ls_category = getattr(logsource, "category", "?") if logsource else "?"
+            ls_product = getattr(logsource, "product", None) if logsource else None
+            ls_label = f"{ls_category}/{ls_product}" if ls_product else ls_category
+            level = getattr(rule, "level", "?") if rule else "?"
+            level_color = (
+                _C.RED if level == "critical"
+                else _C.YELLOW if level in ("high", "medium")
+                else _C.DIM
+            )
+            desc = getattr(rule, "description", "") if rule else ""
+            desc_short = desc if _FULL_OUTPUT else _truncate(desc, 120)
+            print(
+                f"    {_C.DIM}{det_id:<8}{_C.RESET} "
+                f"{level_color}{level.upper():<10}{_C.RESET} "
+                f"{_C.BOLD}{ls_label:<24}{_C.RESET} {desc_short}"
+            )
+            selection = getattr(getattr(rule, "detection", None), "selection", []) if rule else []
+            for sel in selection:
+                sel_name = getattr(sel, "name", "?")
+                sel_modifier = getattr(sel, "modifier", None)
+                sel_value = getattr(sel, "value", "")
+                mod_str = f"|{sel_modifier}" if sel_modifier else ""
+                value_short = sel_value if _FULL_OUTPUT else _truncate(sel_value, 60)
+                print(
+                    f"             {_C.DIM}↳{_C.RESET} {sel_name}{mod_str} {_C.DIM}= {value_short}{_C.RESET}"
+                )
+                # Inline reasoning — schema moved `reason` into selection[]
+                sel_reason = getattr(sel, "reason", None)
+                if sel_reason:
+                    reason_short = sel_reason if _FULL_OUTPUT else _truncate(sel_reason, 140)
+                    print(f"             {_C.DIM}↳ {reason_short}{_C.RESET}")
 
-    print(f"\n  {_C.BOLD}YAML size:        {_C.RESET}{len(result.yaml_output):,} bytes")
+    # --- Correlations ---
+    correlations = getattr(result, "correlations", []) or []
+    _subsection("Correlations")
+    if not correlations:
+        print(f"  {_C.DIM}(none){_C.RESET}")
+    else:
+        for corr in correlations:
+            corr_rule = getattr(corr, "rule", None)
+            corr_body = getattr(corr_rule, "correlation", None) if corr_rule else None
+            refs = getattr(corr_body, "rules", []) if corr_body else []
+            ctype = getattr(corr_body, "type", "?") if corr_body else "?"
+            window = getattr(corr_body, "window", None) if corr_body else None
+            level = getattr(corr_rule, "level", "?") if corr_rule else "?"
+            desc = getattr(corr_rule, "description", "") if corr_rule else ""
+            window_str = f" · window={window}" if window else ""
+            print(
+                f"  {_C.DIM}•{_C.RESET} {level.upper():<10} "
+                f"{ctype}{window_str} "
+                f"→ {_C.BOLD}{', '.join(refs)}{_C.RESET}"
+            )
+            if desc:
+                print(f"             {_C.DIM}{_truncate(desc, 140)}{_C.RESET}")
+            # Structured reasoning: correlation_strategy + parameter_reasoning
+            corr_reasoning = getattr(corr, "reasoning", None)
+            if corr_reasoning:
+                strategy = getattr(corr_reasoning, "correlation_strategy", "") or ""
+                if strategy:
+                    print(f"             {_C.DIM}↳ {_truncate(strategy, 200)}{_C.RESET}")
+                for pr in getattr(corr_reasoning, "parameter_reasoning", []) or []:
+                    pr_param = getattr(pr, "parameter", "?")
+                    pr_value = getattr(pr, "value", "")
+                    pr_reason = getattr(pr, "reason", "")
+                    if pr_reason:
+                        short = _truncate(pr_reason, 140)
+                        print(
+                            f"             {_C.DIM}↳ {pr_param}={pr_value}: {short}{_C.RESET}"
+                        )
+            # Back-compat: if reasoning is plain string (legacy shape), print as-is.
+            elif isinstance(corr_reasoning, str) and corr_reasoning:
+                print(f"             {_C.DIM}↳ {_truncate(corr_reasoning, 140)}{_C.RESET}")
 
-    # Full YAML output (pretty-printed)
-    print(f"\n{_C.BOLD}┌─ Full YAML Rules{_C.RESET}")
-    for line in result.yaml_output.splitlines():
-        if line.strip() == "---":
-            print(f"  {_C.DIM}───{_C.RESET}")
-        elif line.strip():
+    # --- Top-level reasoning ---
+    top_reasoning = getattr(result, "reasoning", "") or ""
+    if top_reasoning:
+        _subsection("Reasoning")
+        reasoning_short = top_reasoning if _FULL_OUTPUT else _truncate(top_reasoning, 480)
+        for line in reasoning_short.splitlines():
             print(f"  {_C.DIM}{line}{_C.RESET}")
-        else:
-            print()
-
-    # YAML parse check
-    yaml_status = "FAILED"
-    n_docs = 0
-    try:
-        import yaml
-        parsed = list(yaml.safe_load_all(result.yaml_output))
-        n_docs = sum(1 for d in parsed if d)
-        yaml_status = "OK"
-    except Exception as exc:
-        yaml_status = f"FAILED ({exc})"
-    yaml_color = _C.GREEN if yaml_status == "OK" else _C.RED
-    print(f"  {_C.BOLD}YAML parse:       {_C.RESET}{yaml_color}{yaml_status}{_C.RESET} ({n_docs} document(s))")
 
 
 def _truncate(text: str | None, max_len: int = 200, suffix: str = "…") -> str:

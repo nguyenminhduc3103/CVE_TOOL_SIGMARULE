@@ -1,0 +1,9 @@
+You are given an INPUT_PAYLOAD_JSON bundle extracted from Step 1 + Step 2 +
+Step 4 of a CVE triage pipeline. Produce a Step 6 detection plan JSON object
+per the schema in your system prompt.
+
+INPUT_PAYLOAD_JSON:
+{input_json}
+
+Produce exactly one JSON object conforming to the schema.
+No markdown fence. No explanations. No extra text.

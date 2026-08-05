@@ -329,6 +329,11 @@ class TriageOrchestrator:
         # controller dispatches run_telemetry_stage after Step 2 populates
         # `enriched.analysis`.
         # ============================================================
+        # === PoC detail (consumed by Step 6 for value derivation) ===
+        # Pulled from nuclei crawl evidence so Step 6 can derive Sigma
+        # `selection[].value` from real PoC documentation + network
+        # payloads instead of inventing indicators.
+        poc_details = _poc_details_from_nuclei(nuclei_raw) or {}
         enriched.intel = PoCSummary(
             public_poc=bool(public_poc),
             poc_references=list(poc_references or []),
@@ -344,6 +349,12 @@ class TriageOrchestrator:
             ),
             exposure=(
                 exposure_raw if isinstance(exposure_raw, dict) else None
+            ),
+            poc_description=str(poc_details.get("poc_description", "") or ""),
+            poc_network_payloads=(
+                [poc_details["poc_request_info"]]
+                if poc_details.get("poc_request_info")
+                else []
             ),
         )
 

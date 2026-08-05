@@ -416,3 +416,13 @@ class PoCSummary(BaseModel):
     nuclei_templates: list[dict] = Field(default_factory=list)
     exposure: dict | None = None
 
+    # === PoC detail (consumed by Step 6 for value derivation) ===
+    # `poc_description` — free-text documentation of the PoC (extracted from
+    # nuclei evidence `type=documentation` records).
+    # `poc_network_payloads` — list of network request payloads (extracted from
+    # nuclei evidence `type=network` records; each item is a request_info dict
+    # carrying method/host/port/path/headers/body/raw). Empty when no PoC
+    # is documented.
+    poc_description: str = ""
+    poc_network_payloads: list[dict] = Field(default_factory=list)
+

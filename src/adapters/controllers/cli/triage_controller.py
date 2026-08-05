@@ -183,7 +183,10 @@ class CLITriageController:
                 step6_ai_enabled = bool(getattr(settings, "step6_ai_enabled", True))
                 if step6_ai_enabled and settings.get_step6_api_keys():
                     try:
-                        ai_client = BaseAIClient()
+                        ai_client = BaseAIClient(
+                            api_keys=settings.get_step6_api_keys(),
+                            base_url=settings.get_step6_base_url(),
+                        )
                     except Exception as exc:
                         print(f"[Step 6] ⚠ Cannot create AI client: {exc}")
                         ai_client = None
@@ -196,6 +199,7 @@ class CLITriageController:
                     attack=enriched.attack,
                     telemetry=telemetry_dict,
                     references=references,
+                    poc=enriched.intel,
                 )
             except Exception as exc:
                 print(f"\n[!] Step 6 failed: {exc}")

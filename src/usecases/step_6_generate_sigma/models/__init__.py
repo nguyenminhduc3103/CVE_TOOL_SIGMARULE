@@ -1,20 +1,41 @@
-"""Step 6 models — LLM contract (raw response schema)."""
-from src.usecases.step_6_generate_sigma.models.llm_contract import (
-    Operator,
-    Priority,
-    RawDetectionIntent,
-    RawDetectionLogic,
-    RiskBias,
-    Step6LLMResponse,
-    assert_no_forbidden_fields,
+# Step 6 public model re-exports.
+from src.usecases.step_6_generate_sigma.models.correlation import (
+    Correlation,
+    CorrelationBody,
+    CorrelationReasoning,
+    CorrelationRule,
+    CorrelationTypeLiteral,
+    ParameterReasoning,
+)
+from src.usecases.step_6_generate_sigma.models.detection import (
+    Detection,
+    DetectionBody,
+    DetectionRule,
+    LevelLiteral,
+    LogsourceRef,
+    SelectedField,
+)
+from src.usecases.step_6_generate_sigma.models.result import (
+    SigmaRuleLLMResponse,
+    Step6Result,
 )
 
 __all__ = [
-    "Operator",
-    "Priority",
-    "RawDetectionIntent",
-    "RawDetectionLogic",
-    "RiskBias",
-    "Step6LLMResponse",
-    "assert_no_forbidden_fields",
+    # detection
+    "LevelLiteral",
+    "LogsourceRef",
+    "SelectedField",
+    "DetectionBody",
+    "DetectionRule",
+    "Detection",
+    # correlation
+    "CorrelationTypeLiteral",
+    "ParameterReasoning",
+    "CorrelationReasoning",
+    "CorrelationBody",
+    "CorrelationRule",
+    "Correlation",
+    # result
+    "SigmaRuleLLMResponse",
+    "Step6Result",
 ]
