@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import time
+from pathlib import Path
 from typing import Any
 
 from src.usecases.step_1_triage.orchestrator import TriageOrchestrator
@@ -205,6 +206,26 @@ class CLITriageController:
                 print(f"\n[!] Step 6 failed: {exc}")
 
         print_step6_sigma(result, enriched)
+
+        # Opt-in: dump Sigma YAML to disk for downstream SOC tooling.
+        if os.getenv("CVE_TI_DUMP_YAML", "0").lower() in ("1", "true", "yes"):
+            try:
+                from src.usecases.step_6_generate_sigma.builder import SigmaBuilder
+                attack_obj = getattr(enriched, "attack", None)
+                confirmed = list(getattr(attack_obj, "techniques", []) or [])
+                yaml_text = SigmaBuilder().build_yaml(
+                    cve_id=enriched.core.cve_id,
+                    result=result,
+                    tactics=[],
+                    techniques=confirmed,
+                )
+                out_dir = Path("generated_rules")
+                out_dir.mkdir(parents=True, exist_ok=True)
+                out_path = out_dir / f"{enriched.core.cve_id}.yml"
+                out_path.write_text(yaml_text, encoding="utf-8")
+                print(f"[Step 6] YAML dumped to {out_path}")
+            except Exception as exc:
+                print(f"[Step 6] ⚠ YAML dump failed: {exc}")
 
         # --- Footer ---
         total_ms = int((time.perf_counter() - pipeline_start) * 1000)

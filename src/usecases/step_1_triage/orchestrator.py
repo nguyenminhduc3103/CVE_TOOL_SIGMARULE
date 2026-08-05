@@ -28,8 +28,6 @@ from src.usecases.step_1_triage.stages.exposure_stage import run_exposure_stage
 from src.usecases.step_1_triage.stages.kev_stage import run_kev_stage
 from src.usecases.step_1_triage.stages.poc_stage import run_poc_stage
 from src.usecases.step_1_triage.stages.nuclei_crawl_stage import run_nuclei_crawl_stage
-from src.usecases.step_1_triage.stages.telemetry_discovery_stage import run_telemetry_discovery_stage
-from src.usecases.step_1_triage.stages.telemetry_assessment_stage import run_telemetry_assessment_stage
 
 
 def _err_line(exc: BaseException) -> str:
@@ -262,52 +260,6 @@ class TriageOrchestrator:
         )
         # Surface raw nuclei payload via object.__setattr__ to bypass Pydantic strict
         object.__setattr__(enriched, "nuclei_evidence", nuclei_raw)
-
-        # ============================================================
-        # Step 1.3: Telemetry Discovery (Two-Phase)
-        # Phase A: Discover candidate sources
-        # Phase B: Verify actual telemetry artifacts
-        # ============================================================
-        telemetry_discovery_result = await run_telemetry_discovery_stage(
-            cve_id=cve_id,
-            triage=triage,
-            description=core.description,
-            vendor=None,
-        )
-        enriched.telemetry_discovery = telemetry_discovery_result.discovery
-
-        # ============================================================
-        # Step 1.4: Telemetry Assessment (GATE)
-        # Gate only PASSES if verified artifacts exist
-        # ============================================================
-        telemetry_assessment = await run_telemetry_assessment_stage(enriched.telemetry_discovery)
-        enriched.telemetry_assessment = telemetry_assessment
-
-        # GATE DECISION: If no verified artifacts, stop pipeline
-        if telemetry_assessment.blocking:
-            self.logger.warning(
-                "[ORCHESTRATOR] telemetry_gate_blocked",
-                cve_id=cve_id,
-                verified_count=telemetry_assessment.verified_count,
-                candidate_count=telemetry_assessment.candidate_count,
-                decision=telemetry_assessment.decision.value,
-            )
-            # Override GO decision to NO-GO
-            triage.decision = "NO-GO"
-            triage.decision_reason = f"Telemetry gate blocked: {telemetry_assessment.reasoning}"
-            triage.telemetry_blocked = True
-
-            # Add metadata and return early (skip Step 2, 3, 4)
-            metadata = EnrichmentMetadata(
-                enriched_at=datetime.now(timezone.utc),
-                enrichment_duration_ms=int((perf_counter() - pipeline_started) * 1000),
-                providers_used=provider_used,
-                partial_enrichment=True,
-                provider_durations_ms=provider_durations or None,
-            )
-            enriched.metadata = metadata
-            enriched.triage = triage
-            return enriched
 
         # ============================================================
         # Continue to Coverage Stage

@@ -1,15 +1,7 @@
 """Rich-ish presenter cho full pipeline (Step 1 → 2 → 4 → 6).
 
-ANSI escape codes for Windows VT100 (auto-enabled if needed). Không cần lib
-ngoài (rich/colorama). Format dễ nhìn: box headers, aligned keys, grouped
-fields, status icons (✓/✗/⚠), conditional colors theo severity/confidence.
-
-Public API:
-  - print_step1_triage(enriched)
-  - print_step2_analysis(enriched)
-  - print_step4_telemetry(enriched)
-  - print_step6_sigma(result, enriched)
-  - print_metadata_footer(enriched, total_ms)
+ANSI VT100 (auto-enabled); box headers / aligned keys / status icons; no rich/colorama.
+Public API: print_step1_triage / print_step2_analysis / print_step4_telemetry / print_step6_sigma / print_metadata_footer.
 """
 from __future__ import annotations
 
@@ -260,6 +252,47 @@ def print_step2_analysis(enriched: Any) -> None:
                     if reasoning:
                         print(f"    Reasoning: {reasoning}")
 
+        # ATT&CK Summary — display-only partition (confirmed vs chain-derived).
+        techniques_for_summary = getattr(atk, "techniques", None) or []
+        chain_for_summary = getattr(atk, "attack_chain", None) or []
+        if techniques_for_summary or chain_for_summary:
+            confirmed, chain_derived = _partition_attack_techniques(atk)
+            import json as _json
+            summary = {
+                "confirmed_techniques": confirmed,
+                "chain_derived_techniques": chain_derived,
+            }
+            _subsection("ATT&CK Summary")
+            print(_json.dumps(summary, indent=2))
+
+
+def _partition_attack_techniques(atk: Any) -> tuple[list[str], list[str]]:
+    """Partition attack techniques into confirmed vs chain-derived (display-only).
+
+    Confirmed = attack.techniques; chain-derived = chain \\ mapping (no mutation).
+    """
+    techniques = list(getattr(atk, "techniques", []) or [])
+    chain = getattr(atk, "attack_chain", None) or []
+
+    chain_techs: list[str] = [
+        step.get("technique_id")
+        for step in chain
+        if isinstance(step, dict) and step.get("technique_id")
+    ]
+
+    # Preserve original ordering of attack.techniques for the confirmed list.
+    confirmed: list[str] = list(techniques)
+
+    # Chain-derived = chain-only (preserves chain order, dedup keeps first hit).
+    seen: set[str] = set(techniques)
+    chain_derived: list[str] = []
+    for tech in chain_techs:
+        if tech not in seen:
+            chain_derived.append(tech)
+            seen.add(tech)
+
+    return confirmed, chain_derived
+
 
 # --- Step 4: Telemetry ---------------------------------------------------
 
@@ -419,9 +452,8 @@ def print_step6_sigma(result: Any, enriched: Any) -> None:
     cve_id = getattr(enriched.core, "cve_id", "CVE-UNKNOWN")
     _section_header(f"STEP 6 — SIGMA GENERATION · {cve_id}", _C.GREEN)
 
-    # NOTE: PoC input (description + network payloads) comes from Step 1
-    # nuclei crawl. It is consumed by Step 6 internally — do NOT reprint
-    # it here (Step 1 already printed it). Skip the PoC Input section.
+    # NOTE: PoC input comes from Step 1 nuclei crawl; consumed by Step 6 internally.
+    # Skip the PoC Input section here (Step 1 already printed it).
 
     # --- Detections (architect v9: detection.id = "rule_N") ---
     detections = getattr(result, "detections", []) or []
@@ -467,6 +499,13 @@ def print_step6_sigma(result: Any, enriched: Any) -> None:
                     reason_short = sel_reason if _FULL_OUTPUT else _truncate(sel_reason, 140)
                     print(f"             {_C.DIM}↳ {reason_short}{_C.RESET}")
 
+
+            # Per-detection false positives (render bullet list after selections).
+            fps = list(getattr(rule, "falsepositives", []) or []) if rule else []
+            if fps:
+                print(f"             {_C.DIM}False Positives:{_C.RESET}")
+                for fp in fps:
+                    print(f"               {_C.DIM}•{_C.RESET} {_truncate(fp, 120)}")
     # --- Correlations ---
     correlations = getattr(result, "correlations", []) or []
     _subsection("Correlations")
