@@ -9,7 +9,6 @@ import httpx
 
 from config.logging import get_logger
 from src.domain.models.cve import CoreCVEData
-from src.domain.models.coverage import CoverageAssessment
 from src.domain.models.enriched import EnrichedCVEContext, EnrichmentMetadata
 from src.domain.models.telemetry_discovery import PoCSummary
 from src.domain.models.triage import TriageContext
@@ -22,7 +21,6 @@ from src.domain.services.capability import CapabilityChecker
 from src.domain.services.priority_score import PriorityEngine
 from src.usecases.step_1_triage.decision_engine import DecisionEngine
 from src.usecases.step_1_triage.stages.core_stage import run_core_stage
-from src.usecases.step_1_triage.stages.coverage_stage import run_coverage_stage
 from src.usecases.step_1_triage.stages.epss_stage import run_epss_stage
 from src.usecases.step_1_triage.stages.exposure_stage import run_exposure_stage
 from src.usecases.step_1_triage.stages.kev_stage import run_kev_stage
@@ -262,19 +260,6 @@ class TriageOrchestrator:
         object.__setattr__(enriched, "nuclei_evidence", nuclei_raw)
 
         # ============================================================
-        # Continue to Coverage Stage
-        # ============================================================
-        coverage_context, stage_failed = await self._run_enriched_stage(
-            stage_name="coverage_stage",
-            stage_fn=run_coverage_stage,
-            context=enriched,
-            capability=capability_classification,
-            fallback=CoverageAssessment(),
-        )
-        stage_partial = stage_partial or stage_failed
-        enriched.coverage = coverage_context
-
-        # ============================================================
         # Step 4 (Telemetry Plan AI) — new rebuild 2026-08
         # Orchestrator only assembles `enriched.intel` so downstream consumers
         # (Step 4 AI in the CLI controller) have PoC + exposure payload. The
@@ -341,14 +326,6 @@ class TriageOrchestrator:
             return fallback, True
         except Exception as exc:
             self.logger.warning("[ORCHESTRATOR] stage_failed", stage=stage_name, cve_id=cve_id, error=_err_line(exc))
-            return fallback, True
-
-    async def _run_enriched_stage(self, stage_name: str, stage_fn, context: EnrichedCVEContext, capability, fallback):
-        try:
-            result = await stage_fn(context, capability)
-            return result, False
-        except Exception as exc:
-            self.logger.warning("[ORCHESTRATOR] stage_failed", stage=stage_name, cve_id=context.core.cve_id, error=_err_line(exc))
             return fallback, True
 
     async def _run_provider(

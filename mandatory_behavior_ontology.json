@@ -1,0 +1,587 @@
+{
+  "source": ".cache/ontology/primitive_behavior_ontology.json",
+  "count": 145,
+  "skipped_empty_primitive": 0,
+  "entries": [
+    {
+      "primitive": "port_scanning",
+      "description": "Scan network ports to identify active services and listening endpoints."
+    },
+    {
+      "primitive": "os_fingerprinting",
+      "description": "Analyze network responses to identify the target operating system."
+    },
+    {
+      "primitive": "ip_probing",
+      "description": "Analyze IP header fields and fragmentation behavior for reconnaissance."
+    },
+    {
+      "primitive": "host_discovery",
+      "description": "Identify active hosts and network paths within a target environment."
+    },
+    {
+      "primitive": "network_enumeration",
+      "description": "Map out network topology, architecture, and accessible resources."
+    },
+    {
+      "primitive": "dns_enumeration",
+      "description": "Extract DNS records and zone data to map domain infrastructure."
+    },
+    {
+      "primitive": "flood_dos",
+      "description": "Flood the target with massive volumes of traffic to cause denial of service."
+    },
+    {
+      "primitive": "payload_expansion_dos",
+      "description": "Send specially crafted inputs that expand exponentially during parsing to exhaust memory."
+    },
+    {
+      "primitive": "amplification_dos",
+      "description": "Exploit vulnerable servers to reflect and amplify traffic toward a target."
+    },
+    {
+      "primitive": "resource_exhaustion",
+      "description": "Deplete system resources like memory, CPU, or connections to deny legitimate access."
+    },
+    {
+      "primitive": "jamming",
+      "description": "Interfere with wireless communications via radio frequency interference."
+    },
+    {
+      "primitive": "reflected_xss",
+      "description": "Inject malicious scripts that reflect immediately off a server to a victim's browser."
+    },
+    {
+      "primitive": "stored_xss",
+      "description": "Inject malicious scripts that are saved on the server and executed when users view the content."
+    },
+    {
+      "primitive": "dom_based_xss",
+      "description": "Inject scripts by exploiting client-side Document Object Model logic vulnerabilities."
+    },
+    {
+      "primitive": "pretexting",
+      "description": "Fabricate scenarios and impersonate trusted roles to extract sensitive information."
+    },
+    {
+      "primitive": "phishing",
+      "description": "Deceive targets via fraudulent communications to steal credentials or distribute malware."
+    },
+    {
+      "primitive": "alternate_encoding",
+      "description": "Utilize obscure or manipulated text encodings to bypass input validation filters."
+    },
+    {
+      "primitive": "filter_bypass_via_encoding",
+      "description": "Inject specialized control characters to evade security checks and execute payloads."
+    },
+    {
+      "primitive": "hardware_substitution",
+      "description": "Introduce fake or compromised hardware components into the supply chain."
+    },
+    {
+      "primitive": "documentation_alteration",
+      "description": "Modify technical documentation to hide security vulnerabilities or misguide administrators."
+    },
+    {
+      "primitive": "software_supply_chain_attack",
+      "description": "Compromise development environments, dependencies, or tools to insert malicious logic."
+    },
+    {
+      "primitive": "domain_squatting",
+      "description": "Register domains similar to legitimate ones to intercept traffic and deceive users."
+    },
+    {
+      "primitive": "package_squatting",
+      "description": "Take over or impersonate software repositories and metrics to distribute malicious libraries."
+    },
+    {
+      "primitive": "identity_spoofing",
+      "description": "Assume the identity or attributes of a legitimate user, service, or hardware device."
+    },
+    {
+      "primitive": "content_spoofing",
+      "description": "Spoof application interfaces or content to trick users into providing credentials."
+    },
+    {
+      "primitive": "infrastructure_spoofing",
+      "description": "Deploy fake infrastructure like wireless access points or base stations to intercept traffic."
+    },
+    {
+      "primitive": "dns_spoofing",
+      "description": "Manipulate DNS resolution or caches to redirect legitimate traffic to attacker servers."
+    },
+    {
+      "primitive": "signal_spoofing",
+      "description": "Broadcast counterfeit location or telemetry signals to manipulate navigation systems."
+    },
+    {
+      "primitive": "metadata_spoofing",
+      "description": "Falsify repository or file metadata to hide origins and bypass trust checks."
+    },
+    {
+      "primitive": "certificate_forgery",
+      "description": "Forge digital signatures or certificates to bypass code execution protections."
+    },
+    {
+      "primitive": "action_spoofing",
+      "description": "Redress interfaces to trick users into executing actions disguised as legitimate clicks."
+    },
+    {
+      "primitive": "parameter_injection",
+      "description": "Inject or modify parameters transmitted between client and server to alter application logic."
+    },
+    {
+      "primitive": "sql_injection",
+      "description": "Inject malicious syntax into relational database queries to bypass authentication or extract data."
+    },
+    {
+      "primitive": "command_injection",
+      "description": "Inject and execute operating system commands directly on the target host."
+    },
+    {
+      "primitive": "xml_injection",
+      "description": "Inject malicious tags or external entities into XML documents to alter parsing logic."
+    },
+    {
+      "primitive": "ldap_injection",
+      "description": "Inject directory statements to bypass authentication or extract sensitive directory records."
+    },
+    {
+      "primitive": "script_injection",
+      "description": "Inject malicious scripts into an application to execute unauthorized code."
+    },
+    {
+      "primitive": "css_injection",
+      "description": "Inject malicious styling code to extract data or deface websites."
+    },
+    {
+      "primitive": "log_injection",
+      "description": "Inject malicious entries into log files to cover tracks or exploit downstream parsers."
+    },
+    {
+      "primitive": "format_string_injection",
+      "description": "Exploit format string vulnerabilities to execute arbitrary code or read memory."
+    },
+    {
+      "primitive": "object_injection",
+      "description": "Inject malicious objects into applications during insecure deserialization processes."
+    },
+    {
+      "primitive": "server_side_request_forgery",
+      "description": "Force a server to make unauthorized network requests to internal or external resources."
+    },
+    {
+      "primitive": "authentication_bypass",
+      "description": "Gain access to restricted systems or APIs without providing valid credentials."
+    },
+    {
+      "primitive": "authorization_bypass",
+      "description": "Bypass mechanisms that restrict access to protected resources and functionalities."
+    },
+    {
+      "primitive": "authentication_attempt",
+      "description": "Attempt to authenticate against a system using valid or compromised credentials."
+    },
+    {
+      "primitive": "brute_force",
+      "description": "Systematically guess passwords or keys to gain unauthorized system access."
+    },
+    {
+      "primitive": "session_hijacking",
+      "description": "Take over an active user session by stealing tokens or intercepting state variables."
+    },
+    {
+      "primitive": "session_prediction",
+      "description": "Predict or manipulate future session identifiers to gain unauthorized access."
+    },
+    {
+      "primitive": "session_replay",
+      "description": "Replay intercepted session tokens to bypass authentication processes."
+    },
+    {
+      "primitive": "session_fixation",
+      "description": "Force a user to authenticate with a known, attacker-controlled session identifier."
+    },
+    {
+      "primitive": "cross_site_request_forgery",
+      "description": "Force an authenticated user to execute unwanted actions on a web application."
+    },
+    {
+      "primitive": "code_execution",
+      "description": "Execute arbitrary malicious code or scripts on the compromised target environment."
+    },
+    {
+      "primitive": "buffer_overflow",
+      "description": "Manipulate memory boundaries to execute arbitrary code or crash applications."
+    },
+    {
+      "primitive": "memory_corruption",
+      "description": "Corrupt volatile memory structures to execute code or destabilize the system."
+    },
+    {
+      "primitive": "memory_read",
+      "description": "Read past the end of a buffer to extract sensitive memory contents."
+    },
+    {
+      "primitive": "race_condition_exploitation",
+      "description": "Exploit timing windows in processes to alter execution outcomes or elevate privileges."
+    },
+    {
+      "primitive": "transient_execution_exploitation",
+      "description": "Exploit processor speculative execution to read privileged memory contents via side channels."
+    },
+    {
+      "primitive": "path_traversal",
+      "description": "Access files outside the intended directory by manipulating relative or absolute paths."
+    },
+    {
+      "primitive": "file_read",
+      "description": "Read sensitive or unauthorized files from the target system."
+    },
+    {
+      "primitive": "file_write",
+      "description": "Write arbitrary data to unauthorized files on the target system."
+    },
+    {
+      "primitive": "file_upload",
+      "description": "Upload malicious files to compromise the target system or execute code."
+    },
+    {
+      "primitive": "file_modification",
+      "description": "Modify legitimate files or attributes to alter system behavior or insert malware."
+    },
+    {
+      "primitive": "file_deletion",
+      "description": "Delete critical files to disrupt operations or cover tracks."
+    },
+    {
+      "primitive": "file_discovery",
+      "description": "Identify critical, hidden, or shared files and directories on a host."
+    },
+    {
+      "primitive": "local_file_inclusion",
+      "description": "Include local files into a web application to execute code or read data."
+    },
+    {
+      "primitive": "remote_file_inclusion",
+      "description": "Include remote malicious files into a vulnerable application to execute code."
+    },
+    {
+      "primitive": "alternate_data_stream_creation",
+      "description": "Hide malicious code inside alternate file data streams to evade detection."
+    },
+    {
+      "primitive": "symlink_creation",
+      "description": "Create symbolic links to trick applications into modifying or reading critical files."
+    },
+    {
+      "primitive": "information_gathering",
+      "description": "Collect detailed configuration, account, or topology data to prepare further attacks. Includes forcing systems to reveal sensitive information through errors or misconfigurations."
+    },
+    {
+      "primitive": "data_manipulation",
+      "description": "Alter data at rest or in transit to achieve a malicious objective."
+    },
+    {
+      "primitive": "data_extraction",
+      "description": "Extract sensitive data from compromised systems, memory, or applications."
+    },
+    {
+      "primitive": "data_corruption",
+      "description": "Corrupt stored data or shared resources to disrupt services or destroy information."
+    },
+    {
+      "primitive": "data_interception",
+      "description": "Intercept sensitive data transmitted over a network or inter-process communication channel."
+    },
+    {
+      "primitive": "network_sniffing",
+      "description": "Capture network traffic continuously to steal credentials or sensitive data."
+    },
+    {
+      "primitive": "credential_theft",
+      "description": "Steal passwords, tokens, or tickets to impersonate legitimate users. Includes dumping LSASS memory, Kerberoasting, and AS-REP Roasting to extract credentials."
+    },
+    {
+      "primitive": "pass_the_hash",
+      "description": "Authenticate using captured password hashes without needing to crack them."
+    },
+    {
+      "primitive": "pass_the_ticket",
+      "description": "Authenticate using captured authentication tickets to move laterally across domains."
+    },
+    {
+      "primitive": "malware_installation",
+      "description": "Install malicious software persistently on a compromised target host or hardware."
+    },
+    {
+      "primitive": "webshell_deployment",
+      "description": "Deploy a web shell script to maintain persistent remote access to a compromised server."
+    },
+    {
+      "primitive": "dll_hijacking",
+      "description": "Place malicious libraries in directories where applications inadvertently load them."
+    },
+    {
+      "primitive": "dll_injection",
+      "description": "Inject malicious libraries into already running processes to execute hidden code."
+    },
+    {
+      "primitive": "process_hijacking",
+      "description": "Take control of legitimate running processes to hide malicious activity from defenders."
+    },
+    {
+      "primitive": "registry_modification",
+      "description": "Modify the operating system registry to establish persistence or weaken security."
+    },
+    {
+      "primitive": "configuration_manipulation",
+      "description": "Alter system configurations or variables to weaken security or establish persistent access."
+    },
+    {
+      "primitive": "rootkit_installation",
+      "description": "Install rootkits to hide malicious processes, files, and maintain deep administrative access."
+    },
+    {
+      "primitive": "service_modification",
+      "description": "Install or modify system services to execute malicious payloads persistently."
+    },
+    {
+      "primitive": "api_abuse",
+      "description": "Exploit application programming interfaces to perform unauthorized or unintended actions."
+    },
+    {
+      "primitive": "interface_manipulation",
+      "description": "Manipulate application interfaces to bypass intended restrictions or extract data."
+    },
+    {
+      "primitive": "functionality_abuse",
+      "description": "Abuse intended application features to perform unauthorized or malicious actions."
+    },
+    {
+      "primitive": "state_manipulation",
+      "description": "Alter application state information or variables to bypass logic controls or elevate privileges."
+    },
+    {
+      "primitive": "cache_poisoning",
+      "description": "Inject malicious data into a cache to serve it to other users."
+    },
+    {
+      "primitive": "request_smuggling",
+      "description": "Smuggle or split network requests to bypass security controls or poison web caches."
+    },
+    {
+      "primitive": "physical_access",
+      "description": "Gain physical access to restricted areas, hardware, or network infrastructure."
+    },
+    {
+      "primitive": "hardware_tampering",
+      "description": "Tamper with physical hardware to compromise its security or implant devices."
+    },
+    {
+      "primitive": "root_detection_evasion",
+      "description": "Use hooking or debugging to evade root or jailbreak detection on mobile devices."
+    },
+    {
+      "primitive": "security_software_disable",
+      "description": "Disable endpoint protection software or remove client-side filters to operate undetected."
+    },
+    {
+      "primitive": "forensic_obstruction",
+      "description": "Obstruct forensic analysis by deleting logs, blocking logging, or altering timestamps."
+    },
+    {
+      "primitive": "public_application_exploitation",
+      "description": "Exploit vulnerabilities in internet-facing web applications or services to execute code or bypass access controls."
+    },
+    {
+      "primitive": "wmi_execution",
+      "description": "Abuse Windows Management Instrumentation (WMI) to execute malicious commands and payloads."
+    },
+    {
+      "primitive": "scheduled_task_creation",
+      "description": "Abuse task scheduling functionality like Windows Task Scheduler to execute malicious code for persistence."
+    },
+    {
+      "primitive": "cron_job_manipulation",
+      "description": "Modify or create cron jobs on Linux or macOS systems to execute malicious scripts persistently."
+    },
+    {
+      "primitive": "log_clearing",
+      "description": "Clear Windows Event Logs or Linux bash history to remove indicators of compromise."
+    },
+    {
+      "primitive": "timestomping",
+      "description": "Modify file timestamps to hide malicious files and obstruct forensic investigations."
+    },
+    {
+      "primitive": "rdp_lateral_movement",
+      "description": "Use valid accounts to connect to remote systems via Remote Desktop Protocol (RDP) for lateral movement."
+    },
+    {
+      "primitive": "ssh_lateral_movement",
+      "description": "Utilize Secure Shell (SSH) and compromised credentials to access remote Unix/Linux systems interactively."
+    },
+    {
+      "primitive": "smb_admin_share_access",
+      "description": "Abuse Windows admin shares (SMB) for lateral movement and remote file execution."
+    },
+    {
+      "primitive": "winrm_lateral_movement",
+      "description": "Use Windows Remote Management (WinRM) to execute commands on remote hosts laterally."
+    },
+    {
+      "primitive": "vnc_lateral_movement",
+      "description": "Access remote systems using Virtual Network Computing (VNC) protocols for graphical lateral movement."
+    },
+    {
+      "primitive": "ssh_authorized_keys_manipulation",
+      "description": "Modify SSH authorized_keys files to maintain persistent remote access to a system."
+    },
+    {
+      "primitive": "domain_trust_discovery",
+      "description": "Enumerate Active Directory domain trusts to identify paths for lateral movement."
+    },
+    {
+      "primitive": "cloud_instance_metadata_api_abuse",
+      "description": "Access the Cloud Instance Metadata API to steal temporary cloud credentials and tokens."
+    },
+    {
+      "primitive": "cloud_account_abuse",
+      "description": "Abuse valid cloud accounts (AWS/Azure/GCP) obtained via compromised credentials to access resources."
+    },
+    {
+      "primitive": "container_escape",
+      "description": "Exploit vulnerabilities to escape a Docker or Kubernetes container and access the underlying host."
+    },
+    {
+      "primitive": "token_impersonation",
+      "description": "Duplicate and impersonate access tokens to bypass access controls and escalate privileges."
+    },
+    {
+      "primitive": "elevation_control_bypass",
+      "description": "Bypass elevation control mechanisms like User Account Control (UAC) on Windows or Sudo on Linux to execute payloads with elevated privileges."
+    },
+    {
+      "primitive": "mfa_fatigue",
+      "description": "Spam a user with Multi-Factor Authentication (MFA) prompts until they accidentally approve the request."
+    },
+    {
+      "primitive": "data_exfiltration_over_dns",
+      "description": "Exfiltrate sensitive data out of the network by encoding it within DNS queries."
+    },
+    {
+      "primitive": "data_exfiltration_over_icmp",
+      "description": "Hide and exfiltrate stolen data by embedding it within ICMP echo requests."
+    },
+    {
+      "primitive": "volume_shadow_copy_deletion",
+      "description": "Delete Volume Shadow Copies to prevent data recovery, often used in ransomware attacks."
+    },
+    {
+      "primitive": "process_hollowing",
+      "description": "Start a legitimate process in a suspended state and replace its memory with malicious code."
+    },
+    {
+      "primitive": "remote_service_exploitation",
+      "description": "Exploit software vulnerabilities in internal remote services to execute code and move laterally within the network."
+    },
+    {
+      "primitive": "vpn_gateway_exploitation",
+      "description": "Exploit vulnerabilities in external remote services like VPN gateways or Citrix to gain initial access."
+    },
+    {
+      "primitive": "smb_vulnerability_exploitation",
+      "description": "Exploit vulnerabilities in the Server Message Block (SMB) protocol for lateral movement and remote execution."
+    },
+    {
+      "primitive": "rpc_vulnerability_exploitation",
+      "description": "Exploit vulnerabilities in Remote Procedure Call (RPC) services to execute malicious payloads over the network."
+    },
+    {
+      "primitive": "default_credentials_abuse",
+      "description": "Log into a system or service using default, vendor-supplied valid accounts and passwords."
+    },
+    {
+      "primitive": "hardcoded_credentials_usage",
+      "description": "Extract and use hardcoded credentials embedded in source code or firmware to authenticate as a valid account."
+    },
+    {
+      "primitive": "local_account_abuse",
+      "description": "Obtain and abuse valid local OS accounts to establish persistence or bypass access controls."
+    },
+    {
+      "primitive": "domain_account_abuse",
+      "description": "Compromise and use valid Active Directory domain accounts to navigate the network undetected."
+    },
+    {
+      "primitive": "unsecured_credentials_discovery",
+      "description": "Search for unsecured credentials and passwords stored in plaintext within local files or directories."
+    },
+    {
+      "primitive": "private_key_discovery",
+      "description": "Locate and extract unsecured cryptographic private keys (e.g., SSH keys) stored on the filesystem."
+    },
+    {
+      "primitive": "bash_history_credential_discovery",
+      "description": "Read Linux bash history files to extract plaintext passwords or unsecured credentials typed by users."
+    },
+    {
+      "primitive": "registry_credential_discovery",
+      "description": "Query the Windows Registry to discover unsecured credentials stored by applications or the OS."
+    },
+    {
+      "primitive": "password_manager_extraction",
+      "description": "Extract credentials stored securely in enterprise or local password managers."
+    },
+    {
+      "primitive": "browser_credential_extraction",
+      "description": "Extract saved passwords, cookies, or credentials directly from web browser local storage."
+    },
+    {
+      "primitive": "local_privilege_escalation_exploit",
+      "description": "Exploit software vulnerabilities on a local system to escalate privileges to SYSTEM or root."
+    },
+    {
+      "primitive": "cloud_infrastructure_modification",
+      "description": "Modify cloud compute infrastructure, such as creating rogue instances or altering network security groups."
+    },
+    {
+      "primitive": "virtualization_escape",
+      "description": "Exploit hypervisor vulnerabilities to break out of a virtual machine and compromise the host."
+    },
+    {
+      "primitive": "firmware_vulnerability_exploitation",
+      "description": "Exploit vulnerabilities in system firmware (BIOS/UEFI) to establish persistent, low-level access."
+    },
+    {
+      "primitive": "defense_evasion_exploitation",
+      "description": "Exploit vulnerabilities in security software (Antivirus/EDR) to disable protections or evade detection."
+    },
+    {
+      "primitive": "trusted_relationship_abuse",
+      "description": "Compromise and use trusted third-party relationships or partner networks for initial access."
+    },
+    {
+      "primitive": "removable_media_replication",
+      "description": "Exploit autorun features or replicate malware onto removable media like USB drives for initial access."
+    },
+    {
+      "primitive": "cloud_administration_execution",
+      "description": "Execute malicious commands or workloads by abusing Cloud Administration APIs and interfaces."
+    },
+    {
+      "primitive": "serverless_execution_abuse",
+      "description": "Execute malicious code by abusing serverless compute environments like AWS Lambda or Azure Functions."
+    },
+    {
+      "primitive": "inter_process_communication_abuse",
+      "description": "Execute arbitrary code by exploiting inter-process communication mechanisms like DDE, COM, or XPC."
+    },
+    {
+      "primitive": "shared_module_execution",
+      "description": "Execute malicious payloads by abusing shared modules or dynamic-link libraries loaded by applications."
+    }
+  ]
+}

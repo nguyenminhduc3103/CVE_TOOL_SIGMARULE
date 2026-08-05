@@ -9,7 +9,7 @@ import json
 from pathlib import Path
 
 
-_MAPPING_FILE = Path(__file__).resolve().parents[4] / ".cache" / "ontology" / "ATT_CK_TTPs" / "TTPs_mapping.json"
+_MAPPING_FILE = Path(__file__).resolve().parents[4] / "TTPs_mapping.json"
 _mapped: dict | None = None
 
 

@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 
 _PROMPTS_DIR = Path(__file__).parent.parent / "prompts"
-_ONTOLOGY_FILE = Path(".cache/ontology/CAPEC_BEHAVIORs/mandatory_behavior_ontology.json")
+_ONTOLOGY_FILE = Path(__file__).resolve().parents[4] / "mandatory_behavior_ontology.json"
 _EMPTY_ONTOLOGY_PLACEHOLDER = "(no behaviors available — return empty list)"
 
 
