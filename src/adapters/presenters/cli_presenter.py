@@ -680,6 +680,19 @@ def _print_rule_detail(idx: int, rule: Any) -> None:
         print(f"       {_C.DIM}(parent rule — no selections, condition từ sub-rules){_C.RESET}")
 
 
+def print_sigma_validation(validations: list[Any]) -> None:
+    if not validations:
+        return
+    _subsection("Sigma Schema Validation", _C.CYAN)
+    for idx, v in enumerate(validations, 1):
+        is_valid = v.outcome.is_valid if v.outcome else False
+        color = _C.GREEN if is_valid else _C.RED
+        status = "PASS" if is_valid else "FAIL"
+        print(f"  {_C.DIM}·{_C.RESET} Doc {idx} ({v.document_type}): {color}{status}{_C.RESET}")
+        if v.outcome and not is_valid:
+            for err in v.outcome.errors:
+                print(f"      {_C.RED}- {err}{_C.RESET}")
+
 # --- Footer --------------------------------------------------------------
 
 def print_metadata_footer(enriched: Any, total_ms: int) -> None:

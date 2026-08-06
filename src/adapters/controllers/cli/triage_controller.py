@@ -13,6 +13,7 @@ from src.adapters.presenters.cli_presenter import (
     print_step2_analysis,
     print_step4_telemetry,
     print_step6_sigma,
+    print_sigma_validation,
     print_metadata_footer,
     _section_header,
     _subsection,
@@ -224,8 +225,16 @@ class CLITriageController:
                 out_path = out_dir / f"{enriched.core.cve_id}.yml"
                 out_path.write_text(yaml_text, encoding="utf-8")
                 print(f"[Step 6] YAML dumped to {out_path}")
+                
+                # Check validation <= 2lines
+                import yaml
+                from src.usecases.step_6_generate_sigma.validators.validator import SigmaConformanceChecker
+                checker = SigmaConformanceChecker()
+                docs = list(yaml.safe_load_all(yaml_text))
+                validations = [checker.check_rule(doc) for doc in docs if doc]
+                print_sigma_validation(validations)
             except Exception as exc:
-                print(f"[Step 6] ⚠ YAML dump failed: {exc}")
+                print(f"[Step 6] ⚠ YAML dump/validation failed: {exc}")
 
         # --- Footer ---
         total_ms = int((time.perf_counter() - pipeline_start) * 1000)
