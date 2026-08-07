@@ -153,14 +153,22 @@ class AIPhase1Service:
     @staticmethod
     def _clean_json(text: str) -> str:
         """Strip markdown fences / leading prose để json.loads parse được."""
-        fenced = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
+        text = text.strip()
+        fenced = re.search(r"```(?:json)?\s*(.*?)\s*```", text, re.DOTALL)
         if fenced:
-            return fenced.group(1).strip()
+            text = fenced.group(1).strip()
         first = text.find("{")
-        last = text.rfind("}")
-        if first != -1 and last != -1 and last > first:
-            return text[first : last + 1].strip()
-        return text.strip()
+        if first == -1:
+            return text
+        text_from_first = text[first:].strip()
+        try:
+            obj, _ = json.JSONDecoder().raw_decode(text_from_first)
+            return json.dumps(obj)
+        except json.JSONDecodeError:
+            last = text_from_first.rfind("}")
+            if last != -1:
+                return text_from_first[: last + 1]
+            return text_from_first
 
     @staticmethod
     def _load_ontology_block() -> str:

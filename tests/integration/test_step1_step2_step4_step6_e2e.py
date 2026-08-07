@@ -168,8 +168,10 @@ async def _run_step1_and_2(cve_id: str) -> tuple | None:
     # BƯỚC 2 — TECH ANALYSIS
     wait_for_user(f"Bước 2: Gửi thông tin cho AI Agent phân tích sâu {cve_id}")
 
+    from src.usecases.step_1_triage.stages.analysis_stage import run_analysis_stage
+
     print("\n[AI] Đang gọi LLM phân tích...")
-    analysis_context, attack_context, stage_failed = await orch._run_analysis_stage(enriched, capability_classification)
+    analysis_context, attack_context = await run_analysis_stage(enriched, capability_classification)
     enriched.analysis = analysis_context
     enriched.attack = attack_context
 
@@ -200,7 +202,7 @@ async def _run_step1_and_2(cve_id: str) -> tuple | None:
         _print_list(atk.tactics or [])
         print(f"  Techniques ({len(atk.techniques or [])}):")
         _print_list(atk.techniques or [])
-        print(f"  Confidence:         {atk.confidence}")
+        print(f"  Confidence:         {getattr(atk, 'confidence_level', None)}")
         print(f"  AI used/model:      {atk.ai_used} / {atk.ai_model}")
 
     return enriched, capability_classification
@@ -229,7 +231,7 @@ async def _run_step4(enriched, capability_classification) -> dict:
     _print_list(t.canonical_fields or [])
     print(f"  Sigma Logsources ({len(t.sigma_logsources or [])}):")
     for ls in t.sigma_logsources or []:
-        svc = f" service={ls.service}" if ls.service else ""
+        svc = f" service={getattr(ls, 'service', None)}" if getattr(ls, 'service', None) else ""
         print(f"      - {ls.category}/{ls.product}{svc}")
     if t.required_events:
         print(f"  Required Events:    {t.required_events}")

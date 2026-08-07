@@ -203,8 +203,10 @@ async def run_interactive_pipeline(cve_id: str) -> bool:
     # =========================================================================
     wait_for_user(f"Bước 2: Gửi thông tin cho AI Agent để phân tích sâu hành vi kỹ thuật của {cve_id}")
     
+    from src.usecases.step_1_triage.stages.analysis_stage import run_analysis_stage
+
     print("\n[AI] Đang gọi LLM phân tích...")
-    analysis_context, attack_context, stage_failed = await orch._run_analysis_stage(enriched, capability_classification)
+    analysis_context, attack_context = await run_analysis_stage(enriched, capability_classification)
     enriched.analysis = analysis_context
     enriched.attack = attack_context
 
@@ -256,7 +258,7 @@ async def run_interactive_pipeline(cve_id: str) -> bool:
             _print_list(atk.subtechniques)
         else:
             print("    []")
-        print(f"  Confidence:         {atk.confidence}")
+        print(f"  Confidence:         {getattr(atk, 'confidence_level', None)}")
         print(f"  Attack mapping confidence: {atk.attack_mapping_confidence}")
         print(f"  Mapping reasons ({len(atk.mapping_reasons or [])}):")
         _print_list(atk.mapping_reasons or [])

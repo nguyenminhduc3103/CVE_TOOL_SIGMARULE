@@ -1,0 +1,654 @@
+{
+  "version": "4.2",
+  "generated_at": "2026-08-07T04:06:31.717784+00:00",
+  "mitre_stix_source": ".cache\\mitre_attack\\enterprise-attack.json",
+  "source_primitives_count": 145,
+  "mapped_categories_count": 35,
+  "behavior_to_categories": {
+    "port_scanning": [
+      "firewall",
+      "network_connection"
+    ],
+    "os_fingerprinting": [
+      "firewall",
+      "network_connection"
+    ],
+    "ip_probing": [
+      "firewall",
+      "network_connection"
+    ],
+    "host_discovery": [
+      "firewall",
+      "network_connection"
+    ],
+    "network_enumeration": [
+      "firewall",
+      "network_connection",
+      "dns_query"
+    ],
+    "dns_enumeration": [
+      "dns",
+      "dns_query"
+    ],
+    "flood_dos": [
+      "firewall",
+      "network_connection",
+      "webserver"
+    ],
+    "payload_expansion_dos": [
+      "application",
+      "webserver"
+    ],
+    "amplification_dos": [
+      "firewall",
+      "network_connection"
+    ],
+    "resource_exhaustion": [
+      "application",
+      "firewall",
+      "network_connection"
+    ],
+    "jamming": [
+      "network_connection"
+    ],
+    "reflected_xss": [
+      "webserver",
+      "proxy",
+      "application"
+    ],
+    "stored_xss": [
+      "webserver",
+      "application",
+      "database"
+    ],
+    "dom_based_xss": [
+      "webserver",
+      "proxy",
+      "application"
+    ],
+    "pretexting": [
+      "application"
+    ],
+    "phishing": [
+      "antivirus",
+      "proxy",
+      "application"
+    ],
+    "alternate_encoding": [
+      "webserver",
+      "proxy",
+      "application"
+    ],
+    "filter_bypass_via_encoding": [
+      "webserver",
+      "proxy",
+      "application"
+    ],
+    "hardware_substitution": [
+      "driver_load"
+    ],
+    "documentation_alteration": [
+      "file_change",
+      "file_event"
+    ],
+    "software_supply_chain_attack": [
+      "file_event",
+      "process_creation",
+      "image_load"
+    ],
+    "domain_squatting": [
+      "dns_query",
+      "dns",
+      "proxy"
+    ],
+    "package_squatting": [
+      "process_creation",
+      "file_event",
+      "network_connection"
+    ],
+    "identity_spoofing": [
+      "process_creation",
+      "process_access",
+      "registry_set"
+    ],
+    "content_spoofing": [
+      "webserver",
+      "proxy",
+      "application"
+    ],
+    "infrastructure_spoofing": [
+      "network_connection",
+      "firewall"
+    ],
+    "dns_spoofing": [
+      "dns",
+      "dns_query",
+      "network_connection"
+    ],
+    "signal_spoofing": [
+      "application"
+    ],
+    "metadata_spoofing": [
+      "file_event",
+      "file_change",
+      "file_executable_detected"
+    ],
+    "certificate_forgery": [
+      "file_executable_detected",
+      "image_load",
+      "driver_load"
+    ],
+    "action_spoofing": [
+      "webserver",
+      "application",
+      "proxy"
+    ],
+    "parameter_injection": [
+      "webserver",
+      "application",
+      "proxy"
+    ],
+    "sql_injection": [
+      "database",
+      "webserver",
+      "application"
+    ],
+    "command_injection": [
+      "process_creation",
+      "webserver",
+      "application"
+    ],
+    "xml_injection": [
+      "application",
+      "webserver"
+    ],
+    "ldap_injection": [
+      "application",
+      "webserver"
+    ],
+    "script_injection": [
+      "webserver",
+      "application",
+      "proxy"
+    ],
+    "css_injection": [
+      "webserver",
+      "application",
+      "proxy"
+    ],
+    "log_injection": [
+      "file_change",
+      "file_event",
+      "application"
+    ],
+    "format_string_injection": [
+      "application",
+      "process_creation"
+    ],
+    "object_injection": [
+      "application",
+      "webserver",
+      "process_creation"
+    ],
+    "server_side_request_forgery": [
+      "network_connection",
+      "proxy",
+      "webserver",
+      "application"
+    ],
+    "authentication_bypass": [
+      "application",
+      "webserver"
+    ],
+    "authorization_bypass": [
+      "application",
+      "webserver",
+      "file_access"
+    ],
+    "authentication_attempt": [
+      "application",
+      "webserver"
+    ],
+    "brute_force": [
+      "application",
+      "webserver",
+      "database"
+    ],
+    "session_hijacking": [
+      "application",
+      "webserver",
+      "network_connection"
+    ],
+    "session_prediction": [
+      "application",
+      "webserver"
+    ],
+    "session_replay": [
+      "application",
+      "webserver",
+      "network_connection"
+    ],
+    "session_fixation": [
+      "application",
+      "webserver"
+    ],
+    "cross_site_request_forgery": [
+      "webserver",
+      "proxy",
+      "application"
+    ],
+    "code_execution": [
+      "process_creation",
+      "ps_script",
+      "ps_module",
+      "file_event"
+    ],
+    "buffer_overflow": [
+      "application",
+      "process_creation"
+    ],
+    "memory_corruption": [
+      "process_tampering",
+      "application",
+      "process_creation"
+    ],
+    "memory_read": [
+      "process_access",
+      "raw_access_thread"
+    ],
+    "race_condition_exploitation": [
+      "file_event",
+      "process_creation",
+      "application"
+    ],
+    "transient_execution_exploitation": [
+      "process_access"
+    ],
+    "path_traversal": [
+      "file_access",
+      "webserver",
+      "application"
+    ],
+    "file_read": [
+      "file_access"
+    ],
+    "file_write": [
+      "file_event"
+    ],
+    "file_upload": [
+      "webserver",
+      "file_event",
+      "proxy"
+    ],
+    "file_modification": [
+      "file_event",
+      "file_change"
+    ],
+    "file_deletion": [
+      "file_delete",
+      "file_event"
+    ],
+    "file_discovery": [
+      "file_access"
+    ],
+    "local_file_inclusion": [
+      "webserver",
+      "file_access",
+      "application"
+    ],
+    "remote_file_inclusion": [
+      "network_connection",
+      "webserver",
+      "proxy"
+    ],
+    "alternate_data_stream_creation": [
+      "file_event"
+    ],
+    "symlink_creation": [
+      "file_event"
+    ],
+    "information_gathering": [
+      "dns_query",
+      "network_connection",
+      "process_creation",
+      "file_access"
+    ],
+    "data_manipulation": [
+      "file_event",
+      "registry_set",
+      "database"
+    ],
+    "data_extraction": [
+      "file_access",
+      "network_connection",
+      "dns_query"
+    ],
+    "data_corruption": [
+      "file_event",
+      "registry_set",
+      "database"
+    ],
+    "data_interception": [
+      "network_connection",
+      "process_access",
+      "raw_access_thread"
+    ],
+    "network_sniffing": [
+      "network_connection",
+      "process_creation"
+    ],
+    "credential_theft": [
+      "process_access",
+      "file_access",
+      "network_connection",
+      "process_creation"
+    ],
+    "pass_the_hash": [
+      "process_creation",
+      "network_connection"
+    ],
+    "pass_the_ticket": [
+      "process_creation",
+      "network_connection"
+    ],
+    "malware_installation": [
+      "file_event",
+      "registry_event",
+      "process_creation"
+    ],
+    "webshell_deployment": [
+      "file_event",
+      "webserver"
+    ],
+    "dll_hijacking": [
+      "file_event",
+      "image_load"
+    ],
+    "dll_injection": [
+      "process_access",
+      "image_load",
+      "create_remote_thread"
+    ],
+    "process_hijacking": [
+      "process_access",
+      "process_tampering",
+      "create_remote_thread"
+    ],
+    "registry_modification": [
+      "registry_event"
+    ],
+    "configuration_manipulation": [
+      "registry_event",
+      "file_event"
+    ],
+    "rootkit_installation": [
+      "driver_load",
+      "file_event",
+      "process_tampering",
+      "registry_event"
+    ],
+    "service_modification": [
+      "registry_event",
+      "process_creation"
+    ],
+    "api_abuse": [
+      "process_creation",
+      "network_connection"
+    ],
+    "interface_manipulation": [
+      "application"
+    ],
+    "functionality_abuse": [
+      "application",
+      "webserver"
+    ],
+    "state_manipulation": [
+      "application"
+    ],
+    "cache_poisoning": [
+      "webserver",
+      "network_connection"
+    ],
+    "request_smuggling": [
+      "webserver",
+      "network_connection"
+    ],
+    "physical_access": [
+      "file_access",
+      "process_creation"
+    ],
+    "hardware_tampering": [
+      "driver_load",
+      "file_event"
+    ],
+    "root_detection_evasion": [
+      "process_access",
+      "image_load",
+      "process_tampering"
+    ],
+    "security_software_disable": [
+      "process_creation",
+      "registry_event",
+      "file_event"
+    ],
+    "forensic_obstruction": [
+      "file_delete",
+      "file_change",
+      "registry_event",
+      "process_creation"
+    ],
+    "public_application_exploitation": [
+      "webserver",
+      "network_connection",
+      "process_creation"
+    ],
+    "wmi_execution": [
+      "wmi_event",
+      "process_creation"
+    ],
+    "scheduled_task_creation": [
+      "registry_event",
+      "process_creation"
+    ],
+    "cron_job_manipulation": [
+      "process_creation",
+      "file_event",
+      "registry_event"
+    ],
+    "log_clearing": [
+      "file_delete",
+      "process_creation",
+      "file_event"
+    ],
+    "timestomping": [
+      "file_event",
+      "file_change",
+      "process_creation"
+    ],
+    "rdp_lateral_movement": [
+      "network_connection",
+      "process_creation"
+    ],
+    "ssh_lateral_movement": [
+      "network_connection",
+      "process_creation"
+    ],
+    "smb_admin_share_access": [
+      "network_connection",
+      "file_event",
+      "process_creation"
+    ],
+    "winrm_lateral_movement": [
+      "network_connection",
+      "process_creation"
+    ],
+    "vnc_lateral_movement": [
+      "network_connection",
+      "process_creation"
+    ],
+    "ssh_authorized_keys_manipulation": [
+      "file_event",
+      "file_change",
+      "process_creation"
+    ],
+    "domain_trust_discovery": [
+      "process_creation",
+      "network_connection",
+      "dns_query"
+    ],
+    "cloud_instance_metadata_api_abuse": [
+      "network_connection",
+      "process_creation",
+      "webserver"
+    ],
+    "cloud_account_abuse": [
+      "process_creation",
+      "network_connection"
+    ],
+    "container_escape": [
+      "process_creation",
+      "file_event",
+      "network_connection"
+    ],
+    "token_impersonation": [
+      "process_access",
+      "process_creation",
+      "registry_event"
+    ],
+    "elevation_control_bypass": [
+      "process_creation",
+      "registry_set",
+      "file_event"
+    ],
+    "mfa_fatigue": [
+      "process_creation"
+    ],
+    "data_exfiltration_over_dns": [
+      "dns_query",
+      "network_connection"
+    ],
+    "data_exfiltration_over_icmp": [
+      "network_connection",
+      "firewall"
+    ],
+    "volume_shadow_copy_deletion": [
+      "process_creation",
+      "file_delete",
+      "registry_event"
+    ],
+    "process_hollowing": [
+      "process_creation",
+      "process_access",
+      "image_load"
+    ],
+    "remote_service_exploitation": [
+      "network_connection",
+      "process_creation",
+      "webserver"
+    ],
+    "vpn_gateway_exploitation": [
+      "network_connection",
+      "process_creation",
+      "webserver"
+    ],
+    "smb_vulnerability_exploitation": [
+      "network_connection",
+      "process_creation",
+      "file_event"
+    ],
+    "rpc_vulnerability_exploitation": [
+      "network_connection",
+      "process_creation"
+    ],
+    "default_credentials_abuse": [
+      "process_creation",
+      "network_connection"
+    ],
+    "hardcoded_credentials_usage": [
+      "process_creation",
+      "network_connection"
+    ],
+    "local_account_abuse": [
+      "process_creation",
+      "registry_event"
+    ],
+    "domain_account_abuse": [
+      "process_creation",
+      "network_connection"
+    ],
+    "unsecured_credentials_discovery": [
+      "file_access",
+      "process_creation"
+    ],
+    "private_key_discovery": [
+      "file_access",
+      "process_creation"
+    ],
+    "bash_history_credential_discovery": [
+      "file_access",
+      "process_creation"
+    ],
+    "registry_credential_discovery": [
+      "registry_event",
+      "process_creation"
+    ],
+    "password_manager_extraction": [
+      "file_access",
+      "process_creation"
+    ],
+    "browser_credential_extraction": [
+      "file_access",
+      "process_creation",
+      "registry_event"
+    ],
+    "local_privilege_escalation_exploit": [
+      "process_creation",
+      "image_load",
+      "file_event"
+    ],
+    "cloud_infrastructure_modification": [
+      "process_creation",
+      "network_connection"
+    ],
+    "virtualization_escape": [
+      "process_creation",
+      "image_load",
+      "file_event"
+    ],
+    "firmware_vulnerability_exploitation": [
+      "driver_load",
+      "process_creation",
+      "file_event"
+    ],
+    "defense_evasion_exploitation": [
+      "process_creation",
+      "image_load",
+      "process_access"
+    ],
+    "trusted_relationship_abuse": [
+      "network_connection",
+      "process_creation"
+    ],
+    "removable_media_replication": [
+      "file_event",
+      "process_creation"
+    ],
+    "cloud_administration_execution": [
+      "process_creation",
+      "network_connection"
+    ],
+    "serverless_execution_abuse": [
+      "process_creation",
+      "network_connection"
+    ],
+    "inter_process_communication_abuse": [
+      "process_creation",
+      "image_load"
+    ],
+    "shared_module_execution": [
+      "image_load",
+      "process_creation",
+      "file_event"
+    ]
+  }
+}

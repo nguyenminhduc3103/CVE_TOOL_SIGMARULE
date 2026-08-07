@@ -166,8 +166,10 @@ async def run_interactive_pipeline(cve_id: str) -> bool:
     # BƯỚC 2 — TECH ANALYSIS
     wait_for_user(f"Bước 2: Gửi thông tin cho AI Agent phân tích sâu {cve_id}")
 
+    from src.usecases.step_1_triage.stages.analysis_stage import run_analysis_stage
+
     print("\n[AI] Đang gọi LLM phân tích...")
-    analysis_context, attack_context, stage_failed = await orch._run_analysis_stage(enriched, capability_classification)
+    analysis_context, attack_context = await run_analysis_stage(enriched, capability_classification)
     enriched.analysis = analysis_context
     enriched.attack = attack_context
 
@@ -198,7 +200,7 @@ async def run_interactive_pipeline(cve_id: str) -> bool:
         _print_list(atk.tactics or [])
         print(f"  Techniques ({len(atk.techniques or [])}):")
         _print_list(atk.techniques or [])
-        print(f"  Confidence:         {atk.confidence}")
+        print(f"  Confidence:         {getattr(atk, 'confidence_level', None)}")
         print(f"  AI used/model:      {atk.ai_used} / {atk.ai_model}")
 
     # BƯỚC 4 — TELEMETRY
@@ -207,116 +209,59 @@ async def run_interactive_pipeline(cve_id: str) -> bool:
     from src.usecases.step_1_triage.stages.telemetry_stage import run_telemetry_stage
 
     print("\n[AI] Đang chạy Step 4 — Telemetry Selector...")
-    telemetry_assessment = await run_telemetry_stage(enriched, capability_classification)
-    enriched.telemetry = telemetry_assessment
+    plan = await run_telemetry_stage(enriched)
+    enriched.telemetry = plan
 
-    _section(f"STEP 4 — TELEMETRY ASSESSMENT for {cve_id}")
-    t = telemetry_assessment
+    _section(f"STEP 4 — TELEMETRY PLAN for {cve_id}")
+    print(f"  AI Model:                {plan.ai_model}")
+    print(f"  Telemetry Confidence:    {plan.telemetry_confidence}")
+    print(f"  Correlation Required:    {plan.correlation_required}")
+    print(f"  Primary Axis:            {plan.detection_axis.primary}")
+    print(f"  Secondary Axes:          {plan.detection_axis.secondary}")
+    print(f"  Detection Strategy:      {plan.detection_strategy}")
 
-    # Metadata
-    print(f"  AI used:                 {t.ai_used}")
-    print(f"  AI model:                {t.ai_model}")
-    print(f"  AI retry count:          {t.ai_retry_count}")
+    print(f"\n  ╔══ Target Environment ═══════════════════════════════╗")
+    print(f"  Platforms:               {plan.target_environment.platforms}")
+    print(f"  Deployment:              {plan.target_environment.deployment}")
+    print(f"  Application Types:       {plan.target_environment.application_types}")
+    print(f"  Technologies:            {plan.target_environment.technologies}")
 
-    # ============ PHASE 7: 5-block restructured output ============
-    _print_features = lambda items: [print(f"      - {f.field} = {f.value if f.value is not None else (f'pattern={f.pattern}' if f.pattern else '?')}" + (f"  [why: {f.rationale}]" if f.rationale else "")) for f in items]
+    print(f"\n  ╠══ Candidate Features (3-Tier) ═════════════════════════╣")
+    print(f"  Stable Features ({len(plan.candidate_features.stable)}):")
+    for f in plan.candidate_features.stable:
+        print(f"      - [{f.telemetry_concept}] {f.semantic}")
+    print(f"  Conditional Features ({len(plan.candidate_features.conditional)}):")
+    for f in plan.candidate_features.conditional:
+        print(f"      - [{f.telemetry_concept}] {f.semantic}")
+    print(f"  Optional Features ({len(plan.candidate_features.optional)}):")
+    for f in plan.candidate_features.optional:
+        print(f"      - [{f.telemetry_concept}] {f.semantic}")
 
-    # BLOCK 1: AI Semantic Analysis
-    print(f"\n  ╔══ AI Semantic Analysis ═══════════════════════════════╗")
-    print(f"  Candidate Telemetry Domains ({len(t.candidate_telemetry_domains or [])}):")
-    _print_list(t.candidate_telemetry_domains or [])
-    if t.invalid_domains:
-        print(f"  Invalid Domains (dropped):  {t.invalid_domains}")
-    if t.telemetry_selection_rationale:
-        print(f"  Reasoning per Domain:")
-        _print_list(t.telemetry_selection_rationale)
-    print(f"  Detection Axis:             {t.detection_axis}")
-    print(f"  Primary Axis:               {t.primary_axis}")
-    print(f"  Detection Strategy:         {t.recommended_rule_strategy or t.rule_strategy}")
+    print(f"\n  ╠══ Derived Sigma Logsources ════════════════════════════╣")
+    for ls in plan.sigma_logsources:
+        svc = f" service={getattr(ls, 'service', None)}" if getattr(ls, 'service', None) else ""
+        print(f"      - category={ls.category} product={ls.product}{svc}")
+    if plan.telemetry_gaps:
+        print(f"  Telemetry Gaps:            {plan.telemetry_gaps}")
+        print(f"  Gap Severity:              {plan.gap_severity}")
 
-    # BLOCK 2: Knowledge Resolution
-    print(f"\n  ╠══ Knowledge Resolution ════════════════════════════════╣")
-    print(f"  Canonical Telemetry ({len(t.canonical_telemetry or [])}):")
-    _print_list(t.canonical_telemetry or [])
-    print(f"  Canonical Fields    ({len(t.canonical_fields or [])}):")
-    _print_list(t.canonical_fields or [])
-    print(f"  Sigma Logsources ({len(t.sigma_logsources or [])}):")
-    for ls in t.sigma_logsources or []:
-        svc = f" service={ls.service}" if ls.service else ""
-        print(f"      - {ls.category}/{ls.product}{svc}")
-    if t.required_events:
-        print(f"  Required Events:    {t.required_events}")
-    if t.telemetry_requirements:
-        print(f"  Telemetry Requirements: {t.telemetry_requirements}")
-
-    # BLOCK 3: Telemetry Quality Assessment
-    valid_total = len(t.validated_fields or []) + len(t.invalid_fields or [])
-    valid_pct = (len(t.validated_fields or []) / valid_total * 100) if valid_total else 0
-    eff_conf = t.telemetry_confidence or 0.0
-    print(f"\n  ╠══ Telemetry Quality Assessment ═════════════════════════╣")
-    print(f"  Validated Fields:          {len(t.validated_fields or [])}/{valid_total} ({valid_pct:.0f}%)")
-    if t.invalid_fields:
-        print(f"  Invalid Fields:            {t.invalid_fields}")
-    print(f"  AI Hallucination Ratio:    {t.ai_hallucination_ratio}  (|required - validated| / max(required, 1))")
-    print(f"  Effective AI Confidence:   {eff_conf:.2f}")
-    print(f"  Pipeline Feasibility:      {t.telemetry_feasibility_score}")
-    if t.telemetry_feasibility_breakdown:
-        print(f"  Feasibility Breakdown:")
-        for k, v in t.telemetry_feasibility_breakdown.items():
-            print(f"      {k}: {v}")
-    if t.telemetry_gaps:
-        print(f"  Telemetry Gaps:            {t.telemetry_gaps}")
-        print(f"  Gap Severity:              {t.gap_severity}")
-
-    # BLOCK 4: Detection Features
-    stable = t.stable_features or []
-    cond = t.conditional_features or []
-    opt = t.optional_features or []
-    print(f"\n  ╠══ Detection Features ═════════════════════════════════╣")
-    print(f"  Stable Features    ({len(stable)}): [Protocol invariant | attacker khó bypass]")
-    _print_features(stable)
-    print(f"  Conditional Features ({len(cond)}): [Attacker choice | context-dependent]")
-    _print_features(cond)
-    print(f"  Optional Features   ({len(opt)}): [Environment dependent | dễ spoof]")
-    _print_features(opt)
-
-    # BLOCK 5: Telemetry Summary
+    # Telemetry Summary
     print(f"\n  ╚══ Telemetry Summary ═══════════════════════════════════╝")
-    print(f"  Stable Features:      {len(stable)}")
-    print(f"  Conditional Features: {len(cond)}")
-    print(f"  Optional Features:    {len(opt)}")
-    print(f"  Sigma Logsources:     {len(t.sigma_logsources or [])}")
-    print(f"  Validated Fields:     {len(t.validated_fields or [])}/{valid_total} ({valid_pct:.0f}%)")
-    print(f"  Correlation:          {'YES' if t.correlation_required else 'NO'}")
-    print(f"  Effective AI Confidence: {eff_conf:.2f}")
-    print(f"  Pipeline Feasibility:    {t.telemetry_feasibility_score}")
-
-    # DEBUG MODE (--debug flag): hide required_fields by default
-    if debug_mode:
-        print(f"\n  [DEBUG MODE]")
-        print(f"  required_fields ({len(t.required_fields or [])}):")
-        _print_list(t.required_fields or [])
-        print(f"  candidate_fields ({len(t.candidate_fields or [])}):")
-        _print_list(t.candidate_fields or [])
-        print(f"  rule_strategy ({len(t.rule_strategy or [])}):")
-        _print_list(t.rule_strategy or [])
-        if t.observable_detection_features:
-            df = t.observable_detection_features
-            print(f"  observable_detection_features (legacy):")
-            print(f"      stable: {len(df.stable_features)}, observable: {len(df.observable_features)}, optional: {len(df.optional_features)}")
+    print(f"  Stable Features:      {len(plan.candidate_features.stable)}")
+    print(f"  Conditional Features: {len(plan.candidate_features.conditional)}")
+    print(f"  Optional Features:    {len(plan.candidate_features.optional)}")
+    print(f"  Sigma Logsources:     {len(plan.sigma_logsources)}")
+    print(f"  Correlation:          {'YES' if plan.correlation_required else 'NO'}")
+    print(f"  Telemetry Confidence: {plan.telemetry_confidence:.2f}")
 
     # Verdict
     _section("STEP 4 — VERDICT")
-    if t.telemetry_feasibility_score is not None:
-        if t.telemetry_feasibility_score >= 0.7:
-            print(f"  ✅ PROCEED — feasibility_score = {t.telemetry_feasibility_score}")
-        elif t.telemetry_feasibility_score >= 0.5:
-            print(f"  ⚠️  REVIEW — feasibility_score = {t.telemetry_feasibility_score}")
-        else:
-            print(f"  ❌ NO-GO — feasibility_score = {t.telemetry_feasibility_score} (quá thấp)")
-
-    if not t.ai_used:
-        print(f"  ℹ️  AI not used — fell back to rule-based (set AI_ENABLED=true để test AI path)")
+    if plan.telemetry_confidence >= 0.7:
+        print(f"  ✅ PROCEED — telemetry_confidence = {plan.telemetry_confidence}")
+    elif plan.telemetry_confidence >= 0.5:
+        print(f"  ⚠️ REVIEW — telemetry_confidence = {plan.telemetry_confidence}")
+    else:
+        print(f"  ❌ NO-GO — telemetry_confidence = {plan.telemetry_confidence}")
 
     # BƯỚC 5 — METADATA
     wait_for_user(f"Hoàn thành. Tổng kết metadata cho {cve_id}")
@@ -367,7 +312,6 @@ async def main() -> None:
                 user_choice = input("\nTiếp tục CVE tiếp theo? (1=tiếp, 2=thoát): ").strip()
                 if user_choice == "2":
                     break
-
 
 if __name__ == "__main__":
     if sys.platform == "win32":

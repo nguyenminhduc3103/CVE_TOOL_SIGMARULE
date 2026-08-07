@@ -347,6 +347,21 @@ def print_step4_telemetry(enriched: Any) -> None:
         for line in str(strategy).splitlines() or [str(strategy)]:
             print(f"    {line}")
 
+    # Semantic Behavior Validation Status
+    analysis = getattr(enriched, "analysis", None)
+    mand_behaviors = list(getattr(analysis, "mandatory_behaviors", []) or []) if analysis else []
+    if mand_behaviors:
+        _subsection("Semantic Behavior Validation")
+        gaps = list(getattr(t, "telemetry_gaps", []) or [])
+        semantic_gaps = [g for g in gaps if "Missing telemetry coverage" in str(g)]
+        if semantic_gaps:
+            print(f"  {_C.BOLD}{'Validation Status:':<22}{_C.RESET}{_C.RED}⚠️ BEHAVIOR GAP DETECTED{_C.RESET}")
+            for sg in semantic_gaps:
+                print(f"    {_C.RED}•{_C.RESET} {sg}")
+        else:
+            print(f"  {_C.BOLD}{'Validation Status:':<22}{_C.RESET}{_C.GREEN}✅ PASSED (100% behavior coverage){_C.RESET}")
+        print(_kv("Checked Behaviors:", ", ".join(mand_behaviors)))
+
     # Correlation + gaps
     print(
         _kv(

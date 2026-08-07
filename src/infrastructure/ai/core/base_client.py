@@ -6,6 +6,7 @@ on certain Windows/Python environments.
 from __future__ import annotations
 
 import asyncio
+import json
 import httpx
 import logging
 import threading
@@ -250,7 +251,11 @@ class BaseAIClient:
                     )
 
                 # Parse response
-                data = response.json()
+                try:
+                    data = response.json()
+                except Exception:
+                    obj, _ = json.JSONDecoder().raw_decode(response.text.strip())
+                    data = obj
                 choice = data["choices"][0]
                 content = choice["message"]["content"]
                 finish = choice.get("finish_reason")

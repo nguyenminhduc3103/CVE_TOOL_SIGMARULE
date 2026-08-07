@@ -64,6 +64,8 @@ class TelemetryPlanAI:
             **llm_response.model_dump(),
         )
         plan = self._resolve_sigma_logsources(plan)
+        from src.usecases.step_4_telemetry.validation.semantic_validator import SemanticCoherenceValidator
+        plan = SemanticCoherenceValidator.validate(plan, enriched.analysis)
         logger.info(
             "step4.plan cve_id=%s primary=%s correlation=%s confidence=%.2f model=%s",
             plan.cve_id,
@@ -121,12 +123,19 @@ class TelemetryPlanAI:
 
     @staticmethod
     def _clean_json(text: str) -> str:
-        # Strip markdown fences and any prose before the first `{`.
-        fence = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
+        text = text.strip()
+        fence = re.search(r"```(?:json)?\s*(.*?)\s*```", text, re.DOTALL)
         if fence:
-            return fence.group(1)
+            text = fence.group(1).strip()
         first = text.find("{")
-        last = text.rfind("}")
-        if first != -1 and last != -1 and last > first:
-            return text[first:last + 1]
-        return text
+        if first == -1:
+            return text
+        text_from_first = text[first:].strip()
+        try:
+            obj, _ = json.JSONDecoder().raw_decode(text_from_first)
+            return json.dumps(obj)
+        except json.JSONDecodeError:
+            last = text_from_first.rfind("}")
+            if last != -1:
+                return text_from_first[: last + 1]
+            return text_from_first
