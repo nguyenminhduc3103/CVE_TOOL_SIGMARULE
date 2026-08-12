@@ -9,6 +9,7 @@ INPUT_PAYLOAD_JSON contains:
 - reasoning: How the attack chain works
 - poc_documentation: PoC documentation text
 - poc_evidence: PoC exploit pattern or payload snippet
+ - poc_request_info: (optional) full PoC request object when available. If present it may contain the keys: `method`, `host`, `port`, `path`, `headers`, `body`, `raw`. Use these fields to inform mapping decisions (e.g., body parameters that indicate local file inclusion, or headers that indicate particular attack vectors).
 
 Your task: Extract ATT&CK tactics, techniques, and sub-techniques ONLY. No reasoning needed here.
 

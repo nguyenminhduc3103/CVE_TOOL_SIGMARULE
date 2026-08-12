@@ -131,6 +131,10 @@ class CLITriageController:
                 base_url=settings.get_phase2_base_url(),
             )
             ai_service = AIBehaviorService(client)
+            poc_summary = getattr(enriched, "intel", None)
+            poc_description = getattr(poc_summary, "poc_description", "") or ""
+            poc_network_payloads = getattr(poc_summary, "poc_network_payloads", None) or []
+            poc_request_info = poc_network_payloads[0] if poc_network_payloads else None
             analysis, attack, _ = await run_step2_tech_analysis(
                 ai_service=ai_service,
                 base_client=client,
@@ -139,6 +143,8 @@ class CLITriageController:
                 cvss_score=enriched.core.cvss_score or 0.0,
                 cvss_vector=enriched.core.cvss_vector or "",
                 cwe_ids=enriched.core.cwe_ids or [],
+                poc_description=poc_description,
+                poc_request_info=poc_request_info,
             )
             enriched.analysis = analysis
             enriched.attack = attack

@@ -61,6 +61,7 @@ class AIBehaviorService:
             "mandatory_behaviors": p1.get("mandatory_behaviors") or [],
             "reasoning": p1.get("reasoning") or [],
             "poc_documentation": p1.get("poc_description") or "",
+            "poc_request_info": p1.get("poc_request_info") or {},
             "poc_evidence": p1.get("poc_request_info", {}).get("path") if isinstance(p1.get("poc_request_info"), dict) else "",
         }
         formatted_user = self.user_prompt_template.format(
