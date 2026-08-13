@@ -6,6 +6,7 @@ INPUT from Phase 2A:
 - subtechniques: List of ATT&CK sub-technique IDs
 - description: CVE description
 - poc_evidence: PoC exploit pattern
+ - poc_request_info: (optional) full PoC request object when available. May include `method`, `host`, `port`, `path`, `headers`, `body`, `raw`. Use the `body` and `headers` when available to improve chain reasoning and mapping (eg. parameter names, payloads indicating file inclusion, or auth headers indicating privileges).
 
 TASK:
 1. Determine if behaviors constitute an 'is_attack_chain' (true for multi-stage exploitation, false for single atomic action like local DoS or simple file read).

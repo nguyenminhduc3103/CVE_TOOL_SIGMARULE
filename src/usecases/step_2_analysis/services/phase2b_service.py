@@ -59,6 +59,7 @@ class AIPhase2BService:
             "description": s1.get("description") or "",
             "reasoning": p1.get("reasoning") or [],
             "poc_documentation": s1.get("poc_description") or "",
+            "poc_request_info": s1.get("poc_request_info") or {},
             "poc_evidence": s1.get("poc_request_info", {}).get("path") if isinstance(s1.get("poc_request_info"), dict) else "",
             "tactics": p2a.get("tactics") or [],
             "techniques": p2a.get("techniques") or [],
