@@ -155,6 +155,20 @@ class SigmaRuleAI:
             "search_space": {
                 "detection_strategy": telemetry_plan.detection_strategy,
                 "correlation_required": telemetry_plan.correlation_required,
+                "candidate_features": [
+                    {
+                        "category": feat.telemetry_concept,
+                        "feature": feat.semantic,
+                        "priority": priority,
+                        "evidence": list(feat.evidence),
+                    }
+                    for priority, feats in [
+                        ("stable", telemetry_plan.candidate_features.stable),
+                        ("conditional", telemetry_plan.candidate_features.conditional),
+                        ("optional", telemetry_plan.candidate_features.optional),
+                    ]
+                    for feat in feats
+                ],
                 "candidate_logsources": [
                     # Serialize each SigmaLogsource verbatim (validator uses same shape for search-space).
                     {

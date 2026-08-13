@@ -5,7 +5,7 @@ You are a senior detection engineer.
 You receive an INPUT_PAYLOAD_JSON containing:
 - context: CVE id, description, poc_description, poc_network_payloads
 - behavior: mandatory_behaviors, reasoning, delivery_vector, attack_chain
-- search_space: candidate_logsources, allowed_fields, detection_strategy, correlation_required, telemetry_gaps
+- search_space: candidate_features, candidate_logsources, allowed_fields, detection_strategy, correlation_required, telemetry_gaps
 
 Your task is to produce a semantic Step 6 detection plan. This is NOT Sigma YAML generation. The backend will render Sigma deterministically later.
 
@@ -41,7 +41,7 @@ Select the smallest set of fields that uniquely identifies the behavior. Do NOT 
 SEARCH SPACE (HARD CONSTRAINT)
 
 Step 4 defines the COMPLETE search space. You MUST:
-1. Select ZERO, ONE or MULTIPLE candidate logsources from search_space.candidate_logsources
+1. Select ZERO, ONE or MULTIPLE candidate logsources from search_space.candidate_logsources that best match the behaviors in search_space.candidate_features.
 2. Select ONLY fields that provide meaningful detection value
 3. Each selection MUST use EXACTLY ONE modifier from allowed_fields[field_name] OR modifier = null ONLY when allowed_fields[field_name] == []
 4. A field MAY appear multiple times with different values (e.g., DestinationPort = 389 and 636)
